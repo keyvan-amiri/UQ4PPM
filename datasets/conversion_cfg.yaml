@@ -1,0 +1,5 @@
+env_permit:
+  event_categorical: ['org:group', 'org:resource'] 
+  event_numerical: []
+  case_categorical: ['responsible', 'department', 'channel', 'group'] # without 'case:' string
+  case_numerical: []

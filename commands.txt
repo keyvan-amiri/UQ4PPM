@@ -1,0 +1,5 @@
+dws-15.informatik.uni-mannheim.de
+tmux new -s uq4ppm
+conda activate graphgps
+tmux attach-session -t uq4ppm
+python preprocess.py --datasets ['env_permit']
