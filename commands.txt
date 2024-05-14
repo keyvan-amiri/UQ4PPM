@@ -2,4 +2,23 @@ dws-15.informatik.uni-mannheim.de
 tmux new -s uq4ppm
 conda activate graphgps
 tmux attach-session -t uq4ppm
-python preprocess.py --datasets ['env_permit']
+
+python preprocess.py --datasets env_permit
+python main.py --dataset env_permit --model dalstm --UQ dropout --seed 42 --device 0
+
+
+Which options are available for training and evaluation configuration?
+Backbone model architecture: dalstm, cnn, pgtnet
+Uncertainty quantification methods:
+	deterministic: provides point estimates
+	basic: dropout as Bayesian approximation (+ optional concrete dropout, and loss attenuation): currently only DALSTM is supported   
+	laplace-post-hoc: LA is constructed based on the deterministic pre-trained model
+	laplace-joint: LA is used to Jointly optimize MAP and hyperparameters
+
+loss functions: mae or rmse or mse or LogCoshLoss or Huber or smooth_mae 
+optimizers: NAdam or AdamW or Adam
+
+if clip_grad_norm == True, then in predictive model gradients are clipped at specified value whic defined by clip_value (for dalstm model)
+
+
+

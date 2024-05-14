@@ -12,7 +12,7 @@ def main():
                         help='Raw datasets to be pre-processed', required=True)
     args = parser.parse_args()
     dataset_names = args.datasets
-    print(dataset_names)
+    #print(dataset_names)
     for dataset in dataset_names:
         # create the graph dataset representation of the event log for PGTNet
         PGTNet_convertor_case_centric(dataset_name=dataset)
