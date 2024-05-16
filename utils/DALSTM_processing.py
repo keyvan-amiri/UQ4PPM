@@ -86,7 +86,7 @@ class DALSTM_preprocessing ():
         self.split_ratio = split_ratio if split_ratio is not None\
             else [0.64,0.16,0.20]   
         self.normalization = normalization if normalization is not None\
-            else True 
+            else False 
         self.normalization_type = normalization_type\
             if normalization_type is not None else 'max_norm'
         self.perform_lifecycle_trick = perform_lifecycle_trick\

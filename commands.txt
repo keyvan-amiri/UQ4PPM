@@ -4,7 +4,7 @@ conda activate graphgps
 tmux attach-session -t uq4ppm
 
 python preprocess.py --datasets env_permit
-python main.py --dataset env_permit --model dalstm --UQ dropout --seed 42 --device 0
+python main.py --dataset env_permit --model dalstm --UQ dropout --split holdout --seed 42 --device 0
 
 
 Which options are available for training and evaluation configuration?
@@ -16,9 +16,9 @@ Uncertainty quantification methods:
 	laplace-joint: LA is used to Jointly optimize MAP and hyperparameters
 
 loss functions: mae or rmse or mse or LogCoshLoss or Huber or smooth_mae 
-optimizers: NAdam or AdamW or Adam
+optimizers: NAdam/AdamW/Adam/RAdam/SGD
 
-if clip_grad_norm == True, then in predictive model gradients are clipped at specified value whic defined by clip_value (for dalstm model)
+
 
 
 

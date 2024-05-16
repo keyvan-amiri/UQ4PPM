@@ -31,18 +31,44 @@ def set_optimizer (model, optimizer_type, base_lr, eps, weight_decay):
                                 weight_decay=weight_decay)
     elif optimizer_type == 'Adam':   
         optimizer = optim.Adam(model.parameters(), lr=base_lr, eps=eps,
-                               weight_decay=weight_decay)         
+                               weight_decay=weight_decay) 
+    elif optimizer_type == 'RAdam':
+        optimizer = optim.RAdam(model.parameters(), lr=base_lr, eps=eps,
+                               weight_decay=weight_decay)
+    elif optimizer_type == 'SGD':
+        optimizer = optim.SGD(model.parameters(), lr=base_lr,
+                              weight_decay=weight_decay)
+    else:
+        print(f'The optimizer {optimizer_type} is not supported')
     return optimizer
 
+
 # function to handle training the model
-def train_model(model=None, train_loader=None, val_loader=None, criterion=None,
-                optimizer=None, scheduler=None, device=None, num_epochs=None,
-                early_patience=None, min_delta=None, clip_grad_norm=None,
-                clip_value=None, processed_data_path=None, data_split=None,
-                seed=None):
-    print('Now start training for {} data slit.'.format(data_split))
-    checkpoint_path = os.path.join(
-        processed_data_path,'{}_seed_{}_best_model.pt'.format(data_split, seed))     
+def train_model(model=None, uq_method=None, train_loader=None, val_loader=None,
+                criterion=None, optimizer=None, scheduler=None, device=None,
+                num_epochs=100, early_patience=20, min_delta=0,
+                clip_grad_norm=None, clip_value=None,
+                processed_data_path=None, report_path =None,
+                data_split='holdout', fold=None, cfg=None, seed=None):
+    print(f'Training for data split: {data_split} , {fold}.')
+    start=datetime.now()
+    # Write the configurations in the report
+    with open(report_path, 'w') as file:
+        file.write('Configurations:\n')
+        file.write(str(cfg))
+        file.write('\n')
+        file.write('\n')  
+        file.write('Training is done for {} epochs.\n'.format(num_epochs))
+    print(f'Training is done for {num_epochs} epochs.') 
+    # set the checkpoint name      
+    if data_split=='holdout':
+        checkpoint_path = os.path.join(processed_data_path,
+                                       '{}_{}_seed_{}_best_model.pt'.format(
+                                           uq_method, data_split, seed)) 
+    else:
+        checkpoint_path = os.path.join(
+            processed_data_path, '{}_{}_fold{}_seed_{}_best_model.pt'.format(
+                uq_method, data_split, fold, seed))   
     #Training loop
     current_patience = 0
     best_valid_loss = float('inf')
@@ -73,7 +99,11 @@ def train_model(model=None, train_loader=None, val_loader=None, criterion=None,
                 total_valid_loss += valid_loss.item()                    
             average_valid_loss = total_valid_loss / len(val_loader)
         # print the results       
-        print(f'Epoch {epoch + 1}/{num_epochs}, Loss: {loss.item()}, Validation Loss: {average_valid_loss}')
+        print(f'Epoch {epoch + 1}/{num_epochs},',
+              f'Loss: {loss.item()}, Validation Loss: {average_valid_loss}')
+        with open(report_path, 'a') as file:
+            file.write('Epoch {}/{} Loss: {}, Validation Loss: {} .\n'.format(
+                epoch + 1, num_epochs, loss.item(), average_valid_loss))            
         # save the best model
         if average_valid_loss < best_valid_loss - min_delta:
             best_valid_loss = average_valid_loss
@@ -90,24 +120,38 @@ def train_model(model=None, train_loader=None, val_loader=None, criterion=None,
             current_patience += 1
             # Check for early stopping
             if current_patience >= early_patience:
-                print('Early stopping: Val loss has not improved for {} epochs.'.format(early_patience))
-                break
-        
+                print('Early stopping No improvement in Val loss for:', 
+                      f'{early_patience} epochs.')
+                with open(report_path, 'a') as file:
+                    file.write(
+                        'Early stop- no improvement for: {} epochs.\n'.format(
+                            early_patience))  
+                break        
         # Update learning rate if there is any scheduler
         if scheduler is not None:
            scheduler.step(average_valid_loss)
+    training_time = (datetime.now()-start).total_seconds()
+    with open(report_path, 'a') as file:
+        file.write('Training time- in seconds: {}\n'.format(
+            training_time))   
+                
            
 # function to handle inference with trained model
-def test_model(model=None, test_loader=None, test_original_lengths=None,
-               y_scaler=None, processed_data_path=None, data_split=None,
-               seed=None, device=None, normalization=False):
+def test_model(model=None, uq_method=None, test_loader=None,
+               test_original_lengths=None, y_scaler=None, 
+               processed_data_path=None, report_path=None,
+               data_split=None, fold=None, seed=None, device=None,
+               normalization=False):
+    print('Now: start inference- Holdout data split:')
     start=datetime.now()
-    print('Now start inference for {} data slit.'.format(data_split))
-    checkpoint_path = os.path.join(
-        processed_data_path,'{}_seed_{}_best_model.pt'.format(data_split, seed)) 
-    report_path = os.path.join(processed_data_path,
-                               '{}_seed_{}_report_.txt'.format(
-                                   data_split,seed))    
+    if data_split=='holdout':
+        checkpoint_path = os.path.join(processed_data_path,
+                                       '{}_{}_seed_{}_best_model.pt'.format(
+                                           uq_method, data_split, seed)) 
+    else:
+        checkpoint_path = os.path.join(
+            processed_data_path, '{}_{}_fold{}_seed_{}_best_model.pt'.format(
+                uq_method, data_split, fold, seed))        
     checkpoint = torch.load(checkpoint_path)
     model.load_state_dict(checkpoint['model_state_dict'])
     all_results = {'GroundTruth': [], 'Prediction': [], 'Prefix_length': [],
@@ -152,12 +196,13 @@ def test_model(model=None, test_loader=None, test_original_lengths=None,
                       round(absolute_error, 3),
                       round(absolute_percentage_error, 3))) 
     inference_time = (datetime.now()-start).total_seconds() 
-    instance_inference = inference_time / len (test_original_lengths) * 1000
+    # inference time is reported in milliseconds.
+    instance_t = inference_time/len(test_original_lengths)*1000
     with open(report_path, 'a') as file:
         file.write('Inference time- in seconds: {}\n'.format(inference_time))
         file.write(
             'Inference time for each instance- in miliseconds: {}\n'.format(
-                instance_inference))
+                instance_t))
         file.write('Test - MAE: {:.3f}, '
                       'MAPE: {:.3f}'.format(
                           round(absolute_error, 3),
@@ -167,7 +212,13 @@ def test_model(model=None, test_loader=None, test_original_lengths=None,
                       for item in sublist]
     all_results['Prefix_length'] = flattened_list
     results_df = pd.DataFrame(all_results)
-    csv_filename = os.path.join(
-        processed_data_path,'{}_seed_{}_inference_result_.csv'.format(
-            data_split,seed)) 
+    if data_split=='holdout':
+        csv_filename = os.path.join(
+            processed_data_path,'{}_{}_seed_{}_inference_result_.csv'.format(
+                uq_method,data_split,seed))
+    else:
+        csv_filename = os.path.join(
+            processed_data_path,
+            '{}_{}_fold{}_seed_{}_inference_result_.csv'.format(
+                uq_method, data_split, fold, seed))         
     results_df.to_csv(csv_filename, index=False) 
