@@ -23,6 +23,7 @@ def set_random_seed(seed):
         
 # function to set the optimizer object
 def set_optimizer (model, optimizer_type, base_lr, eps, weight_decay):
+    eps = float(eps) #ensure to having a floating number
     if optimizer_type == 'NAdam':
         optimizer = optim.NAdam(model.parameters(), lr=base_lr, eps=eps,
                                 weight_decay=weight_decay)

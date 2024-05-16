@@ -1,9 +1,11 @@
 import warnings
 import argparse
-from utils.PGTNet_convertor import PGTNet_convertor_case_centric
+#TODO: uncomment the following line after working on PGTNet
+#from utils.PGTNet_convertor import PGTNet_convertor_case_centric
 from utils.DALSTM_processing import DALSTM_preprocessing
 
 def main():    
+    # supress warnings for PM4PY
     warnings.filterwarnings('ignore')
     # Parse arguments for data preprocessing
     parser = argparse.ArgumentParser(description='Data pre-processing')
@@ -16,14 +18,13 @@ def main():
     parser.add_argument('--normalization',
                         action='store_true',
                         help='Boolean for normalization (default: False)')    
-    parser.add_argument('--', default= False,
-                        help='The data split that is used')
     args = parser.parse_args()
     dataset_names = args.datasets
     #print(dataset_names)
     for dataset in dataset_names:
         # create the graph dataset representation of the event log for PGTNet
-        PGTNet_convertor_case_centric(dataset_name=dataset)
+        #TODO: uncomment the following line after working on PGTNet
+        #PGTNet_convertor_case_centric(dataset_name=dataset)
         # handle data preprocessing for DALSTM approach
         if args.normalization:
             # if normalization is included in command line arguments:

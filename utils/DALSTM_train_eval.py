@@ -6,6 +6,7 @@ import pickle
 from utils.utils import set_random_seed, set_optimizer, train_model, test_model
 from loss.loss_handler import set_loss
 from models.dalstm import DALSTMModel
+from models.stochastic_dalstm import StochasticDALSTM
 
 class DALSTM_train_evaluate ():    
     def __init__ (self, cfg=None, dalstm_dir=None):
@@ -21,7 +22,7 @@ class DALSTM_train_evaluate ():
             self.dalstm_dir = os.path.join(root_path, 'datasets')
         else:
             self.dalstm_dir = dalstm_dir            
-        self.dalstm_class = 'DALSTM_' + self.dataset_name
+        self.dalstm_class = 'DALSTM_' + self.dataset
         self.dataset_path =  os.path.join(self.dalstm_dir, self.dalstm_class)
         # set the address for all outputs: training and inference
         self.result_path = os.path.join(root_path,
@@ -36,8 +37,8 @@ class DALSTM_train_evaluate ():
         self.split = cfg.get('split')
         self.n_splits = cfg.get('n_splits') 
         # Define important size and dimensions
-        (self.test_lengths, self.input_size, self.max_len,
-         self.max_train_val) = self.load_dimensions()
+        (self.input_size, self.max_len, self.max_train_val
+         ) = self.load_dimensions()
         self.hidden_size = cfg.get('model').get('lstm').get('hidden_size')
         self.n_layers = cfg.get('model').get('lstm').get('n_layers')
         # whether to use drop-out or not
@@ -55,6 +56,41 @@ class DALSTM_train_evaluate ():
                                      max_len=self.max_len,
                                      dropout=self.dropout,
                                      p_fix=self.dropout_prob).to(self.device)
+        elif (self.uq_method == 'DA' or self.uq_method == 'CDA' or
+              self.uq_method == 'DA_A' or self.uq_method == 'CDA_A'):
+            # hard-coded parameters since we have separate deterministic model
+            self.dropout = True
+            self.Bayes = True
+            # general configurations for all 4 possible methods   
+            self.num_mcmc = cfg.get('uncertainty').get(
+                'dropout_approximation').get('num_stochastic_forward_path')
+            self.weight_regularizer = cfg.get('uncertainty').get(
+                'dropout_approximation').get('weight_regularizer')
+            self.dropout_regularizer = cfg.get('uncertainty').get(
+                'dropout_approximation').get('dropout_regularizer')
+            if (self.uq_method == 'DA' or self.uq_method == 'DA_A'):
+                self.concrete_dropout = False
+            else:
+                self.concrete_dropout = True
+            if (self.uq_method == 'DA' or self.uq_method == 'CDA'):
+                self.heteroscedastic = False
+                # TODO: check homosedastic loss: whether it is the same as mse
+                self.criterion = set_loss('mse')
+            else:
+                self.heteroscedastic = True
+                # TODO: check heterosedastic loss and call it here!       
+            self.model = StochasticDALSTM(input_size=self.input_size,
+                                 hidden_size=self.hidden_size,
+                                 n_layers=self.n_layers,
+                                 max_len=self.max_len,
+                                 dropout=self.dropout,
+                                 concrete=self.concrete_dropout,
+                                 p_fix=self.drop_prob,
+                                 weight_regularizer=self.weight_regularizer,
+                                 dropout_regularizer=self.dropout_regularizer,
+                                 hs=self.heteroscedastic,
+                                 Bayes=self.Bayes,
+                                 device=self.device).to(self.device) 
         else:
             #TODO: define UQ method models here or add them to previous one
             pass
@@ -86,10 +122,10 @@ class DALSTM_train_evaluate ():
                     self.result_path, '{}_{}_seed_{}_report_.txt'.format(
                         self.uq_method, self.split, self.seed))                
                 (self.X_train_path, self.X_val_path, self.X_test_path,
-                 self.y_train_path, self.y_val_path, self.y_test_path
-                 ) = self.holdout_paths() 
-                (self.train_loader, self.val_loader, self.test_loader
-                 ) = self.load_data()
+                 self.y_train_path, self.y_val_path, self.y_test_path,
+                 self.test_lengths_path) = self.holdout_paths() 
+                (self.train_loader, self.val_loader, self.test_loader,
+                 self.test_lengths) = self.load_data()                
                 if self.uq_method == 'deterministic':
                     train_model(model=self.model,
                                 uq_method=self.uq_method,
@@ -131,10 +167,11 @@ class DALSTM_train_evaluate ():
                             self.uq_method, self.split, split_key+1, self.seed))
                     # load train, validation, and test data loaders
                     (self.X_train_path, self.X_val_path, self.X_test_path,
-                     self.y_train_path, self.y_val_path, self.y_test_path
-                     ) = self.cv_paths(split_key=split_key)
-                    (self.train_loader, self.val_loader, self.test_loader
-                     ) = self.load_data()
+                     self.y_train_path, self.y_val_path, self.y_test_path,
+                     self.test_lengths_path) = self.cv_paths(split_key=split_key)
+                    (self.train_loader, self.val_loader, self.test_loader,
+                     self.test_lengths) = self.load_data()   
+                    self.test_lengths
                     if self.uq_method == 'deterministic':
                         train_model(model=self.model,
                                     uq_method=self.uq_method,
@@ -172,9 +209,7 @@ class DALSTM_train_evaluate ():
 
     
     # A method to load important dimensions
-    def load_dimensions(self):
-        test_length_path = os.path.join(
-            self.dataset_path, "DALSTM_test_length_list_"+self.dataset+".pkl")    
+    def load_dimensions(self):        
         scaler_path = os.path.join(
             self.dataset_path,
             "DALSTM_max_train_val_"+self.dataset+".pkl")
@@ -184,8 +219,6 @@ class DALSTM_train_evaluate ():
         max_len_path = os.path.join(
             self.dataset_path,
             "DALSTM_max_len_"+self.dataset+".pkl")
-        with open(test_length_path, 'rb') as f:
-            test_lengths =  pickle.load(f)
         # input_size corresponds to vocab_size
         with open(input_size_path, 'rb') as f:
             input_size =  pickle.load(f)
@@ -193,7 +226,7 @@ class DALSTM_train_evaluate ():
             max_len =  pickle.load(f) 
         with open(scaler_path, 'rb') as f:
             max_train_val =  pickle.load(f)            
-        return (test_lengths, input_size, max_len, max_train_val)
+        return (input_size, max_len, max_train_val)
         
     # A method to create list of path for holdout data split
     def holdout_paths(self):
@@ -208,32 +241,37 @@ class DALSTM_train_evaluate ():
         y_val_path = os.path.join(
             self.dataset_path, "DALSTM_y_val_"+self.dataset+".pt")
         y_test_path = os.path.join(
-            self.dataset_path, "DALSTM_y_test_"+self.dataset+".pt")        
+            self.dataset_path, "DALSTM_y_test_"+self.dataset+".pt")
+        test_length_path = os.path.join(
+            self.dataset_path, "DALSTM_test_length_list_"+self.dataset+".pkl")            
         return (X_train_path, X_val_path, X_test_path, y_train_path,
-                y_val_path, y_test_path)
+                y_val_path, y_test_path, test_length_path)
         
     # A method to create list of path for holdout data split
     def cv_paths(self, split_key=None):
         X_train_path = os.path.join(
             self.dataset_path,
-            "DALSTM_X_train_fold_"+str(split_key)+self.dataset_name+".pt")
+            "DALSTM_X_train_fold_"+str(split_key+1)+self.dataset+".pt")
         X_val_path = os.path.join(
             self.dataset_path,
-            "DALSTM_X_val_fold_"+str(split_key)+self.dataset_name+".pt")
+            "DALSTM_X_val_fold_"+str(split_key+1)+self.dataset+".pt")
         X_test_path = os.path.join(
             self.dataset_path,
-            "DALSTM_X_test_fold_"+str(split_key)+self.dataset_name+".pt")
+            "DALSTM_X_test_fold_"+str(split_key+1)+self.dataset+".pt")
         y_train_path = os.path.join(
             self.dataset_path,
-            "DALSTM_y_train_fold_"+str(split_key)+self.dataset_name+".pt")
+            "DALSTM_y_train_fold_"+str(split_key+1)+self.dataset+".pt")
         y_val_path = os.path.join(
             self.dataset_path,
-            "DALSTM_y_val_fold_"+str(split_key)+self.dataset_name+".pt")
+            "DALSTM_y_val_fold_"+str(split_key+1)+self.dataset+".pt")
         y_test_path = os.path.join(
             self.dataset_path,
-            "DALSTM_y_test_fold_"+str(split_key)+self.dataset_name+".pt")        
+            "DALSTM_y_test_fold_"+str(split_key+1)+self.dataset+".pt") 
+        test_length_path = os.path.join(
+            self.dataset_path,
+            "DALSTM_test_length_list_fold_"+str(split_key+1)+self.dataset+".pkl")
         return (X_train_path, X_val_path, X_test_path, y_train_path,
-                y_val_path, y_test_path)
+                y_val_path, y_test_path,test_length_path)
         
     # A method to load training and evaluation 
     def load_data(self):
@@ -267,5 +305,7 @@ class DALSTM_train_evaluate ():
                                 shuffle=False)
         test_loader = DataLoader(test_dataset, batch_size=evaluation_batch_size,
                                  shuffle=False)
-        return (train_loader, val_loader, test_loader)
+        with open(self.test_lengths_path, 'rb') as f:
+            test_lengths =  pickle.load(f)
+        return (train_loader, val_loader, test_loader, test_lengths)
     

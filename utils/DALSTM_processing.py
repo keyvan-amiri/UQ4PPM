@@ -650,26 +650,26 @@ class DALSTM_preprocessing ():
             # define file names, and paths 
             X_train_path = os.path.join(
                 self.dataset_path,
-                "DALSTM_X_train_fold_"+str(split_key)+self.dataset_name+".pt")
+                "DALSTM_X_train_fold_"+str(split_key+1)+self.dataset_name+".pt")
             X_val_path = os.path.join(
                 self.dataset_path,
-                "DALSTM_X_val_fold_"+str(split_key)+self.dataset_name+".pt")
+                "DALSTM_X_val_fold_"+str(split_key+1)+self.dataset_name+".pt")
             X_test_path = os.path.join(
                 self.dataset_path,
-                "DALSTM_X_test_fold_"+str(split_key)+self.dataset_name+".pt")
+                "DALSTM_X_test_fold_"+str(split_key+1)+self.dataset_name+".pt")
             y_train_path = os.path.join(
                 self.dataset_path,
-                "DALSTM_y_train_fold_"+str(split_key)+self.dataset_name+".pt")
+                "DALSTM_y_train_fold_"+str(split_key+1)+self.dataset_name+".pt")
             y_val_path = os.path.join(
                 self.dataset_path,
-                "DALSTM_y_val_fold_"+str(split_key)+self.dataset_name+".pt")
+                "DALSTM_y_val_fold_"+str(split_key+1)+self.dataset_name+".pt")
             y_test_path = os.path.join(
                 self.dataset_path,
-                "DALSTM_y_test_fold_"+str(split_key)+self.dataset_name+".pt")        
+                "DALSTM_y_test_fold_"+str(split_key+1)+self.dataset_name+".pt")        
             test_length_path = os.path.join(
                 self.dataset_path,
                 "DALSTM_test_length_list_fold_"+str(
-                    split_key)+self.dataset_name+".pkl")
+                    split_key+1)+self.dataset_name+".pkl")
             # save training, validation, test tensors   
             torch.save(X_train, X_train_path) 
             torch.save(X_val, X_val_path)

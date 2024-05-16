@@ -6,29 +6,11 @@ model:
     hidden_size: 150 
     dropout: True
     dropout_prob: 0.2
-train:
-  loss_function: mae   
-  max_epochs: 2
-  batch_size: 64
-  early_stop.patience: 20
-  early_stop.min_delta: 0
-optimizer:
-  type: NAdam
-  base_lr: 0.001 
-  eps: 1e-7  
-  weight_decay: 0.0
-scheduler:
-  
-evaluation:
-  batch_size: 64 # if set to 1: prefix length analysis is possible
 uncertainty:
-  method: basic
   dropout_approximation:
     concrete_dropout: True
     weight_regularizer: 0.1
     dropout_regularizer: 0.1
-    hs: True # True if heteroscedastic, False if homoscedastic
-    Bayes: True #Bayesian Neural Network if "True", deterministic model if "False" (only sampled once for inference)
     num_stochastic_forward_path: 10
   laplace:
     empirical_bayes: True # whether to estimate the prior precision and observation noise using empirical Bayes after training or not
@@ -41,5 +23,17 @@ uncertainty:
     pred_type: glm # glm or nn  : type of approximation of predictive distribution
     optimize_prior_precision: marglik # marglik or gridsearch
     prior_precision: 1.0 #prior precision to use for computing the covariance matrix
-
+train:
+  loss_function: mae   
+  max_epochs: 2
+  batch_size: 64
+  early_stop.patience: 20
+  early_stop.min_delta: 0
+optimizer:
+  type: NAdam
+  base_lr: 0.001 
+  eps: 1e-7  
+  weight_decay: 0.0 
+evaluation:
+  batch_size: 64
     
