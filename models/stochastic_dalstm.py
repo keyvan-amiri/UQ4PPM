@@ -26,7 +26,7 @@ class StochasticDALSTM(nn.Module):
         hidden_size: number of neurons in LSTM layers
         n_layers: number of LSTM layers
         max_len: maximum length for prefixes in the dataset
-        concrete: 'False': dropout probability is fixed, 'True': concrete dropout
+        concrete: 'True': concrete dropout, otherwise dropout probability fixed
         p_fix: dropout probability
         weight_regularizer: param for weight regularization in reformulated ELBO
         dropout_regularizer: param for dropout regularization in reformulated ELBO
@@ -84,10 +84,10 @@ class StochasticDALSTM(nn.Module):
     def forward(self, x, stop_dropout=False):
         '''
         ARGUMENTS:
-        stop_dropout: if "True" prevents dropout during inference for deterministic models
+        stop_dropout: if "True" prevents dropout in inference (deterministic)
         OUTPUTS:
-        mean: outputs (point estimates). Torch tensor (batch size x number of outputs)
-        log_var: log of uncertainty estimates. Torch tensor (batch size x number of outputs)
+        mean: outputs (point estimates). shape: batch size x number of outputs
+        log_var: log of uncertainty estimates. shape: batch size x number of outputs
         regularization.sum(): sum of KL regularizers over all model layers
         '''
         regularization = torch.empty(2, device=x.device)
@@ -118,7 +118,7 @@ class StochasticDALSTM(nn.Module):
             log_var = torch.empty(mean.size())
         return mean, log_var, regularization.sum()
 
-# Stochastic LSTM cell that is able to handle fix dropout as well as concrete dropout
+# Stochastic LSTM cell that can handle fix dropout as well as concrete dropout
 class StochasticLSTMCell(nn.Module):
     def __init__(self, input_size: int, hidden_size: int, p_fix=0.01,
                  concrete=True, weight_regularizer=.1, dropout_regularizer=.1,
@@ -127,7 +127,7 @@ class StochasticLSTMCell(nn.Module):
         ARGUMENTS:
         input_size: number of features
         hidden_size: number of neurons in LSTM layers
-        concrete: 'False': dropout probability is fixed, 'True': concrete dropout
+        concrete: 'True': concrete dropout, otherwise dropout probability fixed
         p_fix: dropout probability
         weight_regularizer: param for weight regularization in reformulated ELBO
         dropout_regularizer: param for dropout regularization in reformulated ELBO
@@ -165,7 +165,8 @@ class StochasticLSTMCell(nn.Module):
         self.init_weights()
 
     def init_weights(self):
-        k = torch.tensor(self.hidden_size, dtype=torch.float32).reciprocal().sqrt()
+        k = torch.tensor(
+            self.hidden_size, dtype=torch.float32).reciprocal().sqrt()
 
         self.Wi.weight.data.uniform_(-k, k).to(self.device)
         self.Wi.bias.data.uniform_(-k, k).to(self.device)
@@ -195,7 +196,7 @@ class StochasticLSTMCell(nn.Module):
         '''
         ARGUMENTS:
         batch_size: batch size
-        stop_dropout: if "True" prevents dropout during inference for deterministic models
+        stop_dropout: if "True" prevents dropout in inference (deterministic)
 
         OUTPUTS:
         zx: dropout masks for inputs. Tensor (GATES x batch_size x input size (after embedding))
@@ -215,16 +216,16 @@ class StochasticLSTMCell(nn.Module):
             uh = torch.rand(GATES, batch_size, self.hidden_size).to(self.device)
 
             if self.input_size == 1:
-                zx = (1 - torch.sigmoid((torch.log(eps) - torch.log(1 + eps)
-                                         + torch.log(ux + eps) - torch.log(1 - ux + eps))
-                                        / t))
+                zx = (1 - torch.sigmoid(
+                    (torch.log(eps) - torch.log(1 + eps) + torch.log(
+                        ux + eps) - torch.log(1 - ux + eps))/ t))
             else:
-                zx = (1 - torch.sigmoid((torch.log(p + eps) - torch.log(1 - p + eps)
-                                         + torch.log(ux + eps) - torch.log(1 - ux + eps))
-                                        / t)) / (1 - p)
-            zh = (1 - torch.sigmoid((torch.log(p + eps) - torch.log(1 - p + eps)
-                                     + torch.log(uh + eps) - torch.log(1 - uh + eps))
-                                    / t)) / (1 - p)
+                zx = (1 - torch.sigmoid(
+                    (torch.log(p + eps) - torch.log(1 - p + eps) + torch.log(
+                        ux + eps) - torch.log(1 - ux + eps))/ t)) / (1 - p)
+            zh = (1 - torch.sigmoid(
+                (torch.log(p + eps) - torch.log(1 - p + eps) + torch.log(
+                    uh + eps) - torch.log(1 - uh + eps))/ t)) / (1 - p)
         else:
             zx = torch.ones(GATES, batch_size, self.input_size).to(self.device)
             zh = torch.ones(GATES, batch_size, self.input_size).to(self.device)
@@ -246,18 +247,20 @@ class StochasticLSTMCell(nn.Module):
             p = torch.sigmoid(self.p_logit)
 
         if self.Bayes:
-            weight_sum = torch.tensor([
-                torch.sum(params ** 2) for name, params in self.named_parameters() if name.endswith("weight")
-            ]).sum() / (1. - p)
+            weight_sum = torch.tensor([torch.sum(params ** 2) for name, params \
+                                       in self.named_parameters() if \
+                                           name.endswith("weight")]
+                                      ).sum() / (1. - p)
 
-            bias_sum = torch.tensor([
-                torch.sum(params ** 2) for name, params in self.named_parameters() if name.endswith("bias")
-            ]).sum()
+            bias_sum = torch.tensor([torch.sum(params ** 2) for name, params \
+                                     in self.named_parameters() if \
+                                         name.endswith("bias")]).sum()
 
             if not self.concrete:
                 dropout_reg = torch.zeros(1)
             else:
-                dropout_reg = self.input_size * (p * torch.log(p) + (1 - p) * torch.log(1 - p))
+                dropout_reg = self.input_size * (
+                    p * torch.log(p) + (1 - p) * torch.log(1 - p))
             return self.wr * weight_sum, self.wr * bias_sum, self.dr * dropout_reg
         else:
             return torch.zeros(1)
@@ -268,7 +271,7 @@ class StochasticLSTMCell(nn.Module):
         '''
         ARGUMENTS:
         input: Tensor (sequence length x batch size x input size(after embedding) )
-        stop_dropout: if "True" prevents dropout during inference for deterministic models
+        stop_dropout: if "True" prevents dropout in inference (deterministic)
 
         OUTPUTS:
         hn: tensor of hidden states h_t. Dimension (sequence_length x batch_size x hidden size)
@@ -278,10 +281,13 @@ class StochasticLSTMCell(nn.Module):
 
         seq_len, batch_size = input.shape[0:2]
 
-        h_t = torch.zeros(batch_size, self.hidden_size, dtype=input.dtype).to(self.device)
-        c_t = torch.zeros(batch_size, self.hidden_size, dtype=input.dtype).to(self.device)
+        h_t = torch.zeros(
+            batch_size, self.hidden_size, dtype=input.dtype).to(self.device)
+        c_t = torch.zeros(
+            batch_size, self.hidden_size, dtype=input.dtype).to(self.device)
 
-        hn = torch.empty(seq_len, batch_size, self.hidden_size, dtype=input.dtype)
+        hn = torch.empty(
+            seq_len, batch_size, self.hidden_size, dtype=input.dtype)
 
         zx, zh = self._sample_mask(batch_size, stop_dropout)
 

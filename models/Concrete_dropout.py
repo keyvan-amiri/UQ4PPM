@@ -1,7 +1,7 @@
 """
 To prepare thi script we used the following source codes:
     https://github.com/hansweytjens/uncertainty
-We adjusted the source codes to efficiently integrate them into our framework.
+We adjusted the source code to integrate it into our framework.
 """
 import torch
 import torch.nn as nn
@@ -15,7 +15,7 @@ class ConcreteDropout(nn.Module):
         '''
         ARGUMENTS:
         dropout is always True since we have a separate model deterministic 
-        concrete: 'False': dropout probability is fixed, 'True': concrete dropout
+        concrete: 'True': concrete dropout, otherwise dropout probability fixed
         p_fix: dropout probability used in case of not self.concrete
         weight_regularizer: param for weight regularization in reformulated ELBO
         dropout_regularizer: param for dropout regularization in reformulated ELBO
@@ -40,7 +40,7 @@ class ConcreteDropout(nn.Module):
         ARGUMENTS:
         x: input for the (concrete) dropout layer wrapper
         layer: layer to be called after application of dropout mask
-        stop_dropout: if "True" prevents dropout during inference for deterministic models
+        stop_dropout: if "True" prevents dropout in inference (deterministic)
 
         OUTPUTS:
         out: output for the (concrete) dropout layer wrapper
@@ -63,7 +63,8 @@ class ConcreteDropout(nn.Module):
 
         regularization, weights_regularizer, dropout_regularizer = 0, 0, 0
         if self.Bayes:
-            weights_regularizer = self.weight_regularizer * sum_of_square / (1 - p)
+            weights_regularizer = (
+                self.weight_regularizer * sum_of_square / (1 - p))
             if self.concrete:
                 dropout_regularizer = p * torch.log(p)
                 dropout_regularizer += (1. - p) * torch.log(1. - p)
@@ -73,8 +74,10 @@ class ConcreteDropout(nn.Module):
                     input_dimensionality = list(x.size())[1]
                 else:
                     input_dimensionality = list(x.size())[1]
-                dropout_regularizer *= self.dropout_regularizer * input_dimensionality
-            regularization = weights_regularizer + dropout_regularizer  # KL(q(W)|p(W))) eq. 3 in concrete dropout paper
+                dropout_regularizer *= (
+                    self.dropout_regularizer * input_dimensionality)
+            # KL(q(W)|p(W))) eq. 3 in concrete dropout paper
+            regularization = weights_regularizer + dropout_regularizer  
 
         return out, regularization
 
@@ -84,7 +87,7 @@ class ConcreteDropout(nn.Module):
         ARGUMENTS:
         x: input for the (concrete) dropout layer wrapper
         p: dropout parameter
-        concrete: dropout parameter is fixed when "False". If "True", then concrete dropout
+        concrete: 'True': concrete dropout, otherwise dropout probability fixed
 
         OUTPUTS:
         x: input after application of dropout mask
@@ -92,13 +95,19 @@ class ConcreteDropout(nn.Module):
 
         if not concrete:
             if self.conv == "lin":
-                drop_prob = torch.bernoulli(torch.ones(x.shape).to(self.device)*p)
+                drop_prob = torch.bernoulli(
+                    torch.ones(x.shape).to(self.device)*p)
             elif self.conv == "1D":
-                drop_prob = torch.bernoulli(torch.ones(list(x.size())[0], list(x.size())[1], 1).to(self.device)*p)
+                drop_prob = torch.bernoulli(
+                    torch.ones(list(x.size())[0], list(
+                        x.size())[1], 1).to(self.device)*p)
                 drop_prob= drop_prob.repeat(1, 1, list(x.size())[2])
             else:
-                drop_prob = torch.bernoulli(torch.ones(list(x.size())[0], list(x.size())[1], 1, 1).to(self.device)*p)
-                drop_prob = drop_prob.repeat(1, 1, list(x.size())[2], list(x.size())[3])
+                drop_prob = torch.bernoulli(
+                    torch.ones(list(x.size())[0], list(
+                        x.size())[1], 1, 1).to(self.device)*p)
+                drop_prob = drop_prob.repeat(1, 1, list(
+                    x.size())[2], list(x.size())[3])
 
         else:
             eps = 1e-7         # to avoid torch.log(0)
@@ -107,11 +116,14 @@ class ConcreteDropout(nn.Module):
             if self.conv == "lin":
                 unif_noise = torch.rand_like(x)
             elif self.conv == "1D":
-                unif_noise = torch.rand(list(x.size())[0], list(x.size())[1], 1).to(self.device)
+                unif_noise = torch.rand(
+                    list(x.size())[0], list(x.size())[1], 1).to(self.device)
                 unif_noise = unif_noise.repeat(1, 1, list(x.size())[2])
             else:
-                unif_noise = torch.rand(list(x.size())[0], list(x.size())[1], 1, 1).to(self.device)
-                unif_noise = unif_noise.repeat(1, 1, list(x.size())[2], list(x.size())[3])
+                unif_noise = torch.rand(
+                    list(x.size())[0], list(x.size())[1], 1, 1).to(self.device)
+                unif_noise = unif_noise.repeat(
+                    1, 1, list(x.size())[2], list(x.size())[3])
 
             drop_prob = (torch.log(p + eps)
                          - torch.log(1 - p + eps)

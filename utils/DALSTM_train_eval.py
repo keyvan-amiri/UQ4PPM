@@ -8,6 +8,7 @@ from loss.loss_handler import set_loss
 from models.dalstm import DALSTMModel
 from models.stochastic_dalstm import StochasticDALSTM
 
+# A general class for training and evaluation of DALSTM model
 class DALSTM_train_evaluate ():    
     def __init__ (self, cfg=None, dalstm_dir=None):
         self.cfg = cfg
