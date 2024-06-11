@@ -18,19 +18,19 @@ def main():
     parser.add_argument('--split', default='holdout',
                         help='The data split that is used')
     parser.add_argument('--split_num', type=int, default=5,
-                        help='The data split that is used')
-    # It can handle multiple seeds
+                        help='Number of splits that is used')
     parser.add_argument('--seed', nargs='+', help='Random seed to use',
-                        required=True)
+                        required=True) #can handle multiple seeds
     parser.add_argument('--device', type=int, default=0, help='GPU device id') 
     args = parser.parse_args()
+    # define device name
+    device_name = f'cuda:{args.device}' if torch.cuda.is_available() else 'cpu'
     # read the relevant configuration file, and append
     root_path = os.getcwd()
-    device_name = f'cuda:{args.device}' if torch.cuda.is_available() else 'cpu'
     cfg_file = os.path.join(root_path, 'cfg',
                             args.model+'_'+args.dataset+'.yaml')
     with open(cfg_file, 'r') as f:
-        cfg = yaml.safe_load(f) 
+        cfg = yaml.safe_load(f)     
     # append the configuration file
     cfg['net'] = args.model
     cfg['uq_method'] = args.UQ
@@ -48,8 +48,7 @@ def main():
     elif args.model == 'pgtnet':
         pass
     else:
-        print(f'The backebone model {args.model} is not supported')  
-
+        print(f'The backebone model {args.model} is not supported') 
     
 if __name__ == '__main__':
     main()
