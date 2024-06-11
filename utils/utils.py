@@ -45,7 +45,8 @@ def set_optimizer (model, optimizer_type, base_lr, eps, weight_decay):
 
 
 # function to handle training the model
-def train_model(model=None, uq_method=None, train_loader=None, val_loader=None,
+def train_model(model=None, uq_method=None, heteroscedastic=None, 
+                train_loader=None, val_loader=None,
                 criterion=None, optimizer=None, scheduler=None, device=None,
                 num_epochs=100, early_patience=20, min_delta=0,
                 clip_grad_norm=None, clip_value=None,
@@ -81,8 +82,16 @@ def train_model(model=None, uq_method=None, train_loader=None, val_loader=None,
             inputs = batch[0].to(device)
             targets = batch[1].to(device)
             optimizer.zero_grad() # Resets the gradients
-            outputs = model(inputs)
-            loss = criterion(outputs, targets)
+            if uq_method == 'deterministic':
+                outputs = model(inputs)
+                loss = criterion(outputs, targets)
+            elif (uq_method == 'DA' or uq_method == 'CDA' or
+                  uq_method == 'DA_A' or uq_method == 'CDA_A'):
+                mean, log_var, regularization = model(inputs)                
+                if heteroscedastic:
+                    loss = criterion(targets, mean, log_var) + regularization
+                else:
+                    loss = criterion(mean, targets) + regularization
             # Backward pass and optimization
             loss.backward()
             if clip_grad_norm: # if True: clips gradient at specified value
@@ -95,10 +104,19 @@ def train_model(model=None, uq_method=None, train_loader=None, val_loader=None,
             for batch in val_loader:
                 inputs = batch[0].to(device)
                 targets = batch[1].to(device)
-                outputs = model(inputs)
-                valid_loss = criterion(outputs, targets)
+                if uq_method == 'deterministic':
+                    outputs = model(inputs)
+                    valid_loss = criterion(outputs, targets)
+                elif (uq_method == 'DA' or uq_method == 'CDA' or
+                      uq_method == 'DA_A' or uq_method == 'CDA_A'):
+                    mean, log_var, regularization = model(inputs)
+                    if heteroscedastic:
+                        valid_loss = criterion(targets, mean,
+                                               log_var) + regularization
+                    else:
+                        valid_loss = criterion(mean, targets) + regularization                   
                 total_valid_loss += valid_loss.item()                    
-            average_valid_loss = total_valid_loss / len(val_loader)
+            average_valid_loss = total_valid_loss / len(val_loader)                          
         # print the results       
         print(f'Epoch {epoch + 1}/{num_epochs},',
               f'Loss: {loss.item()}, Validation Loss: {average_valid_loss}')
@@ -138,7 +156,8 @@ def train_model(model=None, uq_method=None, train_loader=None, val_loader=None,
                 
            
 # function to handle inference with trained model
-def test_model(model=None, uq_method=None, test_loader=None,
+def test_model(model=None, uq_method=None, heteroscedastic=None,
+               num_mc_samples=None, test_loader=None,
                test_original_lengths=None, y_scaler=None, 
                processed_data_path=None, report_path=None,
                data_split=None, fold=None, seed=None, device=None,
@@ -155,8 +174,20 @@ def test_model(model=None, uq_method=None, test_loader=None,
                 uq_method, data_split, fold, seed))        
     checkpoint = torch.load(checkpoint_path)
     model.load_state_dict(checkpoint['model_state_dict'])
-    all_results = {'GroundTruth': [], 'Prediction': [], 'Prefix_length': [],
-                   'Absolute_error': [], 'Absolute_percentage_error': []}
+    # define the columns in csv file for the results
+    if uq_method == 'deterministic':
+        all_results = {'GroundTruth': [], 'Prediction': [],
+                       'Prefix_length': [], 'Absolute_error': [],
+                       'Absolute_percentage_error': []}
+    elif (uq_method == 'DA' or uq_method == 'CDA'):
+        all_results = {'GroundTruth': [], 'Prediction': [],
+                       'Epistemic_Uncertainty': [], 'Prefix_length': [],
+                       'Absolute_error': [], 'Absolute_percentage_error': []}
+    elif (uq_method == 'DA_A' or uq_method == 'CDA_A'):
+        all_results = {'GroundTruth': [], 'Prediction': [],
+                       'Epistemic_Uncertainty': [], 'Aleatoric_Uncertainty': [],
+                       'Total_Uncertainty': [], 'Prefix_length': [],
+                       'Absolute_error': [], 'Absolute_percentage_error': []}    
     absolute_error = 0
     absolute_percentage_error = 0
     length_idx = 0 
@@ -166,11 +197,48 @@ def test_model(model=None, uq_method=None, test_loader=None,
             inputs = test_batch[0].to(device)
             _y_truth = test_batch[1].to(device)
             batch_size = inputs.shape[0]
-            _y_pred = model(inputs)
+            
+            # get model outputs, and uncertainties if required
+            if uq_method == 'deterministic':            
+                _y_pred = model(inputs)
+            elif (uq_method == 'DA' or uq_method == 'CDA' or
+                  uq_method == 'DA_A' or uq_method == 'CDA_A'):
+                means_list, logvar_list =[], []
+                # conduct Monte Carlo sampling
+                for i in range (num_mc_samples): 
+                    mean, log_var,_ = model(inputs, stop_dropout=False)
+                    means_list.append(mean)
+                    logvar_list.append(log_var)
+                # Aggregate the results for all samples
+                # Compute point estimation and uncertainty
+                stacked_means = torch.stack(means_list, dim=0)
+                # predited value is the average for all samples
+                _y_pred = torch.mean(stacked_means, dim=0).squeeze()
+                # epistemic uncertainty obtained from std for all samples
+                epistemic_std = torch.std(
+                    stacked_means, dim=0).squeeze().to(device)
+                # normalize epistemic uncertainty if necessary
+                if normalization:
+                    epistemic_std = y_scaler * epistemic_std
+                # now obtain aleatoric uncertainty
+                if heteroscedastic:
+                    stacked_log_var = torch.stack(logvar_list, dim=0)
+                    stacked_var = torch.exp(stacked_log_var)
+                    mean_var = torch.mean(stacked_var, dim=0).squeeze()                
+                    aleatoric_std = torch.sqrt(mean_var).to(device)
+                    # normalize aleatoric uncertainty if necessary
+                    if normalization:
+                        aleatoric_std = y_scaler * aleatoric_std
+                    total_std = epistemic_std + aleatoric_std
+                # Squeeze target attributes
+                #TODO: check all sizes some squeeze operations might be redundant
+                _y_truth = _y_truth.squeeze()               
+            
             # convert tragets, outputs in case of normalization
             if normalization:
                 _y_truth = y_scaler * _y_truth
                 _y_pred = y_scaler * _y_pred        
+
             # Compute batch loss
             absolute_error += F.l1_loss(_y_pred, _y_truth).item()
             absolute_percentage_error += mape(_y_pred, _y_truth).item()
@@ -188,7 +256,19 @@ def test_model(model=None, uq_method=None, test_loader=None,
             prefix_lengths = (np.array(pre_lengths).reshape(-1, 1)).tolist()
             all_results['Prefix_length'].extend(prefix_lengths)
             all_results['Absolute_error'].extend(mae_batch.tolist())
-            all_results['Absolute_percentage_error'].extend(mape_batch.tolist())          
+            all_results['Absolute_percentage_error'].extend(mape_batch.tolist()) 
+            if (uq_method == 'DA' or uq_method == 'CDA' or
+                  uq_method == 'DA_A' or uq_method == 'CDA_A'):
+                epistemic_std = epistemic_std.detach().cpu().numpy()
+                all_results['Epistemic_Uncertainty'].extend(
+                    epistemic_std.tolist()) 
+                if heteroscedastic:
+                    aleatoric_std = aleatoric_std.detach().cpu().numpy()
+                    total_std = total_std.detach().cpu().numpy()
+                    all_results['Aleatoric_Uncertainty'].extend(
+                        aleatoric_std.tolist())
+                    all_results['Total_Uncertainty'].extend(
+                        total_std.tolist())            
         num_test_batches = len(test_loader)    
         absolute_error /= num_test_batches    
         absolute_percentage_error /= num_test_batches

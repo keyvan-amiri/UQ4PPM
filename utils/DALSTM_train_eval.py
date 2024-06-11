@@ -58,6 +58,9 @@ class DALSTM_train_evaluate ():
             # define loss function
             self.criterion = set_loss(
                 loss_func=cfg.get('train').get('loss_function'))
+            # set some attributes to use generic train and test methods
+            self.heteroscedastic = False 
+            self.num_mcmc = None
         elif (self.uq_method == 'DA' or self.uq_method == 'CDA' or
               self.uq_method == 'DA_A' or self.uq_method == 'CDA_A'):
             # hard-coded parameters since we have separate deterministic model
@@ -132,38 +135,36 @@ class DALSTM_train_evaluate ():
                  self.test_lengths_path) = self.holdout_paths() 
                 (self.train_loader, self.val_loader, self.test_loader,
                  self.test_lengths) = self.load_data()                
-                if self.uq_method == 'deterministic':
-                    train_model(model=self.model,
-                                uq_method=self.uq_method,
-                                train_loader=self.train_loader,
-                                val_loader=self.val_loader,
-                                criterion=self.criterion,
-                                optimizer=self.optimizer,
-                                scheduler=self.scheduler,
-                                device=self.device,
-                                num_epochs=self.max_epochs,
-                                early_patience=self.early_stop_patience,
-                                min_delta=self.early_stop_min_delta, 
-                                processed_data_path=self.result_path,
-                                report_path=self.report_path,
-                                data_split='holdout',
-                                cfg=self.cfg,
-                                seed=self.seed)   
-                    test_model(model=self.model,
-                               uq_method=self.uq_method,
-                               test_loader=self.test_loader,
-                               test_original_lengths=self.test_lengths,
-                               y_scaler=self.max_train_val,
-                               processed_data_path= self.result_path,
-                               report_path=self.report_path,
-                               data_split = 'holdout',
-                               seed=self.seed,
-                               device=self.device,
-                               normalization=self.normalization)                    
-                else:
-                    pass
-                    #TODO: Add new training method or extend the exisiting one
-                    # to implement dropout appriximation paper!                
+                train_model(model=self.model,
+                            uq_method=self.uq_method,
+                            heteroscedastic=self.heteroscedastic,
+                            train_loader=self.train_loader,
+                            val_loader=self.val_loader,
+                            criterion=self.criterion,
+                            optimizer=self.optimizer,
+                            scheduler=self.scheduler,
+                            device=self.device,
+                            num_epochs=self.max_epochs,
+                            early_patience=self.early_stop_patience,
+                            min_delta=self.early_stop_min_delta, 
+                            processed_data_path=self.result_path,
+                            report_path=self.report_path,
+                            data_split='holdout',
+                            cfg=self.cfg,
+                            seed=self.seed)   
+                test_model(model=self.model,
+                           uq_method=self.uq_method,
+                           heteroscedastic=self.heteroscedastic,
+                           num_mc_samples=self.num_mcmc,              
+                           test_loader=self.test_loader,
+                           test_original_lengths=self.test_lengths,
+                           y_scaler=self.max_train_val,
+                           processed_data_path= self.result_path,
+                           report_path=self.report_path,
+                           data_split = 'holdout',
+                           seed=self.seed,
+                           device=self.device,
+                           normalization=self.normalization)                                  
             else:
                 for split_key in range(self.n_splits):
                     # define the report path
@@ -178,42 +179,38 @@ class DALSTM_train_evaluate ():
                     (self.train_loader, self.val_loader, self.test_loader,
                      self.test_lengths) = self.load_data()   
                     self.test_lengths
-                    if self.uq_method == 'deterministic':
-                        train_model(model=self.model,
-                                    uq_method=self.uq_method,
-                                    train_loader=self.train_loader,
-                                    val_loader=self.val_loader,
-                                    criterion=self.criterion,
-                                    optimizer=self.optimizer,
-                                    scheduler=self.scheduler,
-                                    device=self.device,
-                                    num_epochs=self.max_epochs,
-                                    early_patience=self.early_stop_patience,
-                                    min_delta=self.early_stop_min_delta, 
-                                    processed_data_path=self.result_path,
-                                    report_path=self.report_path,
-                                    data_split='cv',
-                                    fold = split_key+1,
-                                    cfg=self.cfg,
-                                    seed=self.seed)
-                        test_model(model=self.model,
-                                   uq_method=self.uq_method,
-                                   test_loader=self.test_loader,
-                                   test_original_lengths=self.test_lengths,
-                                   y_scaler=self.max_train_val,
-                                   processed_data_path= self.result_path,
-                                   report_path=self.report_path,
-                                   data_split = 'holdout',
-                                   seed=self.seed,
-                                   device=self.device,
-                                   normalization=self.normalization)    
-                    else:                        
-                        #TODO: Add new training method or extend the exisiting one
-                        # to implement dropout appriximation paper!
-                        pass
+                    train_model(model=self.model,
+                                uq_method=self.uq_method,
+                                heteroscedastic=self.heteroscedastic,
+                                train_loader=self.train_loader,
+                                val_loader=self.val_loader,
+                                criterion=self.criterion,
+                                optimizer=self.optimizer,
+                                scheduler=self.scheduler,
+                                device=self.device,
+                                num_epochs=self.max_epochs,
+                                early_patience=self.early_stop_patience,
+                                min_delta=self.early_stop_min_delta, 
+                                processed_data_path=self.result_path,
+                                report_path=self.report_path,
+                                data_split='cv',
+                                fold = split_key+1,
+                                cfg=self.cfg,
+                                seed=self.seed)
+                    test_model(model=self.model, 
+                               uq_method=self.uq_method,
+                               heteroscedastic=self.heteroscedastic,
+                               num_mc_samples=self.num_mcmc,  
+                               test_loader=self.test_loader,
+                               test_original_lengths=self.test_lengths,
+                               y_scaler=self.max_train_val,
+                               processed_data_path= self.result_path,
+                               report_path=self.report_path,
+                               data_split = 'holdout',
+                               seed=self.seed,
+                               device=self.device,
+                               normalization=self.normalization)   
                     
-
-    
     # A method to load important dimensions
     def load_dimensions(self):        
         scaler_path = os.path.join(

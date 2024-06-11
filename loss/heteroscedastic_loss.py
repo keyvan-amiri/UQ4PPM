@@ -1,7 +1,7 @@
 import torch
 
 # Custom function for heteroscedastic loss.
-def heteroscedastic_loss(true, mean, log_var, metric='mse'): 
+def heteroscedastic_loss(mean, true, log_var, metric='mse'): 
     '''
     ARGUMENTS:
     true: true values with shape of: batch_size x num outputs
