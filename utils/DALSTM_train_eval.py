@@ -46,17 +46,18 @@ class DALSTM_train_evaluate ():
         self.dropout = cfg.get('model').get('lstm').get('dropout')
         # the probabibility that is used for dropout
         self.dropout_prob = cfg.get('model').get('lstm').get('dropout_prob')        
-        # define loss function
-        self.criterion = set_loss(
-            loss_func=cfg.get('train').get('loss_function'))
-        # define the model (depends to the UQ method decided)
+        # define the model and loss function (based on the UQ method)
         if self.uq_method == 'deterministic':
+            # define the model for deterministic approach (point estimate)
             self.model = DALSTMModel(input_size=self.input_size,
                                      hidden_size=self.hidden_size,
                                      n_layers=self.n_layers,
                                      max_len=self.max_len,
                                      dropout=self.dropout,
                                      p_fix=self.dropout_prob).to(self.device)
+            # define loss function
+            self.criterion = set_loss(
+                loss_func=cfg.get('train').get('loss_function'))
         elif (self.uq_method == 'DA' or self.uq_method == 'CDA' or
               self.uq_method == 'DA_A' or self.uq_method == 'CDA_A'):
             # hard-coded parameters since we have separate deterministic model
@@ -69,17 +70,21 @@ class DALSTM_train_evaluate ():
                 'dropout_approximation').get('weight_regularizer')
             self.dropout_regularizer = cfg.get('uncertainty').get(
                 'dropout_approximation').get('dropout_regularizer')
+            # Set the parameter for concrete dropout
             if (self.uq_method == 'DA' or self.uq_method == 'DA_A'):
                 self.concrete_dropout = False
             else:
                 self.concrete_dropout = True
+            # Set the loss function (heteroscedastic/homoscedastic)
             if (self.uq_method == 'DA' or self.uq_method == 'CDA'):
                 self.heteroscedastic = False
-                # TODO: check homosedastic loss: whether it is the same as mse
-                self.criterion = set_loss('mse')
+                self.criterion = set_loss(
+                    loss_func=cfg.get('train').get('loss_function'))
             else:
                 self.heteroscedastic = True
-                # TODO: check heterosedastic loss and call it here!       
+                self.criterion = set_loss(
+                    loss_func=cfg.get('train').get('loss_function'),
+                    heteroscedastic=True)                    
             self.model = StochasticDALSTM(input_size=self.input_size,
                                  hidden_size=self.hidden_size,
                                  n_layers=self.n_layers,

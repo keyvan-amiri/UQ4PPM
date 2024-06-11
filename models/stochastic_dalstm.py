@@ -270,13 +270,13 @@ class StochasticLSTMCell(nn.Module):
         Tensor, Tuple[Tensor, Tensor]]:
         '''
         ARGUMENTS:
-        input: Tensor (sequence length x batch size x input size(after embedding) )
+        input: sequence length x batch size x input size(after embedding)
         stop_dropout: if "True" prevents dropout in inference (deterministic)
 
         OUTPUTS:
-        hn: tensor of hidden states h_t. Dimension (sequence_length x batch_size x hidden size)
-        h_t: hidden states at time t. Dimension (batch size x hidden size (number of nodes in LSTM layer)
-        c_t: cell states. Dimension (batch size x hidden size (number of nodes in LSTM layer)
+        hn: tensor of hidden states h_t. shape: sequence_length x batch_size x hidden size
+        h_t: hidden states at time t. shape: batch size x hidden size (nodes in LSTM layer)
+        c_t: cell states. shape: batch size x hidden size (nodes in LSTM layer)
         '''
 
         seq_len, batch_size = input.shape[0:2]
