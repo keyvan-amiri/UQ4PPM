@@ -213,10 +213,9 @@ def test_model(model=None, uq_method=None, heteroscedastic=None,
                 # Compute point estimation and uncertainty
                 stacked_means = torch.stack(means_list, dim=0)
                 # predited value is the average for all samples
-                _y_pred = torch.mean(stacked_means, dim=0).squeeze()
+                _y_pred = torch.mean(stacked_means, dim=0)
                 # epistemic uncertainty obtained from std for all samples
-                epistemic_std = torch.std(
-                    stacked_means, dim=0).squeeze().to(device)
+                epistemic_std = torch.std(stacked_means, dim=0).to(device)
                 # normalize epistemic uncertainty if necessary
                 if normalization:
                     epistemic_std = y_scaler * epistemic_std
@@ -224,15 +223,12 @@ def test_model(model=None, uq_method=None, heteroscedastic=None,
                 if heteroscedastic:
                     stacked_log_var = torch.stack(logvar_list, dim=0)
                     stacked_var = torch.exp(stacked_log_var)
-                    mean_var = torch.mean(stacked_var, dim=0).squeeze()                
+                    mean_var = torch.mean(stacked_var, dim=0)
                     aleatoric_std = torch.sqrt(mean_var).to(device)
                     # normalize aleatoric uncertainty if necessary
                     if normalization:
                         aleatoric_std = y_scaler * aleatoric_std
                     total_std = epistemic_std + aleatoric_std
-                # Squeeze target attributes
-                #TODO: check all sizes some squeeze operations might be redundant
-                _y_truth = _y_truth.squeeze()               
             
             # convert tragets, outputs in case of normalization
             if normalization:

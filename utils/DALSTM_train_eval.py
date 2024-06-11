@@ -94,7 +94,7 @@ class DALSTM_train_evaluate ():
                                  max_len=self.max_len,
                                  dropout=self.dropout,
                                  concrete=self.concrete_dropout,
-                                 p_fix=self.drop_prob,
+                                 p_fix=self.dropout_prob,
                                  weight_regularizer=self.weight_regularizer,
                                  dropout_regularizer=self.dropout_regularizer,
                                  hs=self.heteroscedastic,

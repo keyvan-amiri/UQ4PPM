@@ -116,7 +116,7 @@ class StochasticDALSTM(nn.Module):
         else:
             regularization[1] = 0
             log_var = torch.empty(mean.size())
-        return mean, log_var, regularization.sum()
+        return mean.squeeze(dim=1), log_var.squeeze(dim=1), regularization.sum()
 
 # Stochastic LSTM cell that can handle fix dropout as well as concrete dropout
 class StochasticLSTMCell(nn.Module):
