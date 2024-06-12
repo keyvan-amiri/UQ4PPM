@@ -26,4 +26,3 @@ class heteroscedastic_loss(nn.Module):
         else:
             raise ValueError("Metric has to be 'mse' or 'mae'")            
         return loss
- 

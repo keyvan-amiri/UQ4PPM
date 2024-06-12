@@ -9,6 +9,7 @@ python main.py --dataset env_permit --model dalstm --UQ DA --split holdout --see
 python main.py --dataset env_permit --model dalstm --UQ CDA --split holdout --seed 42 --device 0
 python main.py --dataset env_permit --model dalstm --UQ DA_A --split holdout --seed 42 --device 0
 python main.py --dataset env_permit --model dalstm --UQ CDA_A --split holdout --seed 42 --device 0
+python evaluation.py --dataset env_permit --model dalstm
 
 
 
