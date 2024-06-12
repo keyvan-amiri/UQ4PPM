@@ -7,6 +7,7 @@ import os
 import pandas as pd
 import uncertainty_toolbox as uct
 import matplotlib.pyplot as plt
+from scipy.stats import spearmanr
 from utils.evaluation_utils import get_csv_files
 
 
@@ -48,19 +49,42 @@ def main():
         uct.viz.plot_intervals_ordered(pred_mean, pred_std, y)
         plt.gcf().set_size_inches(10, 10)
         # define name of the plot to be saved
-        new_base_name = base_name + "ordered_prediction_intervals"
-        new_ext = '.pdf'
-        new_file_name = new_base_name + new_ext
+        new_file_name = base_name + 'ordered_prediction_intervals' + '.pdf'
         new_file_path = os.path.join(target_path, new_file_name)
         plt.savefig(new_file_path, format='pdf')
         plt.clf()  
-            
-            
-
-               
-
-
-
-        
+        # Plot average calibration
+        uct.viz.plot_calibration(pred_mean, pred_std, y)
+        plt.gcf().set_size_inches(10, 10)
+        new_file_name = base_name + 'miscalibrated_area' + '.pdf'
+        new_file_path = os.path.join(target_path, new_file_name)
+        plt.savefig(new_file_path, format='pdf')
+        plt.clf()
+        # Plot adversarial group calibration
+        uct.viz.plot_adversarial_group_calibration(pred_mean, pred_std, y)
+        plt.gcf().set_size_inches(10, 6)
+        new_file_name = base_name + 'adversarial_group_calibration' + '.pdf'
+        new_file_path = os.path.join(target_path, new_file_name)
+        plt.savefig(new_file_path, format='pdf')
+        plt.clf()
+        # Get all uncertainty quantification metrics
+        uq_metrics = uct.metrics.get_all_metrics(pred_mean, pred_std, y)
+        new_file_name = base_name + 'uq_metrics' + '.txt'
+        new_file_path = os.path.join(source_path, new_file_name)
+        with open(new_file_path, 'w') as file:
+            # Iterate over the dictionary items and write them to the file
+            for key, value in uq_metrics.items():
+                file.write(f"{key}: {value}\n")  
+        # Get Spearman's rank correlation coefficient 
+        if (prefix=='DA_A' or prefix=='CDA_A'):
+            corr, p_value = spearmanr(df['Absolute_error'],
+                                      df['Total_Uncertainty'])
+        else:
+            corr, p_value = spearmanr(df['Absolute_error'],
+                                      df['Epistemic_Uncertainty'])
+        with open(new_file_path, 'a') as file:
+            file.write(f"Spearman's rank correlation coefficient: {corr}\n")
+            file.write(f"P-value: {p_value}\n")        
+ 
 if __name__ == '__main__':
     main()
