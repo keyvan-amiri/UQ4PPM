@@ -1,7 +1,10 @@
 import os
 import argparse
 import yaml
+import sys
+import logging
 import random
+import shutil
 from datetime import datetime
 import numpy as np
 import pandas as pd
@@ -9,6 +12,7 @@ import torch
 import torch.nn.functional as F
 from torch.nn.utils import clip_grad_value_
 import torch.optim as optim
+import torch.utils.tensorboard as tb
 from loss.mape import mape
 
 
@@ -320,3 +324,117 @@ def parse_temp_config(task_name=None):
          temp_config = yaml.safe_load(f)
          temporary_config = dict2namespace(temp_config)
     return temporary_config
+
+# update original config file, and return it alongside the logger.
+def parse_config(args=None):    
+    # set log path
+    args.log_path = os.path.join(args.exp, "logs", args.doc)
+    # parse config file
+    with open(os.path.join(args.config), "r") as f:
+        if args.sample or args.test:
+            config = yaml.unsafe_load(f)
+            new_config = config
+        else:
+            config = yaml.safe_load(f)
+            new_config = dict2namespace(config)
+    tb_path = os.path.join(args.exp, "tensorboard", args.doc)
+
+    if not args.test:
+        args.im_path = os.path.join(args.exp, new_config.training.image_folder, args.doc)
+        # if noise_prior is not provided by the user the relevant config is set to False.
+        new_config.diffusion.noise_prior = True if args.noise_prior else False
+        new_config.model.cat_y_pred = False if args.no_cat_f_phi else True
+        if not args.resume_training:
+            if not args.timesteps is None:
+                new_config.diffusion.timesteps = args.timesteps
+            if args.num_sample > 1:
+                new_config.diffusion.num_sample = args.num_sample
+            if os.path.exists(args.log_path):
+                overwrite = False
+                if args.ni:
+                    overwrite = True
+                else:
+                    response = input(
+                        "Folder {} already exists. Overwrite? (Y/N)".format(
+                            args.log_path))
+                    if response.upper() == "Y":
+                        overwrite = True
+                if overwrite:
+                    shutil.rmtree(args.log_path)
+                    shutil.rmtree(tb_path)
+                    shutil.rmtree(args.im_path)
+                    os.makedirs(args.log_path)
+                    os.makedirs(args.im_path)
+                    if os.path.exists(tb_path):
+                        shutil.rmtree(tb_path)
+                else:
+                    print("Folder exists. Program halted.")
+                    sys.exit(0)
+            else:
+                os.makedirs(args.log_path)
+                if not os.path.exists(args.im_path):
+                    os.makedirs(args.im_path)
+            #save the updated config the log in result folder
+            with open(os.path.join(args.log_path, "config.yml"), "w") as f:
+                yaml.dump(new_config, f, default_flow_style=False)
+
+        new_config.tb_logger = tb.SummaryWriter(log_dir=tb_path)
+        # setup logger
+        level = getattr(logging, args.verbose.upper(), None)
+        if not isinstance(level, int):
+            raise ValueError("level {} not supported".format(args.verbose))
+
+        handler1 = logging.StreamHandler()
+        # saving training info to a .txt file
+        handler2 = logging.FileHandler(os.path.join(args.log_path, "stdout.txt"))
+        formatter = logging.Formatter(
+            "%(levelname)s - %(filename)s - %(asctime)s - %(message)s"
+        )
+        handler1.setFormatter(formatter)
+        handler2.setFormatter(formatter)
+        logger = logging.getLogger()
+        logger.addHandler(handler1)
+        logger.addHandler(handler2)
+        logger.setLevel(level)
+
+    else:
+        args.im_path = os.path.join(args.exp, new_config.testing.image_folder,
+                                    args.doc)
+        level = getattr(logging, args.verbose.upper(), None)
+        if not isinstance(level, int):
+            raise ValueError("level {} not supported".format(args.verbose))
+
+        handler1 = logging.StreamHandler()
+        # saving test metrics to a .txt file
+        handler2 = logging.FileHandler(os.path.join(args.log_path,
+                                                    "testmetrics.txt"))
+        formatter = logging.Formatter(
+            "%(levelname)s - %(filename)s - %(asctime)s - %(message)s"
+        )
+        handler1.setFormatter(formatter)
+        handler2.setFormatter(formatter)
+        logger = logging.getLogger()
+        logger.addHandler(handler1)
+        logger.addHandler(handler2)
+        logger.setLevel(level)
+
+        if args.sample or args.test:
+            os.makedirs(args.im_path, exist_ok=True)
+
+    # add device
+    device_name = f'cuda:{args.device}' if torch.cuda.is_available() else 'cpu'
+    device = torch.device(device_name)
+    logging.info("Using device: {}".format(device))
+    new_config.device = device
+
+    # set number of threads
+    if args.thread > 0:
+        torch.set_num_threads(args.thread)
+        print('Using {} threads'.format(args.thread))
+
+    # set random seed
+    set_random_seed(args.seed)
+
+    torch.backends.cudnn.benchmark = True
+
+    return new_config, logger

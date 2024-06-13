@@ -12,6 +12,8 @@ def main():
     # can handle multiple event logs at the same time
     parser.add_argument('--datasets', nargs='+',
                         help='Raw datasets to be pre-processed', required=True)
+    parser.add_argument('--seed', type=int, default=42,
+                        help='Number of splits that is used')
     # Note that by default each model performs as follows:
     # DALSTM do'nt apply any normalization to remaining time (target attribute)
     # PGTNet apply min-max normalization to remaining time (target attribute)
@@ -28,11 +30,11 @@ def main():
         # handle data preprocessing for DALSTM approach
         if args.normalization:
             # if normalization is included in command line arguments:
-            DALSTM_preprocessing(dataset_name=dataset,
+            DALSTM_preprocessing(dataset_name=dataset, seed=args.seed,
                                  normalization=args.normalization)
         else:
             #otherwise
-            DALSTM_preprocessing(dataset_name=dataset)
+            DALSTM_preprocessing(dataset_name=dataset, seed=args.seed)
     
 if __name__ == '__main__':
     main()

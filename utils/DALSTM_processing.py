@@ -38,7 +38,12 @@ class DALSTM_preprocessing ():
     def __init__ (self, xes_dir=None, dalstm_dir=None, conversion_cfg=None,
                   dataset_name=None, split_ratio=None, n_splits=None,
                   normalization=None, normalization_type=None, overwrite=None, 
-                  perform_lifecycle_trick=None, fill_na=None):
+                  perform_lifecycle_trick=None, fill_na=None, seed=None):
+        # set random seed for cross-validation
+        if seed is None:
+            self.seed = 42
+        else:
+            self.seed = seed
         self.dataset_name = dataset_name
         root_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         if xes_dir is None:
@@ -628,7 +633,8 @@ class DALSTM_preprocessing ():
         # get indices for train, validation, and test
         n_samples = X_total.shape[0]
         splits={}
-        kf = KFold(n_splits=self.n_splits, shuffle=True, random_state=42)
+        kf = KFold(n_splits=self.n_splits, shuffle=True,
+                   random_state=self.seed)
         kf_split = kf.split(np.zeros(n_samples)) 
         for i, (_, ids) in enumerate(kf_split):
             splits[i] = ids.tolist()
