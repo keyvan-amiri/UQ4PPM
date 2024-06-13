@@ -1,5 +1,18 @@
 data:
   normalization: False
+train:
+  loss_function: mae   
+  max_epochs: 2
+  batch_size: 64
+  early_stop.patience: 20
+  early_stop.min_delta: 0
+optimizer:
+  type: NAdam
+  base_lr: 0.001 
+  eps: 1e-7  
+  weight_decay: 0.0 
+evaluation:
+  batch_size: 64
 model:
   lstm:
     n_layers: 2
@@ -23,16 +36,3 @@ uncertainty:
     pred_type: glm # glm or nn  : type of approximation of predictive distribution
     optimize_prior_precision: marglik # marglik or gridsearch
     prior_precision: 1.0 #prior precision to use for computing the covariance matrix
-train:
-  loss_function: mae   
-  max_epochs: 2
-  batch_size: 64
-  early_stop.patience: 20
-  early_stop.min_delta: 0
-optimizer:
-  type: NAdam
-  base_lr: 0.001 
-  eps: 1e-7  
-  weight_decay: 0.0 
-evaluation:
-  batch_size: 64

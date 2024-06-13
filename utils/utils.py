@@ -1,13 +1,16 @@
-import torch
-import numpy as np
+import os
+import argparse
+import yaml
 import random
+from datetime import datetime
+import numpy as np
+import pandas as pd
+import torch
 import torch.nn.functional as F
 from torch.nn.utils import clip_grad_value_
-import pandas as pd
-import os
-from datetime import datetime
 import torch.optim as optim
 from loss.mape import mape
+
 
 ##############################################################################
 # Utlility functions for training and inference
@@ -298,4 +301,22 @@ def test_model(model=None, uq_method=None, heteroscedastic=None,
             processed_data_path,
             '{}_{}_fold{}_seed_{}_inference_result_.csv'.format(
                 uq_method, data_split, fold, seed))         
-    results_df.to_csv(csv_filename, index=False) 
+    results_df.to_csv(csv_filename, index=False)
+
+def dict2namespace(config):
+    namespace = argparse.Namespace()
+    for key, value in config.items():
+        if isinstance(value, dict):
+            new_value = dict2namespace(value)
+        else:
+            new_value = value
+        setattr(namespace, key, new_value)
+    return namespace
+    
+# return original config before any changes within parse_config method.
+def parse_temp_config(task_name=None):
+    task_name = task_name + '.yml'
+    with open(os.path.join('cfg', task_name), "r") as f:
+         temp_config = yaml.safe_load(f)
+         temporary_config = dict2namespace(temp_config)
+    return temporary_config
