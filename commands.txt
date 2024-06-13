@@ -15,7 +15,7 @@ python evaluation.py --dataset env_permit --model dalstm
 
 
 Which options are available for training and evaluation configuration?
-Backbone model architecture: dalstm, cnn, pgtnet
+Backbone model architecture: dalstm, pt, pgtnet
 Uncertainty quantification methods:
 1) deterministic: provides point estimates
 2) DA: dropout approximation

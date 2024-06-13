@@ -1,3 +1,9 @@
+"""
+To prepare this script we used the following source codes:
+    https://github.com/XzwHan/CARD
+We adjusted the source codes to efficiently integrate them into our framework.
+"""
+
 import argparse
 import os
 import yaml

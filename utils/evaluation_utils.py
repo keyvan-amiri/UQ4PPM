@@ -1,11 +1,6 @@
 import glob
 import os
 import re
-#import random
-#import numpy as np
-#import pytorch_lightning as pl
-#import torch
-#from torch.utils.data import DataLoader, TensorDataset
 
 
 # A mothod to retrieve all results for a combination of dataset-model
