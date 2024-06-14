@@ -1107,34 +1107,34 @@ class Diffusion(object):
             y_ae_by_batch_list = [[] for _ in range(self.num_timesteps + 1)]
             nll_by_batch_list = [[] for _ in range(self.num_timesteps + 1)]
             
-            # get all prefix lengths in test set.
-            test_length_list = dataset_object.return_prefix_lengths() 
             # get mean of remaining time in training set
             mean_target_value = dataset_object.return_mean_target_arrtibute()
             # get max of remaining time in training set
             max_target_value = dataset_object.return_max_target_arrtibute()
             # get median of remaining time in training set 
             median_target_value = dataset_object.return_median_target_arrtibute() 
-            normalized_median_target_value = median_target_value/max_target_value            
-            index_indicator = 0 # indicator to access relevant prefix lengths in each batch
+            normalized_median_target_value = median_target_value/max_target_value  
+            
+            # get all prefix lengths in test set.
+            test_length_list = dataset_object.return_prefix_lengths() 
+            # indicator to access relevant prefix lengths in each batch
+            index_indicator = 0 
 
             for step, xy_batch in enumerate(test_loader):
-                # minibatch_start = time.time() 
-                # TODO: remove uci condition
-                if config.data.dataset == "uci":
-                    xy_0 = xy_batch.to(self.device)
-                    current_batch_size = xy_0.shape[0]
-                    x_batch = xy_0[:, :-config.model.y_dim]
-                    y_batch = xy_0[:, -config.model.y_dim:]
-                elif config.data.dataset == "ppm":
-                    current_batch_size = xy_batch[0].shape[0]
-                    x_batch = xy_batch[0].to(self.device)
-                    y_batch = xy_batch[1].to(self.device)
-                # compute y_0_hat as the initial Prediction to guide the reverse diffusion process
+                # TODO: chceck the following works for PGTNet, PT, ...
+                current_batch_size = xy_batch[0].shape[0]
+                x_batch = xy_batch[0].to(self.device)
+                y_batch = xy_batch[1].to(self.device)
+                """
+                compute y_0_hat as the initial Prediction to 
+                guide the reverse diffusion process
+                """
                 y_0_hat_batch = self.compute_guiding_Prediction(x_batch)
-                true_y_by_batch_list.append(y_batch.cpu().numpy())  
-                
-                # obtain y samples through reverse diffusion -- some pytorch version might not have torch.tile
+                true_y_by_batch_list.append(y_batch.cpu().numpy()) 
+                """
+                cobtain y samples through reverse diffusion 
+                -- some pytorch version might not have torch.tile 
+                """
                 # TODO: remove uci condition
                 if config.data.dataset == "uci":
                     y_0_tile = (y_batch.repeat(config.testing.n_z_samples, 1, 1).transpose(0, 1)).to(self.device).flatten(0, 1)
