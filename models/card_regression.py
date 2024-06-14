@@ -90,7 +90,7 @@ class Diffusion(object):
             self.aux_cost_function = nn.MSELoss()
         else:
             self.aux_cost_function = nn.L1Loss()        
-        # initial prediction model as guided condition
+        # initial Prediction model as guided condition
         self.cond_pred_model = None
         if config.diffusion.conditioning_signal == "DALSTM":
             self.cond_pred_model = DALSTMModel(input_size=config.model.x_dim,
@@ -106,8 +106,8 @@ class Diffusion(object):
             print('Currently only DALSTM model is supported.')
             pass
 
-    # Compute guiding prediction as diffusion condition
-    def compute_guiding_prediction(self, x):
+    # Compute guiding Prediction as diffusion condition
+    def compute_guiding_Prediction(self, x):
         # Compute y_0_hat, to be used as the Gaussian mean at time step T.
         y_pred = self.cond_pred_model(x)
         return y_pred
@@ -124,17 +124,16 @@ class Diffusion(object):
         else:
             y_mae_list = []
         if self.config.model.target_norm:
-            mean_target_value = dataset_object.return_mean_target_arrtibute()
-            std_target_value = dataset_object.return_std_target_arrtibute()                
+            max_target_value = dataset_object.return_max_target_arrtibute()           
         for batch in dataset_loader:
             x_batch = batch[0].to(self.device)
             y_batch = batch[1].to(self.device)
-            y_batch_pred_mean = self.compute_guiding_prediction(x_batch).cpu().detach().numpy()
+            y_batch_pred_mean = self.compute_guiding_Prediction(x_batch).cpu().detach().numpy()
             y_batch = y_batch.cpu().detach().numpy()
             if self.config.model.target_norm and eval_mode=="inverse_norm":
-                y_batch = std_target_value * y_batch + mean_target_value
-                y_batch_pred_mean = std_target_value * y_batch_pred_mean + \
-                    mean_target_value
+                # inverse min-max normalization
+                y_batch = max_target_value * y_batch
+                y_batch_pred_mean = max_target_value * y_batch_pred_mean
             # option to work with L1/L2 loss.
             if self.args.loss_guidance == 'L2':
                 y_se = (y_batch_pred_mean - y_batch) ** 2 # get squared error
@@ -219,7 +218,7 @@ class Diffusion(object):
         return y_t_p_sample, y_t_true
 
     #TODO: check why called unnorm, if it not necessary change the name
-    def compute_unnorm_y(self, cur_y, testing, mean_targ, std_targ):
+    def compute_unnorm_y(self, cur_y, testing, max_targ):
         if testing:
             y_mean = cur_y.cpu().reshape(-1,
                                          self.config.testing.n_z_samples
@@ -229,17 +228,16 @@ class Diffusion(object):
         # TODO: change the following if normalization is conducted differently
         if self.config.data.dataset == "ppm":
             if self.config.model.target_norm:
-                y_t_unnorm = y_mean * std_targ + mean_targ
+                y_t_unnorm = y_mean * max_targ
             else:
                 y_t_unnorm = y_mean
         return y_t_unnorm
 
     #TODO: check the resultant plots, and if necessary adjust compute_unnorm_y. is it really unnorm?
     def make_subplot_at_timestep_t(self, cur_t, cur_y, y_i, y_0, axs, ax_idx,
-                                   prior=False, testing=True, mean_targ=None,
-                                   std_targ=None):
-        y_0_unnorm = self.compute_unnorm_y(y_0, testing, mean_targ, std_targ)
-        y_t_unnorm = self.compute_unnorm_y(cur_y, testing, mean_targ, std_targ)
+                                   prior=False, testing=True, max_targ=None):
+        y_0_unnorm = self.compute_unnorm_y(y_0, testing, max_targ)
+        y_t_unnorm = self.compute_unnorm_y(cur_y, testing, max_targ)
         # option to work with RMSE or MAE:
         if self.args.loss_guidance == 'L2':
             kl_unnorm = ((y_0_unnorm - y_t_unnorm) ** 2).mean() ** 0.5
@@ -281,7 +279,7 @@ class Diffusion(object):
                                               kfold_handler=kfold_handler)
         self.dataset_object = dataset_object
         self.mean_target_value = dataset_object.return_mean_target_arrtibute()
-        self.std_target_value = dataset_object.return_std_target_arrtibute()
+        self.max_target_value = dataset_object.return_max_target_arrtibute()
         train_loader = data.DataLoader(dataset,
                                        batch_size=config.training.batch_size,
                                        shuffle=True,
@@ -450,7 +448,9 @@ class Diffusion(object):
                     Apply 0 instead of f_phi(x) as prior mean.
                     However, we used min-max normalization to keep the original
                     distrbution of remining time which often does not follow a
-                    normal distribution. In contrst, in the original
+                    normal distribution. (we assume that the minimum value is
+                                          zero and thus only use max value)
+                    In contrst, in the original
                     implementation of CARD standardization is used, and thus,
                     zero reflect the mean of the target attribute.                     
                     """
@@ -462,7 +462,7 @@ class Diffusion(object):
                                  equivalent to mean of remaining time in\
                                      training set.")
                 # apply median instead of f_phi(x) as prior mean
-                elif config.diffusion.noise_prior_approach == "median": 
+                elif config.diffusion.noise_prior_approach == 'median': 
                     logging.info("Prior distribution at timestep T has a mean\
                                  equivalent to median of remaining time in\
                                      training set.")
@@ -482,7 +482,8 @@ class Diffusion(object):
                         low=0, high=self.num_timesteps, size=(n // 2 + 1,)
                     ).to(self.device)
                     t = torch.cat([t, self.num_timesteps - 1 - t], dim=0)[:n]
-
+                    
+                    #TODO: add necessary code for PGTNET, PT, ...
                     if config.diffusion.conditioning_signal == "NN":
                         xy_0 = xy_0.to(self.device)
                         x_batch = xy_0[:, :-config.model.y_dim]
@@ -491,23 +492,35 @@ class Diffusion(object):
                         x_batch = xy_0[0].to(self.device)
                         y_batch = xy_0[1].to(self.device)                        
                         
-                    y_0_hat_batch = self.compute_guiding_prediction(x_batch)
+                    y_0_hat_batch = self.compute_guiding_Prediction(x_batch)
                     y_T_mean = y_0_hat_batch
                     
                     if config.diffusion.noise_prior:
-                        if config.diffusion.noise_prior_approach == "mean":
+                        if config.diffusion.noise_prior_approach == 'zero':
                             # apply 0 instead of f_phi(x) as prior mean
-                            y_T_mean = torch.zeros(y_batch.shape[0]).to(y_batch.device)
-                        elif config.diffusion.noise_prior_approach == "median": 
-                            # apply median instead of f_phi(x) as prior mean
-                            median_target_value = dataset_object.return_median_target_arrtibute()
-                            mean_target_value = dataset_object.return_mean_target_arrtibute()
-                            std_target_value = dataset_object.return_std_target_arrtibute()
-                            normalized_median_target_value = (
-                                median_target_value - mean_target_value)/std_target_value
+                            y_T_mean = torch.zeros(y_batch.shape[0]).to(
+                                y_batch.device)                            
+                        elif config.diffusion.noise_prior_approach == 'mean':
+                            mean_target_value = \
+                                dataset_object.return_mean_target_arrtibute()
+                            max_target_value = \
+                                dataset_object.return_max_target_arrtibute()
+                            normalized_mean_target_value = (
+                                mean_target_value/max_target_value)
                             y_T_mean = torch.full(
-                                (y_batch.shape[0]), normalized_median_target_value).to(
-                                    y_batch.device)                     
+                                (y_batch.shape[0]),
+                                normalized_mean_target_value).to(y_batch.device)                            
+                        elif config.diffusion.noise_prior_approach == 'median': 
+                            # apply median instead of f_phi(x) as prior mean
+                            median_target_value =  \
+                                dataset_object.return_median_target_arrtibute()
+                            max_target_value = \
+                                dataset_object.return_max_target_arrtibute()
+                            normalized_median_target_value = (
+                                median_target_value/max_target_value)
+                            y_T_mean = torch.full(
+                                (y_batch.shape[0]),
+                                normalized_median_target_value).to(y_batch.device)                     
 
                     e = torch.randn_like(y_batch).to(y_batch.device)
                     #print(y_batch.size())
@@ -524,41 +537,46 @@ class Diffusion(object):
                     #sys.exit()
                     output = model(x_batch, y_t_batch, y_0_hat_batch, t)
                     # noise estimation loss
-                    loss = (e - output).square().mean()  # use the same noise sample e during training to compute loss
+                    # use the same noise sample e during training to compute loss
+                    #TODO: check the meaning of the following to see whether related to L1 OR L2 loss or not
+                    loss = (e - output).square().mean()  
                     #if config.diffusion.conditioning_signal == "DALSTM":
                         #loss = (e - output).abs().mean() # use the same noise sample e during training to compute loss
 
                     tb_logger.add_scalar("loss", loss, global_step=step)
 
-                    if step % self.config.training.logging_freq == 0 or step == 1:
-                        logging.info(
-                            (f"epoch: {epoch}, step: {step}, Noise Estimation loss: {loss.item()}, " +
-                             f"data time: {data_time / (i + 1)}")
-                        )
+                    if (step % self.config.training.logging_freq == 0 or
+                        step == 1):
+                        logging.info((f"epoch: {epoch}, step: {step}, \
+                                      Noise Estimation loss: {loss.item()}, "
+                                      + f"data time: {data_time / (i + 1)}"))
 
                     # optimize diffusion model that predicts eps_theta
                     optimizer.zero_grad()
                     loss.backward()
                     try:
                         torch.nn.utils.clip_grad_norm_(
-                            model.parameters(), config.optim.grad_clip
-                        )
+                            model.parameters(), config.optim.grad_clip)
                     except Exception:
                         pass
                     optimizer.step()
                     if self.config.model.ema:
                         ema_helper.update(model)
+                    # TODO: check the possibility of joint training!
                     # optimize non-linear guidance model
                     if config.diffusion.nonlinear_guidance.joint_train:
                         self.cond_pred_model.train()
-                        aux_loss = self.nonlinear_guidance_model_train_step(x_batch, y_batch, aux_optimizer)
-                        if step % self.config.training.logging_freq == 0 or step == 1:
-                            logging.info(
-                                f"meanwhile, non-linear guidance model joint-training loss: {aux_loss}"
-                            )
+                        aux_loss = \
+                            self.nonlinear_guidance_model_train_step(
+                                x_batch, y_batch, aux_optimizer)
+                        if (step % self.config.training.logging_freq == 0 or
+                            step == 1):
+                            logging.info(f"meanwhile, non-linear guidance model\
+                                         joint-training loss: {aux_loss}")
 
                     # save diffusion model
-                    if step % self.config.training.snapshot_freq == 0 or step == 1:
+                    if (step % self.config.training.snapshot_freq == 0 or
+                        step == 1):
                         states = [
                             model.state_dict(),
                             optimizer.state_dict(),
@@ -567,19 +585,24 @@ class Diffusion(object):
                         ]
                         if self.config.model.ema:
                             states.append(ema_helper.state_dict())
-
                         if step > 1:  # skip saving the initial ckpt
                             torch.save(
                                 states,
-                                os.path.join(self.args.log_path, "ckpt_{}.pth".format(step)),
+                                os.path.join(self.args.log_path,
+                                             'ckpt_{}.pth'.format(step)),
                             )
-                        torch.save(states, os.path.join(self.args.log_path, "ckpt.pth"))
+                        torch.save(states, os.path.join(self.args.log_path,
+                                                        'ckpt.pth'))
 
                         # save auxiliary model
-                        if hasattr(config.diffusion.nonlinear_guidance, "joint_train"):
+                        if hasattr(config.diffusion.nonlinear_guidance,
+                                   'joint_train'):
                             if config.diffusion.nonlinear_guidance.joint_train:
                                 # TODO: add other implementations in assert!
-                                assert config.diffusion.conditioning_signal == "DALSTM"
+                                # in the original implementation was NN!
+                                # So wee need it separately for PGTNet, PT, ....
+                                assert config.diffusion.conditioning_signal ==\
+                                    'DALSTM'
                                 aux_states = [
                                     self.cond_pred_model.state_dict(),
                                     aux_optimizer.state_dict(),
@@ -587,46 +610,69 @@ class Diffusion(object):
                                 if step > 1:  # skip saving the initial ckpt
                                     torch.save(
                                         aux_states,
-                                        os.path.join(self.args.log_path, "aux_ckpt_{}.pth".format(step)),
+                                        os.path.join(self.args.log_path,
+                                                     'aux_ckpt_{}.pth'.format(step)),
                                     )
-                                torch.save(aux_states, os.path.join(self.args.log_path, "aux_ckpt.pth"))
-
-                    if step % self.config.training.validation_freq == 0 or step == 1:
-                        # plot prediction and ground truth
+                                torch.save(
+                                    aux_states, os.path.join(
+                                        self.args.log_path, "aux_ckpt.pth"))
+                    if (step % self.config.training.validation_freq == 0 or
+                        step == 1):
+                        # plot Prediction and ground truth
                         with torch.no_grad():
-                            if config.data.dataset == "ppm":
-                                y_p_seq = p_sample_loop(model, x_batch, y_batch, y_T_mean, self.num_timesteps,
-                                                            self.alphas, self.one_minus_alphas_bar_sqrt, squeeze=True)
+                            if config.diffusion.conditioning_signal == "DALSTM":
+                                #TODO: check if possible move squeeze operations to the model!
+                                # Need for squeeze!
+                                y_p_seq = p_sample_loop(
+                                    model, x_batch, y_batch, y_T_mean,
+                                    self.num_timesteps, self.alphas,
+                                    self.one_minus_alphas_bar_sqrt,
+                                    squeeze=True)
                             else:
-                                y_p_seq = p_sample_loop(model, x_batch, y_batch, y_T_mean, self.num_timesteps,
-                                                            self.alphas, self.one_minus_alphas_bar_sqrt)                                    
-                            fig, axs = plt.subplots(1, (self.num_figs + 1),
-                                                        figsize=((self.num_figs + 1) * 8.5, 8.5), clear=True)
+                                y_p_seq = p_sample_loop(
+                                    model, x_batch, y_batch, y_T_mean,
+                                    self.num_timesteps, self.alphas,
+                                    self.one_minus_alphas_bar_sqrt)                                    
+                            fig, axs = plt.subplots(
+                                1, (self.num_figs + 1), figsize=(
+                                    (self.num_figs + 1) * 8.5, 8.5),
+                                clear=True)
                             # plot at timestep 1
                             cur_t = 1
-                            cur_y, y_i = self.obtain_true_and_pred_y_t(cur_t, y_p_seq, y_T_mean, y_batch)
-                            self.make_subplot_at_timestep_t(cur_t, cur_y, y_i, y_batch, axs, 0,
-                                                                testing=False, mean_targ=self.mean_target_value,
-                                                                std_targ=self.std_target_value)                                
+                            cur_y, y_i = self.obtain_true_and_pred_y_t(
+                                cur_t, y_p_seq, y_T_mean, y_batch)
+                            self.make_subplot_at_timestep_t(
+                                cur_t, cur_y, y_i, y_batch, axs, 0,
+                                testing=False,
+                                max_targ=self.max_target_value) 
                             # plot at vis_step interval
                             for j in range(1, self.num_figs):
                                 cur_t = j * self.vis_step
-                                cur_y, y_i = self.obtain_true_and_pred_y_t(cur_t, y_p_seq, y_T_mean, y_batch)
-                                self.make_subplot_at_timestep_t(cur_t, cur_y, y_i, y_batch, axs, j,
-                                                                    testing=False, mean_targ=self.mean_target_value,
-                                                                    std_targ=self.std_target_value)
+                                cur_y, y_i = self.obtain_true_and_pred_y_t(
+                                    cur_t, y_p_seq, y_T_mean, y_batch)
+                                self.make_subplot_at_timestep_t(
+                                    cur_t, cur_y, y_i, y_batch, axs, j,
+                                    testing=False,
+                                    max_targ=self.max_target_value)
                             # plot at timestep T
                             cur_t = self.num_timesteps
-                            cur_y, y_i = self.obtain_true_and_pred_y_t(cur_t, y_p_seq, y_T_mean, y_batch)
-                            self.make_subplot_at_timestep_t(cur_t, cur_y, y_i, y_batch, axs, self.num_figs,
-                                                                prior=True, testing=False, mean_targ=self.mean_target_value,
-                                                                std_targ=self.std_target_value)
-                            ax_list = [axs[j] for j in range(self.num_figs + 1)]
-                            ax_list[0].get_shared_x_axes().join(ax_list[0], *ax_list)
-                            ax_list[0].get_shared_y_axes().join(ax_list[0], *ax_list)
+                            cur_y, y_i = self.obtain_true_and_pred_y_t(
+                                cur_t, y_p_seq, y_T_mean, y_batch)
+                            self.make_subplot_at_timestep_t(
+                                cur_t, cur_y, y_i, y_batch, axs, self.num_figs,
+                                prior=True, testing=False,
+                                max_targ=self.max_target_value)
+                            ax_list = [axs[j] 
+                                       for j in range(self.num_figs + 1)]
+                            ax_list[0].get_shared_x_axes().join(
+                                ax_list[0], *ax_list)
+                            ax_list[0].get_shared_y_axes().join(
+                                ax_list[0], *ax_list)
                             tb_logger.add_figure('samples', fig, step)
                             fig.savefig(
-                                    os.path.join(args.im_path, 'samples_T{}_{}.png'.format(self.num_timesteps, step)))
+                                    os.path.join(args.im_path,
+                                                 'samples_T{}_{}.png'.format(
+                                                     self.num_timesteps, step)))
                         plt.close('all')
                     data_start = time.time()
             plt.close('all')
@@ -639,20 +685,32 @@ class Diffusion(object):
             ]
             if self.config.model.ema:
                 states.append(ema_helper.state_dict())
-            torch.save(states, os.path.join(self.args.log_path, "ckpt.pth"))
+            torch.save(states, os.path.join(self.args.log_path, 'ckpt.pth'))
             # save auxiliary model after training is finished
             aux_states = [
                     self.cond_pred_model.state_dict(),
                     aux_optimizer.state_dict(),
                     ]
-            torch.save(aux_states, os.path.join(self.args.log_path, "aux_ckpt.pth"))
+            torch.save(aux_states, os.path.join(self.args.log_path, 'aux_ckpt.pth'))
             # report training set MAE/RMSE if applied joint training
             if config.diffusion.nonlinear_guidance.joint_train:
-                y_mae_aux_model = self.evaluate_guidance_model(dataset_object,
-                                                               train_loader,
-                                                               eval_mode="no_inverse_norm")
-                logging.info("After joint-training, non-linear guidance model unnormalized y MAE is {:.8f}.".format(
-                                y_mae_aux_model))                    
+                # check for the option of L1/L2 loss
+                if self.args.loss_guidance == 'L2':
+                    y_rmse_aux_model = self.evaluate_guidance_model(
+                        dataset_object, train_loader, 
+                        eval_mode="no_inverse_norm")
+                    logging.info(
+                        "After joint-training, non-linear guidance model \
+                            unnormalized y RMSE is {:.8f}.".format(
+                            y_rmse_aux_model))
+                else:
+                    y_mae_aux_model = self.evaluate_guidance_model(
+                        dataset_object, train_loader, 
+                        eval_mode="no_inverse_norm") 
+                    logging.info("After joint-training, non-linear guidance \
+                                 model unnormalized y MAE is {:.8f}.".format(
+                                 y_mae_aux_model))   
+                                     
                     
 
     def test(self):
@@ -660,10 +718,12 @@ class Diffusion(object):
         Evaluate model on regression tasks on test set.
         """
         kfold_handler = self.kfold_handler
-        #####################################################################################################
-        ########################## local functions within the class function scope ##########################
-        # TODO: in future we do not need SE at all
-        def compute_prediction_SE_AE(config, dataset_object, y_batch, generated_y, return_pred_mean=False):
+        
+        ######################################################################
+        #### local functions within the class function scope #################
+        ######################################################################
+        def compute_Prediction_SE_AE(config, dataset_object, y_batch,
+                                     generated_y, return_pred_mean=False):
             # generated_y: has a shape of (current_batch_size, n_z_samples, dim_y)
             #TODO: check functionality of trimmed_mean_range
             # if it is always constant remove it from config file
@@ -671,46 +731,52 @@ class Diffusion(object):
             y_true = y_batch.cpu().detach().numpy()
             y_pred_mean = None  # to be used to compute MAE/RMSE
             if low == 50 and high == 50:
-                y_pred_mean = np.median(generated_y, axis=1)  # use median of samples as the mean prediction
-            else:  # compute trimmed mean (i.e. discarding certain parts of the samples at both ends)
+                # use median of samples as the mean Prediction
+                y_pred_mean = np.median(generated_y, axis=1) 
+            else: 
+                """
+                Compute trimmed mean
+                i.e., discarding certain parts of the samples at both ends
+                """
                 generated_y.sort(axis=1)
                 low_idx = int(low / 100 * config.testing.n_z_samples)
                 high_idx = int(high / 100 * config.testing.n_z_samples)
                 y_pred_mean = (generated_y[:, low_idx:high_idx]).mean(axis=1)
-            if config.data.dataset == "uci" and dataset_object.normalize_y:
-                y_true = dataset_object.scaler_y.inverse_transform(y_true).astype(np.float32)
-                y_pred_mean = dataset_object.scaler_y.inverse_transform(y_pred_mean).astype(np.float32)
-            if config.data.dataset == "ppm" and config.model.target_norm:
-                mean_target_value = dataset_object.return_mean_target_arrtibute()
-                std_target_value = dataset_object.return_std_target_arrtibute()
-                y_true = std_target_value * y_true + mean_target_value
-                y_pred_mean = std_target_value * y_pred_mean + mean_target_value                
+            if config.model.target_norm:
+                max_target_value = dataset_object.return_max_target_arrtibute()
+                y_true = max_target_value * y_true
+                y_pred_mean = max_target_value * y_pred_mean       
             if return_pred_mean:
                 return y_pred_mean
             else:
-                if config.data.dataset == "uci":
+                if self.args.loss_guidance == 'L2':
                     y_se = (y_pred_mean - y_true) ** 2
                     return y_se
-                elif config.data.dataset == "ppm":
+                else:
                     y_ae = abs(y_pred_mean - y_true)
                     return y_ae
 
-        def compute_true_coverage_by_gen_QI(config, dataset_object, all_true_y, all_generated_y, verbose=True):
+        def compute_true_coverage_by_gen_QI(config, dataset_object,
+                                            all_true_y, all_generated_y,
+                                            verbose=True):
             n_bins = config.testing.n_bins
             quantile_list = np.arange(n_bins + 1) * (100 / n_bins)
             # compute generated y quantiles
-            y_pred_quantiles = np.percentile(all_generated_y.squeeze(), q=quantile_list, axis=1)
+            y_pred_quantiles = np.percentile(all_generated_y.squeeze(),
+                                             q=quantile_list, axis=1)
             y_true = all_true_y.T
-            quantile_membership_array = ((y_true - y_pred_quantiles) > 0).astype(int)
+            quantile_membership_array = (
+                (y_true - y_pred_quantiles) > 0).astype(int)
             y_true_quantile_membership = quantile_membership_array.sum(axis=0)
-            # y_true_quantile_bin_count = np.bincount(y_true_quantile_membership)
             y_true_quantile_bin_count = np.array(
-                [(y_true_quantile_membership == v).sum() for v in np.arange(n_bins + 2)])
+                [(y_true_quantile_membership == v).sum() 
+                 for v in np.arange(n_bins + 2)])
             if verbose:
                 y_true_below_0, y_true_above_100 = y_true_quantile_bin_count[0], \
                                                    y_true_quantile_bin_count[-1]
                 logging.info(("We have {} true y smaller than min of generated y, " + \
-                              "and {} greater than max of generated y.").format(y_true_below_0, y_true_above_100))
+                              "and {} greater than max of generated y."
+                              ).format(y_true_below_0, y_true_above_100))
             # combine true y falls outside of 0-100 gen y quantile to the first and last interval
             y_true_quantile_bin_count[1] += y_true_quantile_bin_count[0]
             y_true_quantile_bin_count[-2] += y_true_quantile_bin_count[-1]
@@ -718,8 +784,10 @@ class Diffusion(object):
             # compute true y coverage ratio for each gen y quantile interval
             y_true_ratio_by_bin = y_true_quantile_bin_count_ / dataset_object.test_n_samples
             assert np.abs(
-                np.sum(y_true_ratio_by_bin) - 1) < 1e-10, "Sum of quantile coverage ratios shall be 1!"
-            qice_coverage_ratio = np.absolute(np.ones(n_bins) / n_bins - y_true_ratio_by_bin).mean()
+                np.sum(y_true_ratio_by_bin) - 1) < 1e-10, "Sum of quantile\
+                coverage ratios shall be 1!"
+            qice_coverage_ratio = np.absolute(
+                np.ones(n_bins) / n_bins - y_true_ratio_by_bin).mean()
             return y_true_ratio_by_bin, qice_coverage_ratio, y_true
 
         def compute_PICP(config, y_true, all_gen_y, return_CI=False):
@@ -727,7 +795,8 @@ class Diffusion(object):
             Another coverage metric.
             """
             low, high = config.testing.PICP_range
-            CI_y_pred = np.percentile(all_gen_y.squeeze(), q=[low, high], axis=1)
+            CI_y_pred = np.percentile(all_gen_y.squeeze(), 
+                                      q=[low, high], axis=1)
             # compute percentage of true y in the range of credible interval
             y_in_range = (y_true >= CI_y_pred[0]) & (y_true <= CI_y_pred[1])
             coverage = y_in_range.mean()
@@ -738,66 +807,80 @@ class Diffusion(object):
 
         def store_gen_y_at_step_t(config, current_batch_size, idx, y_tile_seq):
             """
-            Store generated y from a mini-batch to the array of corresponding time step.
+            Store generated y from a mini-batch to 
+            the array of corresponding time step.
             """
             current_t = self.num_timesteps - idx
-            #TODO: remove the condition as it always do the same! also remove the following commented
-            if config.data.dataset == "uci" or config.data.dataset == "ppm":
-                gen_y = y_tile_seq[idx].reshape(current_batch_size,
-                                                config.testing.n_z_samples,
-                                                config.model.y_dim).cpu().numpy()
+            #TODO: check wheteher it is the same for other models: PGTNet, PT,...
+            gen_y = y_tile_seq[idx].reshape(current_batch_size,
+                                            config.testing.n_z_samples,
+                                            config.model.y_dim).cpu().numpy()
             """
-            elif config.data.dataset == "ppm":
-                gen_y = y_tile_seq[idx].reshape(current_batch_size,
-                                                config.testing.n_z_samples).cpu().numpy()
+            directly modify the dict value by concat np.array instead of append
+            np.array gen_y to list reduces a huge amount of memory consumption
             """
-            # directly modify the dict value by concat np.array instead of append np.array gen_y to list
-            # reduces a huge amount of memory consumption
             if len(gen_y_by_batch_list[current_t]) == 0:
                 gen_y_by_batch_list[current_t] = gen_y
             else:
-                gen_y_by_batch_list[current_t] = np.concatenate([gen_y_by_batch_list[current_t], gen_y], axis=0)
+                gen_y_by_batch_list[current_t] = np.concatenate(
+                    [gen_y_by_batch_list[current_t], gen_y], axis=0)
             return gen_y
 
         def store_y_se_at_step_t(config, idx, dataset_object, y_batch, gen_y):
-            current_t = self.num_timesteps - idx
             
-            if config.data.dataset == "uci":  
+            current_t = self.num_timesteps - idx
+            if self.args.loss_guidance == 'L2':            
                 # compute sqaured error in each batch
-                y_se = compute_prediction_SE_AE(config=config, dataset_object=dataset_object,
-                                                y_batch=y_batch, generated_y=gen_y)
+                y_se = compute_Prediction_SE_AE(
+                    config=config, dataset_object=dataset_object, 
+                    y_batch=y_batch, generated_y=gen_y)
                 if len(y_se_by_batch_list[current_t]) == 0:
                     y_se_by_batch_list[current_t] = y_se
+                # TODO: resolve the problem without padding if it is possible!
                 else:
-                    y_se_by_batch_list[current_t] = np.concatenate([y_se_by_batch_list[current_t], y_se], axis=0)
-            
-            elif config.data.dataset == "ppm":
+                    try:
+                        y_se_by_batch_list[current_t] = np.concatenate(
+                            [y_se_by_batch_list[current_t], y_se], axis=0)
+                    except:
+                        # handle exception for the last minibatch by padding
+                        pad_value = int(
+                            config.testing.batch_size - y_se.shape[1])
+                        y_se_resized = np.pad(y_se, ((0, 0), (0, pad_value)))
+                        y_se_by_batch_list[current_t] = np.concatenate(
+                            [y_se_by_batch_list[current_t], y_se_resized], axis=0)
+                        
+            else:
                 # compute absolute error in each batch
-                y_ae = compute_prediction_SE_AE(config=config, dataset_object=dataset_object,
-                                                y_batch=y_batch, generated_y=gen_y)
+                y_ae = compute_Prediction_SE_AE(
+                    config=config, dataset_object=dataset_object,
+                    y_batch=y_batch, generated_y=gen_y)
                 if len(y_ae_by_batch_list[current_t]) == 0:
                     y_ae_by_batch_list[current_t] = y_ae
                 # TODO: resolve the problem without padding if it is possible!
                 else:
                     try:
-                        y_ae_by_batch_list[current_t] = np.concatenate([y_ae_by_batch_list[current_t], y_ae], axis=0) 
+                        y_ae_by_batch_list[current_t] = np.concatenate(
+                            [y_ae_by_batch_list[current_t], y_ae], axis=0) 
                     except:
                         # handle exception for the last minibatch by padding
-                        pad_value = int(config.testing.batch_size - y_ae.shape[1])
+                        pad_value = int(
+                            config.testing.batch_size - y_ae.shape[1])
                         y_ae_resized = np.pad(y_ae, ((0, 0), (0, pad_value)))                     
                         #print(np.shape(y_ae_by_batch_list[current_t]))
                         #print(np.shape(y_se))
-                        y_ae_by_batch_list[current_t] = np.concatenate([y_ae_by_batch_list[current_t], y_ae_resized], axis=0)
-        # TODO: the following condition does nor work for ppm: should be adjusted
-        def set_NLL_global_precision(test_var=True, mean_targ=None, std_targ=None):
+                        y_ae_by_batch_list[current_t] = np.concatenate(
+                            [y_ae_by_batch_list[current_t], y_ae_resized], axis=0)
+        
+        # TODO: the following condition does not work for ppm datasets: should be adjusted
+        def set_NLL_global_precision(test_var=True, max_targ=None):
             if test_var:
                 # compute test set sample variance
-                if self.config.data.dataset == "uci" and dataset_object.normalize_y:
-                    y_test_unnorm = dataset_object.scaler_y.inverse_transform(dataset_object.y_test).astype(np.float32)
-                elif self.config.data.dataset == "ppm" and self.config.model.target_norm:
-                    y_test_unnorm = std_targ * y_test_unnorm + mean_targ
+                if self.config.model.target_norm:
+                    #TODO: it there is some error: try removinf astype
+                    y_test_unnorm = (max_targ * dataset_object.y_test).astype(
+                        np.float32)
                 else:
-                    y_test_unnorm = dataset_object.y_test
+                    y_test_unnorm = dataset_object.y_test.astype(np.float32)
                 y_test_unnorm = y_test_unnorm if type(y_test_unnorm) is torch.Tensor \
                     else torch.from_numpy(y_test_unnorm)
                 self.tau = 1 / (y_test_unnorm.var(unbiased=True).item())
@@ -806,35 +889,29 @@ class Diffusion(object):
 
         def compute_batch_NLL(config, dataset_object, y_batch, generated_y):
             """
-            generated_y: has a shape of (current_batch_size, n_z_samples, dim_y)
-
+            generated_y: has a shape of:
+                (current_batch_size, n_z_samples, dim_y)
             NLL computation implementation from MC dropout repo
-                https://github.com/yaringal/DropoutUncertaintyExps/blob/master/net/net.py,
-                directly from MC Dropout paper Eq. (8).
+            https://github.com/yaringal/DropoutUncertaintyExps/blob/master/net/net.py,
+            directly from MC Dropout paper Eq. (8).
             """
             #print(generated_y.shape)
             y_true = y_batch.cpu().detach().numpy()
-            batch_size = generated_y.shape[0]            
-            if config.data.dataset == "uci" and dataset_object.normalize_y:
+            #batch_size = generated_y.shape[0]  
+            if config.model.target_norm:
+                max_target_value = dataset_object.return_max_target_arrtibute()
                 # unnormalize true y
-                y_true = dataset_object.scaler_y.inverse_transform(y_true).astype(np.float32)
-                # unnormalize generated y                
-                generated_y = generated_y.reshape(batch_size * config.testing.n_z_samples, config.model.y_dim)
-                generated_y = dataset_object.scaler_y.inverse_transform(generated_y).astype(np.float32).reshape(
-                    batch_size, config.testing.n_z_samples, config.model.y_dim)
-            if config.data.dataset == "ppm" and config.model.target_norm:
-                mean_target_value = dataset_object.return_mean_target_arrtibute()
-                std_target_value = dataset_object.return_std_target_arrtibute()
-                # unnormalize true y
-                y_true = (std_target_value * y_true + mean_target_value).astype(np.float32)
+                y_true = (max_target_value * y_true).astype(np.float32)
                 # unnormalize generated y
-                generated_y = (std_target_value * generated_y + mean_target_value)          
+                generated_y = (max_target_value * generated_y)    
+                  
             generated_y = generated_y.swapaxes(0, 1)
             # obtain precision value and compute test batch NLL
             if self.tau is not None:
                 tau = self.tau
             else:
-                gen_y_var = torch.from_numpy(generated_y).var(dim=0, unbiased=True).numpy()
+                gen_y_var = torch.from_numpy(
+                    generated_y).var(dim=0, unbiased=True).numpy()
                 tau = 1 / gen_y_var
             nll = -(logsumexp(-0.5 * tau * (y_true[None] - generated_y) ** 2., 0)
                     - np.log(config.testing.n_z_samples)
@@ -844,27 +921,32 @@ class Diffusion(object):
         def store_nll_at_step_t(config, idx, dataset_object, y_batch, gen_y):
             current_t = self.num_timesteps - idx
             # compute negative log-likelihood in each batch
-            nll = compute_batch_NLL(config=config, dataset_object=dataset_object,
+            nll = compute_batch_NLL(config=config,
+                                    dataset_object=dataset_object,
                                     y_batch=y_batch, generated_y=gen_y)
             if len(nll_by_batch_list[current_t]) == 0:
                 nll_by_batch_list[current_t] = nll
             else:
                 try:
-                    nll_by_batch_list[current_t] = np.concatenate([nll_by_batch_list[current_t], nll], axis=0)
+                    nll_by_batch_list[current_t] = np.concatenate(
+                        [nll_by_batch_list[current_t], nll], axis=0)
                 except:
+                    # TODO: check the root cause and if possible handle without padding
                     # handle exception for the last minibatch by padding
                     pad_value = int(config.testing.batch_size - nll.shape[1])
                     nll_resized = np.pad(nll, ((0, 0), (0, pad_value)))    
-                    nll_by_batch_list[current_t] = np.concatenate([nll_by_batch_list[current_t], nll_resized], axis=0)
+                    nll_by_batch_list[current_t] = np.concatenate(
+                        [nll_by_batch_list[current_t], nll_resized], axis=0)
 
-        #####################################################################################################
-        #####################################################################################################
+        ######################################################################
+        ######################################################################
 
         args = self.args
         config = self.config
         split = args.split
         log_path = os.path.join(self.args.log_path)
-        dataset_object, dataset = get_dataset(args, config, test_set=True, kfold_handler=kfold_handler)
+        dataset_object, dataset = get_dataset(args, config, test_set=True,
+                                              kfold_handler=kfold_handler)
         test_loader = data.DataLoader(
             dataset,
             batch_size=config.testing.batch_size,
@@ -872,21 +954,23 @@ class Diffusion(object):
         )
         self.dataset_object = dataset_object
         self.mean_target_value = dataset_object.return_mean_target_arrtibute()
-        self.std_target_value = dataset_object.return_std_target_arrtibute()
+        self.max_target_value = dataset_object.return_max_target_arrtibute()
         # set global prevision value for NLL computation if needed
         if args.nll_global_var:
-            set_NLL_global_precision(test_var=args.nll_test_var, mean_targ=self.mean_target_value, std_targ=self.std_target_value)
+            set_NLL_global_precision(test_var=args.nll_test_var,
+                                     max_targ=self.max_target_value)
 
         model = ConditionalGuidedModel(self.config)
-        if getattr(self.config.testing, "ckpt_id", None) is None:
-            states = torch.load(os.path.join(log_path, "ckpt.pth"),
+        if getattr(self.config.testing, 'ckpt_id', None) is None:
+            states = torch.load(os.path.join(log_path, 'ckpt.pth'),
                                 map_location=self.device)
             ckpt_id = 'last'
         else:
-            states = torch.load(os.path.join(log_path, f"ckpt_{self.config.testing.ckpt_id}.pth"),
-                                map_location=self.device)
+            states = torch.load(
+                os.path.join(log_path, f'ckpt_{self.config.testing.ckpt_id}.pth'),
+                map_location=self.device)
             ckpt_id = self.config.testing.ckpt_id
-        logging.info(f"Loading from: {log_path}/ckpt_{ckpt_id}.pth")
+        logging.info(f'Loading from: {log_path}/ckpt_{ckpt_id}.pth')
         model = model.to(self.device)
         model.load_state_dict(states[0], strict=True)
 
@@ -901,79 +985,99 @@ class Diffusion(object):
         model.eval()
 
         # load auxiliary model
-        aux_states = torch.load(os.path.join(log_path, "aux_ckpt.pth"),
+        aux_states = torch.load(os.path.join(log_path, 'aux_ckpt.pth'),
                                     map_location=self.device)
         self.cond_pred_model.load_state_dict(aux_states[0], strict=True)
         self.cond_pred_model.eval()
-        # report test set MAE with guidance model
-        y_mae_aux_model = self.evaluate_guidance_model(dataset_object,
-                                                       test_loader,
-                                                       eval_mode="inverse_norm")
-        logging.info("Test set unnormalized y MAE on trained {} guidance model is {:.8f}.".format(
-                config.diffusion.conditioning_signal, y_mae_aux_model))        
-
-        #####################################################################################################
-        # sanity check
-        logging.info("Sanity check of the checkpoint")
-        if config.data.dataset == "uci" or config.data.dataset == "ppm":
-            dataset_check = dataset_object.return_dataset(split="train")
+        
+        # report test set MAE/RMSE with guidance model
+        if self.args.loss_guidance == 'L2':
+            y_rmse_aux_model = self.evaluate_guidance_model(
+                dataset_object, test_loader, eval_mode='inverse_norm')
+            logging.info('Test set unnormalized y RMSE on trained {}  \
+                         guidance model is {:.8f}.'.format(
+                         config.diffusion.conditioning_signal, y_rmse_aux_model)) 
         else:
-            dataset_check = dataset_object.train_dataset
-        dataset_check = dataset_check[:50]  # use the first 50 samples for sanity check
-        if config.data.dataset == "uci":            
-            x_check, y_check = dataset_check[:, :-config.model.y_dim], dataset_check[:, -config.model.y_dim:]
-        elif config.data.dataset == "ppm":
-            x_check = dataset_check[0]
-            y_check = dataset_check[1]
+            y_mae_aux_model = self.evaluate_guidance_model(
+                dataset_object, test_loader, eval_mode="inverse_norm")
+            logging.info("Test set unnormalized y MAE on trained {} \
+                         guidance model is {:.8f}.".format(
+                         config.diffusion.conditioning_signal, y_mae_aux_model))        
+
+        ######################################################################
+        # sanity check
+        ######################################################################
+        logging.info("Sanity check of the checkpoint")
+        dataset_check = dataset_object.return_dataset(split="train")
+        # use the first 50 samples for sanity check
+        dataset_check = dataset_check[:50] 
+        #TODO: check whether the followings also work for PGTNet, PT, ...
+        x_check = dataset_check[0]
+        y_check = dataset_check[1]
         y_check = y_check.to(self.device)
-        y_0_hat_check = self.compute_guiding_prediction(x_check.to(self.device))
-        y_T_mean_check = y_0_hat_check
+        y_0_hat_check = self.compute_guiding_Prediction(x_check.to(self.device))
+        y_T_mean_check = y_0_hat_check        
+        
         if config.diffusion.noise_prior:
-            assert config.model.target_norm
-            if config.diffusion.noise_prior_approach == "mean":
+            if config.diffusion.noise_prior_approach == 'zero':
                 # apply 0 instead of f_phi(x) as prior mean
                 y_T_mean_check = torch.zeros(y_check.shape[0]).to(self.device)
+            elif config.diffusion.noise_prior_approach == 'mean':
+                # apply mean instead of f_phi(x) as prior mean
+                mean_target_value = dataset_object.return_mean_target_arrtibute()
+                max_target_value = dataset_object.return_max_target_arrtibute()
+                normalized_mean_target_value = (
+                    mean_target_value/max_target_value)
+                y_T_mean_check = torch.full(
+                    (y_check.shape[0]), normalized_mean_target_value).to(
+                        self.device)            
             elif config.diffusion.noise_prior_approach == "median":
                 # apply median instead of f_phi(x) as prior mean
                 median_target_value = dataset_object.return_median_target_arrtibute()                
-                mean_target_value = dataset_object.return_mean_target_arrtibute()
-                std_target_value = dataset_object.return_std_target_arrtibute()
-                normalized_median_target_value = (median_target_value - mean_target_value)/std_target_value                          
+                max_target_value = dataset_object.return_max_target_arrtibute()
+                normalized_median_target_value = (
+                    median_target_value/max_target_value)                     
                 y_T_mean_check = torch.full(
                     (y_check.shape[0]), normalized_median_target_value).to(
-                        self.device)              
-                
+                        self.device)
+                        
         with torch.no_grad():
-            if config.data.dataset == "ppm":
-                y_p_seq = p_sample_loop(model, x_check.to(self.device), y_0_hat_check, y_T_mean_check,
-                                        self.num_timesteps, self.alphas, self.one_minus_alphas_bar_sqrt, squeeze=True)            
-            else:
-                y_p_seq = p_sample_loop(model, x_check.to(self.device), y_0_hat_check, y_T_mean_check,
-                                        self.num_timesteps, self.alphas, self.one_minus_alphas_bar_sqrt)            
+            # TODO: check whether the squeeze=True also works for PGTNET, PT, ..
+            y_p_seq = p_sample_loop(
+                model, x_check.to(self.device), y_0_hat_check, y_T_mean_check,
+                self.num_timesteps, self.alphas, self.one_minus_alphas_bar_sqrt,
+                squeeze=True)                       
             fig, axs = plt.subplots(1, (self.num_figs + 1),
-                                    figsize=((self.num_figs + 1) * 8.5, 8.5), clear=True)
+                                    figsize=((self.num_figs + 1) * 8.5, 8.5),
+                                    clear=True)
             # plot at timestep 1
             cur_t = 1
-            cur_y, y_i = self.obtain_true_and_pred_y_t(cur_t, y_p_seq, y_T_mean_check, y_check)
-            self.make_subplot_at_timestep_t(cur_t, cur_y, y_i, y_check, axs, 0,
-                                            testing=False, mean_targ=self.mean_target_value,
-                                            std_targ=self.std_target_value)
+            cur_y, y_i = self.obtain_true_and_pred_y_t(
+                cur_t, y_p_seq, y_T_mean_check, y_check)
+            self.make_subplot_at_timestep_t(
+                cur_t, cur_y, y_i, y_check, axs, 0, testing=False,
+                mean_targ=self.mean_target_value, 
+                std_targ=self.std_target_value)
             # plot at vis_step interval
             for i in range(1, self.num_figs):
                 cur_t = i * self.vis_step
-                cur_y, y_i = self.obtain_true_and_pred_y_t(cur_t, y_p_seq, y_T_mean_check, y_check)
-                self.make_subplot_at_timestep_t(cur_t, cur_y, y_i, y_check, axs, i,
-                                                testing=False, mean_targ=self.mean_target_value,
-                                                std_targ=self.std_target_value)
+                cur_y, y_i = self.obtain_true_and_pred_y_t(
+                    cur_t, y_p_seq, y_T_mean_check, y_check)
+                self.make_subplot_at_timestep_t(
+                    cur_t, cur_y, y_i, y_check, axs, i, testing=False,
+                    mean_targ=self.mean_target_value,
+                    std_targ=self.std_target_value)
             # plot at timestep T
             cur_t = self.num_timesteps
-            cur_y, y_i = self.obtain_true_and_pred_y_t(cur_t, y_p_seq, y_T_mean_check, y_check)
-            self.make_subplot_at_timestep_t(cur_t, cur_y, y_i, y_check, axs, self.num_figs,
-                                            prior=True, testing=False, mean_targ=self.mean_target_value,
-                                            std_targ=self.std_target_value)
+            cur_y, y_i = self.obtain_true_and_pred_y_t(
+                cur_t, y_p_seq, y_T_mean_check, y_check)
+            self.make_subplot_at_timestep_t(
+                cur_t, cur_y, y_i, y_check, axs, self.num_figs, 
+                prior=True, testing=False, mean_targ=self.mean_target_value,
+                std_targ=self.std_target_value)
             fig.savefig(os.path.join(args.im_path, 'sanity_check.pdf'))
             plt.close('all')
-       ############################################################################################# 
+       ####################################################################### 
 
         if config.testing.compute_metric_all_steps:
             logging.info("\nWe compute MAE, QICE, PICP and NLL for all steps.\n")
@@ -982,29 +1086,36 @@ class Diffusion(object):
             coverage_idx = self.num_timesteps - config.testing.coverage_t
             nll_idx = self.num_timesteps - config.testing.nll_t
             logging.info(("\nWe pick t={} to compute y mean metric MAE, " + 
-                              "and t={} to compute true y coverage metric QICE and PICP.\n").format(
-                                  config.testing.mean_t, config.testing.coverage_t))
+                              "and t={} to compute true y coverage metric\
+                                  QICE and PICP.\n").format(
+                                  config.testing.mean_t,
+                                  config.testing.coverage_t))
         
         # define an empty dictionary to collect instance level information
-        instance_results = {'MeanPredicted_RemainingTime': [],
-                            'StdPredicted_RemainingTime': [],
-                            'GroundTruth_RemainingTime': [],
-                            'Deterministic_RemainingTime':[],
-                            'Prefix_length':[]} 
-                         
+        instance_results = {'GroundTruth': [],
+                            'Deterministic_Prediction':[],
+                            'Prediction': [],
+                            'Total_Uncertainty': [], 
+                            'Prefix_length':[],
+                            'Absolute_error': []}   
+                       
         with torch.no_grad():
-            true_x_by_batch_list = []
+            #true_x_by_batch_list = []
             true_x_tile_by_batch_list = []
             true_y_by_batch_list = []
             gen_y_by_batch_list = [[] for _ in range(self.num_timesteps + 1)]
             y_ae_by_batch_list = [[] for _ in range(self.num_timesteps + 1)]
             nll_by_batch_list = [[] for _ in range(self.num_timesteps + 1)]
             
-            test_length_list = dataset_object.return_prefix_lengths() # get all prefix lengths in test set.
-            mean_target_value = dataset_object.return_mean_target_arrtibute() # get mean of remaining time in training set
-            std_target_value = dataset_object.return_std_target_arrtibute() # get std of remaining time in training set
-            median_target_value = dataset_object.return_median_target_arrtibute() # get median of remaining time in training set 
-            normalized_median_target_value = (median_target_value-mean_target_value)/std_target_value            
+            # get all prefix lengths in test set.
+            test_length_list = dataset_object.return_prefix_lengths() 
+            # get mean of remaining time in training set
+            mean_target_value = dataset_object.return_mean_target_arrtibute()
+            # get max of remaining time in training set
+            max_target_value = dataset_object.return_max_target_arrtibute()
+            # get median of remaining time in training set 
+            median_target_value = dataset_object.return_median_target_arrtibute() 
+            normalized_median_target_value = median_target_value/max_target_value            
             index_indicator = 0 # indicator to access relevant prefix lengths in each batch
 
             for step, xy_batch in enumerate(test_loader):
@@ -1019,8 +1130,8 @@ class Diffusion(object):
                     current_batch_size = xy_batch[0].shape[0]
                     x_batch = xy_batch[0].to(self.device)
                     y_batch = xy_batch[1].to(self.device)
-                # compute y_0_hat as the initial prediction to guide the reverse diffusion process
-                y_0_hat_batch = self.compute_guiding_prediction(x_batch)
+                # compute y_0_hat as the initial Prediction to guide the reverse diffusion process
+                y_0_hat_batch = self.compute_guiding_Prediction(x_batch)
                 true_y_by_batch_list.append(y_batch.cpu().numpy())  
                 
                 # obtain y samples through reverse diffusion -- some pytorch version might not have torch.tile
@@ -1084,17 +1195,17 @@ class Diffusion(object):
                     # for the last gen_y (i.e. t=0) save the result for instance-level analysis
                     y_batch_unnormalized = y_batch * std_target_value + mean_target_value 
                     groundtruth_values = y_batch_unnormalized.cpu().detach().numpy()
-                    instance_results['GroundTruth_RemainingTime'].extend(groundtruth_values)
+                    instance_results['GroundTruth'].extend(groundtruth_values)
                     y_0_hat_batch_unnormalized = y_0_hat_batch * std_target_value + mean_target_value 
-                    deterministic_predictions = y_0_hat_batch_unnormalized.cpu().detach().numpy()
-                    instance_results['Deterministic_RemainingTime'].extend(deterministic_predictions)
+                    deterministic_Predictions = y_0_hat_batch_unnormalized.cpu().detach().numpy()
+                    instance_results['Deterministic_Prediction'].extend(deterministic_Predictions)
                     gen_y_unnormalized = gen_y * std_target_value + mean_target_value 
-                    mean_predictions = np.mean(gen_y_unnormalized, axis=1)
-                    mean_predictions = np.squeeze(mean_predictions)
-                    instance_results['MeanPredicted_RemainingTime'].extend(mean_predictions)
-                    std_predictions = np.std(gen_y_unnormalized, axis=1)
-                    std_predictions = np.squeeze(std_predictions)
-                    instance_results['StdPredicted_RemainingTime'].extend(std_predictions)                   
+                    mean_Predictions = np.mean(gen_y_unnormalized, axis=1)
+                    mean_Predictions = np.squeeze(mean_Predictions)
+                    instance_results['Prediction'].extend(mean_Predictions)
+                    std_Predictions = np.std(gen_y_unnormalized, axis=1)
+                    std_Predictions = np.squeeze(std_Predictions)
+                    instance_results['Total_Uncertainty'].extend(std_Predictions)                   
                     relevant_prefix_length = test_length_list[index_indicator:int(current_batch_size)+index_indicator]                    
                     instance_results['Prefix_length'].extend(relevant_prefix_length)                                   
                     index_indicator += int(current_batch_size)                  
@@ -1140,13 +1251,13 @@ class Diffusion(object):
             
             # save an instance-level dataframe for further analysis
             instance_level_df = pd.DataFrame(instance_results)
-            instance_level_df[['MeanPredicted_RemainingTime','StdPredicted_RemainingTime','GroundTruth_RemainingTime',
-                               'Deterministic_RemainingTime']] = instance_level_df[['MeanPredicted_RemainingTime',
-                                                                                    'StdPredicted_RemainingTime',
-                                                                                    'GroundTruth_RemainingTime',
-                                                                                    'Deterministic_RemainingTime' ]].astype(float)
+            instance_level_df[['Prediction','Total_Uncertainty','GroundTruth',
+                               'Deterministic_Prediction']] = instance_level_df[['Prediction',
+                                                                                    'Total_Uncertainty',
+                                                                                    'GroundTruth',
+                                                                                    'Deterministic_Prediction' ]].astype(float)
             instance_level_df[['Prefix_length']] = instance_level_df[['Prefix_length']].astype(int)
-            instance_level_df.to_csv(os.path.join(self.args.log_path, "instance_level_predictions.csv"), index=False)   
+            instance_level_df.to_csv(os.path.join(self.args.log_path, "instance_level_Predictions.csv"), index=False)   
             
         ################## compute metrics on test set ##################
         all_true_y = np.concatenate(true_y_by_batch_list, axis=0)
