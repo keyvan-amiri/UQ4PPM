@@ -18,6 +18,7 @@ import torch
 import torch.nn as nn
 import torch.utils.data as data
 from scipy.special import logsumexp
+
 from models.dalstm import DALSTMModel
 from models.ConditionalGuidedModel import ConditionalGuidedModel
 from utils.diffusion_utils import make_beta_schedule, EMA, q_sample, p_sample_loop
@@ -192,39 +193,41 @@ class Diffusion(object):
         aux_optimizer.step()
         return aux_cost.cpu().item()
 
-    def nonlinear_guidance_model_train_loop_per_epoch(self, train_batch_loader, aux_optimizer, epoch):
+    def nonlinear_guidance_model_train_loop_per_epoch(self, train_batch_loader,
+                                                      aux_optimizer, epoch):
         if self.config.diffusion.conditioning_signal == "DALSTM":
             for batch in train_batch_loader:
                 x_batch = batch[0].to(self.device)
                 y_batch = batch[1].to(self.device)
-                aux_loss = self.nonlinear_guidance_model_train_step(x_batch, y_batch, aux_optimizer)
+                aux_loss = self.nonlinear_guidance_model_train_step(x_batch,
+                                                                    y_batch,
+                                                                    aux_optimizer)
         else:
             #TODO: implementation for ProcessTransformer and PGTNet
             print('Currently only DALSTM model is supported.')
             pass
         if epoch % self.config.diffusion.nonlinear_guidance.logging_interval == 0:
-            logging.info(f"epoch: {epoch}, non-linear guidance model pre-training loss: {aux_loss}")
+            logging.info(f"epoch: {epoch}, non-linear guidance model \
+                         pre-training loss: {aux_loss}")
 
     def obtain_true_and_pred_y_t(self, cur_t, y_seq, y_T_mean, y_0):
         y_t_p_sample = y_seq[self.num_timesteps - cur_t].detach().cpu()
         y_t_true = q_sample(y_0, y_T_mean,
-                            self.alphas_bar_sqrt, self.one_minus_alphas_bar_sqrt,
+                            self.alphas_bar_sqrt,
+                            self.one_minus_alphas_bar_sqrt,
                             torch.tensor([cur_t - 1])).detach().cpu()
         return y_t_p_sample, y_t_true
 
     #TODO: check why called unnorm, if it not necessary change the name
     def compute_unnorm_y(self, cur_y, testing, mean_targ, std_targ):
         if testing:
-            y_mean = cur_y.cpu().reshape(-1, self.config.testing.n_z_samples).mean(1).reshape(-1, 1)
+            y_mean = cur_y.cpu().reshape(-1,
+                                         self.config.testing.n_z_samples
+                                         ).mean(1).reshape(-1, 1)
         else:
             y_mean = cur_y.cpu()
-        # TODO: remove uci condition
-        if self.config.data.dataset == "uci":
-            if self.config.data.normalize_y:
-                y_t_unnorm = self.dataset_object.scaler_y.inverse_transform(y_mean)
-            else:
-                y_t_unnorm = y_mean
-        elif self.config.data.dataset == "ppm":
+        # TODO: change the following if normalization is conducted differently
+        if self.config.data.dataset == "ppm":
             if self.config.model.target_norm:
                 y_t_unnorm = y_mean * std_targ + mean_targ
             else:
@@ -232,23 +235,20 @@ class Diffusion(object):
         return y_t_unnorm
 
     #TODO: check the resultant plots, and if necessary adjust compute_unnorm_y. is it really unnorm?
-    def make_subplot_at_timestep_t(self, cur_t, cur_y, y_i, y_0, axs, ax_idx, prior=False, testing=True,
-                                   mean_targ=None, std_targ=None):
-        # kl = (y_i - cur_y).square().mean()
-        # kl_y0 = (y_0.cpu() - cur_y).square().mean()
+    def make_subplot_at_timestep_t(self, cur_t, cur_y, y_i, y_0, axs, ax_idx,
+                                   prior=False, testing=True, mean_targ=None,
+                                   std_targ=None):
         y_0_unnorm = self.compute_unnorm_y(y_0, testing, mean_targ, std_targ)
         y_t_unnorm = self.compute_unnorm_y(cur_y, testing, mean_targ, std_targ)
-        if self.config.data.dataset == "uci":
+        # option to work with RMSE or MAE:
+        if self.args.loss_guidance == 'L2':
             kl_unnorm = ((y_0_unnorm - y_t_unnorm) ** 2).mean() ** 0.5
             kl_unnorm_str = 'Unnormed RMSE: {:.2f}'.format(kl_unnorm)
-        elif self.config.data.dataset == "ppm":
+        else:
             kl_unnorm = (abs(y_0_unnorm - y_t_unnorm)).mean()
             kl_unnorm_str = 'Unnormed MAE: {:.2f}'.format(kl_unnorm)
         axs[ax_idx].plot(cur_y, '.', label='pred', c='tab:blue')
-        axs[ax_idx].plot(y_i, '.', label='true', c='tab:red')
-        # axs[ax_idx].set_xlabel(
-        #     'KL($q(y_t)||p(y_t)$)={:.2f}\nKL($q(y_0)||p(y_t)$)={:.2f}'.format(kl, kl_y0),
-        #     fontsize=20)        
+        axs[ax_idx].plot(y_i, '.', label='true', c='tab:red')   
         if prior:
             axs[ax_idx].set_title('$p({y}_\mathbf{prior})$',
                                   fontsize=23)
@@ -258,54 +258,85 @@ class Diffusion(object):
         else:
             axs[ax_idx].set_title('$p(\mathbf{y}_{' + str(cur_t) + '})$',
                                   fontsize=23)
-            axs[ax_idx].set_title('$p(\mathbf{y}_{' + str(cur_t) + '})$\n' + kl_unnorm_str,
-                                  fontsize=23)
+            axs[ax_idx].set_title('$p(\mathbf{y}_{' + str(cur_t) + '})$\n' + \
+                                  kl_unnorm_str, fontsize=23)
 
     def train(self):
         args = self.args
         config = self.config
         tb_logger = self.config.tb_logger
         kfold_handler = self.kfold_handler
+        
         # first obtain test set for pre-trained model evaluation
         logging.info("Test set info:")
-        test_set_object, test_set = get_dataset(args, config, test_set=True, kfold_handler=kfold_handler)
-        test_loader = data.DataLoader(test_set, batch_size=config.testing.batch_size, num_workers=config.data.num_workers,)
+        test_set_object, test_set = get_dataset(args, config, test_set=True,
+                                                kfold_handler=kfold_handler)
+        test_loader = data.DataLoader(test_set,
+                                      batch_size=config.testing.batch_size,
+                                      num_workers=config.data.num_workers,)
+        
         # obtain training set
         logging.info("Training set info:")
-        dataset_object, dataset = get_dataset(args, config, test_set=False, kfold_handler=kfold_handler)
+        dataset_object, dataset = get_dataset(args, config, test_set=False,
+                                              kfold_handler=kfold_handler)
         self.dataset_object = dataset_object
         self.mean_target_value = dataset_object.return_mean_target_arrtibute()
         self.std_target_value = dataset_object.return_std_target_arrtibute()
-        train_loader = data.DataLoader(dataset, batch_size=config.training.batch_size, shuffle=True,
-                                       num_workers=config.data.num_workers,)   
-        # obtain training (as a subset of original one) and validation set for guidance model hyperparameter tuning
-        if hasattr(config.diffusion.nonlinear_guidance, "apply_early_stopping") \
-                and config.diffusion.nonlinear_guidance.apply_early_stopping:
-            logging.info(("\nSplit original training set into training and validation set " +
-                          "for f_phi hyperparameter tuning..."))
+        train_loader = data.DataLoader(dataset,
+                                       batch_size=config.training.batch_size,
+                                       shuffle=True,
+                                       num_workers=config.data.num_workers,) 
+        
+        # obtain validation set if necessary
+        """
+        obtain training (as a subset of original one) and validation set for
+        guidance model hyperparameter tuning, the validation set is at least
+        used for early stopping. Therefore, we check the attribute 
+        apply_early_stopping in the followings.
+        """
+        # if tere is such an attribute, and its value is True:
+        if (hasattr(config.diffusion.nonlinear_guidance,
+                    "apply_early_stopping") and 
+            config.diffusion.nonlinear_guidance.apply_early_stopping):
+            logging.info(("\nSplit original training set into training and \
+                          validation set " +
+                          "for f_phi hyperparameter tuning or using it for \
+                              early stopping..."))
             logging.info("Validation set info:")
-            val_set_object, val_set = get_dataset(args, config, test_set=True, validation=True)
-            val_loader = data.DataLoader(val_set, batch_size=config.testing.batch_size, num_workers=config.data.num_workers,)
+            val_set_object, val_set = get_dataset(args, config, test_set=True,
+                                                  validation=True)
+            val_loader = data.DataLoader(val_set,
+                                         batch_size=config.testing.batch_size,
+                                         num_workers=config.data.num_workers,)
             logging.info("Training subset info:")
-            train_subset_object, train_subset = get_dataset(args, config, test_set=False, validation=True,
-                                                            kfold_handler=kfold_handler)
-            train_subset_loader = data.DataLoader(train_subset, batch_size=config.training.batch_size, shuffle=True,
-                                                  num_workers=config.data.num_workers,)
+            train_subset_object, train_subset = get_dataset(
+                args, config, test_set=False, validation=True,
+                kfold_handler=kfold_handler)
+            train_subset_loader = data.DataLoader(
+                train_subset, batch_size=config.training.batch_size,
+                shuffle=True, num_workers=config.data.num_workers,)
         model = ConditionalGuidedModel(config)
         model = model.to(self.device)
                
         # evaluate f_phi(x) on both training and test set
         logging.info("\nBefore pre-training:")
-        self.evaluate_guidance_model_on_both_train_and_test_set(dataset_object,
-                                                                train_loader,
-                                                                test_set_object,
-                                                                test_loader,
-                                                                eval_mode="inverse_norm")
+        # check whether normalization is used or not!
+        if self.config.model.target_norm:
+            self.evaluate_guidance_model_on_both_train_and_test_set(
+                dataset_object, train_loader, test_set_object, test_loader,
+                eval_mode="inverse_norm")
+        else:
+            self.evaluate_guidance_model_on_both_train_and_test_set(
+                dataset_object, train_loader, test_set_object, test_loader,
+                eval_mode="no_inverse_norm")
+            
         # apply an optimizer for diffusion model (noise estimate network)   
         optimizer = get_optimizer(self.config.optim, model.parameters())
         # apply an auxiliary optimizer for guidance model that predicts y_0_hat
-        aux_optimizer = get_optimizer(self.config.aux_optim, self.cond_pred_model.parameters())
-
+        aux_optimizer = get_optimizer(
+            self.config.aux_optim, self.cond_pred_model.parameters())
+        
+        # TODO: check what the ema does in the model
         if self.config.model.ema:
             ema_helper = EMA(mu=self.config.model.ema_rate)
             ema_helper.register(model)
@@ -314,74 +345,94 @@ class Diffusion(object):
        
         # pre-train the non-linear guidance model
         if config.diffusion.nonlinear_guidance.pre_train:
-            n_guidance_model_pretrain_epochs = config.diffusion.nonlinear_guidance.n_pretrain_epochs
+            n_guidance_model_pretrain_epochs = \
+                config.diffusion.nonlinear_guidance.n_pretrain_epochs
+            # set the guidance model to train mode
             self.cond_pred_model.train()
-            if hasattr(config.diffusion.nonlinear_guidance, "apply_early_stopping") \
-                    and config.diffusion.nonlinear_guidance.apply_early_stopping:
-                early_stopper = EarlyStopping(patience=config.diffusion.nonlinear_guidance.patience,
-                                              delta=config.diffusion.nonlinear_guidance.delta)
+            # check for early stopping option
+            if (hasattr(config.diffusion.nonlinear_guidance,
+                       "apply_early_stopping") and 
+                config.diffusion.nonlinear_guidance.apply_early_stopping):
+                early_stopper = EarlyStopping(
+                    patience=config.diffusion.nonlinear_guidance.patience,
+                    delta=config.diffusion.nonlinear_guidance.delta)
                 train_val_start_time = time.time()
-                for epoch in range(config.diffusion.nonlinear_guidance.n_pretrain_max_epochs):
-                    self.nonlinear_guidance_model_train_loop_per_epoch(train_subset_loader, aux_optimizer, epoch)
-                    
-                    y_val_mae_aux_model = self.evaluate_guidance_model(val_set_object,
-                                                                       val_loader,
-                                                                       eval_mode="no_inverse_norm")
+                for epoch in range(
+                        config.diffusion.nonlinear_guidance.n_pretrain_max_epochs):
+                    self.nonlinear_guidance_model_train_loop_per_epoch(
+                        train_subset_loader, aux_optimizer, epoch)
+                    # in training phase we do not apply any normalization
+                    y_val_mae_aux_model = self.evaluate_guidance_model(
+                        val_set_object, val_loader, eval_mode="no_inverse_norm")
                     val_cost = y_val_mae_aux_model
                     early_stopper(val_cost=val_cost, epoch=epoch)
                     if early_stopper.early_stop:
-                        print(("Obtained best performance on validation set after Epoch {}; " +
-                               "early stopping at Epoch {}.").format(
-                            early_stopper.best_epoch, epoch))
+                        print(('Obtained best performance on validation set \
+                               after Epoch {}; ' + 'early stopping at Epoch {}.'
+                               ).format(early_stopper.best_epoch, epoch))
                         break
                 train_val_end_time = time.time()
-                logging.info(("Tuning for number of epochs to train non-linear guidance model " +
-                              "took {:.4f} minutes.").format(
-                    (train_val_end_time - train_val_start_time) / 60))
-                logging.info("\nAfter tuning for best total epochs, on training sebset and validation set:")
-                self.evaluate_guidance_model_on_both_train_and_test_set(train_subset_object,
-                                                                        train_subset_loader,
-                                                                        val_set_object,
-                                                                        val_loader,
-                                                                        eval_mode="inverse_norm")
+                logging.info(("Tuning for number of epochs to train non-linear \
+                              guidance model " + "took {:.4f} minutes.").format(
+                              (train_val_end_time - train_val_start_time) / 60))
+                logging.info('\nAfter tuning for best total epochs, on \
+                             training sebset and validation set:')
+                # check whether inverse normalization isrequired or not
+                if self.config.model.target_norm:
+                    self.evaluate_guidance_model_on_both_train_and_test_set(
+                        train_subset_object, train_subset_loader,
+                        val_set_object, val_loader, eval_mode='inverse_norm')
+                else:
+                    self.evaluate_guidance_model_on_both_train_and_test_set(
+                        train_subset_object, train_subset_loader,
+                        val_set_object, val_loader, eval_mode='no_inverse_norm')
                 # reset guidance model weights for re-training on original training set
-                logging.info("\nReset guidance model weights...")
+                logging.info('\nReset guidance model weights...')
                 for layer in self.cond_pred_model.children():
                     if hasattr(layer, 'reset_parameters'):
                         layer.reset_parameters()
-                logging.info("\nRe-training the guidance model on original training set with {} epochs...".format(
-                    early_stopper.best_epoch
-                ))
+                logging.info("\nRe-training the guidance model on original \
+                             training set with {} epochs...".format(
+                    early_stopper.best_epoch))
                 n_guidance_model_pretrain_epochs = early_stopper.best_epoch
-                aux_optimizer = get_optimizer(self.config.aux_optim, self.cond_pred_model.parameters())
+                aux_optimizer = get_optimizer(self.config.aux_optim,
+                                              self.cond_pred_model.parameters())
             pretrain_start_time = time.time()
             for epoch in range(n_guidance_model_pretrain_epochs):
-                self.nonlinear_guidance_model_train_loop_per_epoch(train_loader, aux_optimizer, epoch)
+                self.nonlinear_guidance_model_train_loop_per_epoch(
+                    train_loader, aux_optimizer, epoch)
             pretrain_end_time = time.time()
-            logging.info("Pre-training of non-linear guidance model took {:.4f} minutes.".format(
+            logging.info('Pre-training of non-linear guidance model \
+                         took {:.4f} minutes.'.format(
                 (pretrain_end_time - pretrain_start_time) / 60))
-            logging.info("\nAfter pre-training:")
-            self.evaluate_guidance_model_on_both_train_and_test_set(dataset_object,
-                                                                    train_loader,
-                                                                    test_set_object,
-                                                                    test_loader,
-                                                                    eval_mode="inverse_norm")
+            logging.info('\nAfter pre-training:')
+            # check whether inverse normalization isrequired or not
+            if self.config.model.target_norm:
+                self.evaluate_guidance_model_on_both_train_and_test_set(
+                    dataset_object, train_loader, test_set_object, test_loader,
+                    eval_mode='inverse_norm')
+            else:
+                self.evaluate_guidance_model_on_both_train_and_test_set(
+                    dataset_object, train_loader, test_set_object, test_loader,
+                    eval_mode='no_inverse_norm')                
             # save auxiliary model
             aux_states = [
                 self.cond_pred_model.state_dict(),
                 aux_optimizer.state_dict(),
             ]
-            torch.save(aux_states, os.path.join(self.args.log_path, "aux_ckpt.pth"))
+            torch.save(aux_states, os.path.join(self.args.log_path,
+                                                'aux_ckpt.pth'))
             
         # train diffusion model
         if not self.args.train_guidance_only:
             start_epoch, step = 0, 0
             if self.args.resume_training:
-                states = torch.load(os.path.join(self.args.log_path, "ckpt.pth"),
+                states = torch.load(os.path.join(self.args.log_path,
+                                                 'ckpt.pth'),
                                     map_location=self.device)
                 model.load_state_dict(states[0])
 
-                states[1]["param_groups"][0]["eps"] = self.config.optim.eps
+                states[1]['param_groups'][0]['eps'] = self.config.optim.eps
                 optimizer.load_state_dict(states[1])
                 start_epoch = states[2]
                 step = states[3]
@@ -389,18 +440,32 @@ class Diffusion(object):
                     ema_helper.load_state_dict(states[4])
                 # load auxiliary model
                 aux_states = torch.load(os.path.join(self.args.log_path,
-                                                     "aux_ckpt.pth"),
+                                                     'aux_ckpt.pth'),
                                         map_location=self.device)
                 self.cond_pred_model.load_state_dict(aux_states[0])
                 aux_optimizer.load_state_dict(aux_states[1])
             if config.diffusion.noise_prior:
-                assert config.model.target_norm
-                if config.diffusion.noise_prior_approach == "mean": 
-                    # apply 0 instead of f_phi(x) as prior mean (only applicable if target_norm==True)
-                    # since data is standardized 0 reflects its mean.
-                    logging.info("Prior distribution at timestep T has a mean of 0.")
-                elif config.diffusion.noise_prior_approach == "median": # apply median instead of f_phi(x) as prior mean
-                    logging.info("Prior distribution at timestep T has a mean equivalent to median of remaining time in training set.")
+                if config.diffusion.noise_prior_approach == 'zero':
+                    """
+                    Apply 0 instead of f_phi(x) as prior mean.
+                    However, we used min-max normalization to keep the original
+                    distrbution of remining time which often does not follow a
+                    normal distribution. In contrst, in the original
+                    implementation of CARD standardization is used, and thus,
+                    zero reflect the mean of the target attribute.                     
+                    """
+                    logging.info('Prior distribution at timestep T \
+                                 has a mean of 0.')
+                # apply mean instead of f_phi(x) as prior mean
+                elif config.diffusion.noise_prior_approach == 'mean':
+                    logging.info("Prior distribution at timestep T has a mean\
+                                 equivalent to mean of remaining time in\
+                                     training set.")
+                # apply median instead of f_phi(x) as prior mean
+                elif config.diffusion.noise_prior_approach == "median": 
+                    logging.info("Prior distribution at timestep T has a mean\
+                                 equivalent to median of remaining time in\
+                                     training set.")
                     
             for epoch in range(start_epoch, self.config.training.n_epochs):
                 data_start = time.time()
