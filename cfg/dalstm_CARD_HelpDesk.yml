@@ -27,7 +27,7 @@ diffusion:
     vis_step: 100
     num_figs: 10
     conditioning_signal: "DALSTM"
-    noise_prior_approach: median # mean: N(0,I) or median: N(normalized_median,I) only applicable if target_norm==True
+    noise_prior_approach: mean # mean: N(0,I) or median: N(normalized_median,I) only applicable if target_norm==True
     nonlinear_guidance:
         pre_train: True # if True: first train point estimator, then use it as prior for diffusion model
         joint_train: False

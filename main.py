@@ -72,11 +72,12 @@ def main_card(arg_set=None, kfold_handler=None):
 
 def main():
    
-    # Parse arguments 
+    # Parse arguments     
     parser = argparse.ArgumentParser(
-        description='Probabilistic remaining time prediction')
+        description='Probabilistic remaining time prediction')    
     parser.add_argument('--dataset', default='HelpDesk',
                         help='Datasets used by model')    
+    # some general configurations
     parser.add_argument('--model', default='pgtnet',
                         help='Type of the predictive model')
     parser.add_argument('--UQ', default='deterministic',
@@ -89,41 +90,52 @@ def main():
                         required=True) #can handle multiple seeds
     parser.add_argument('--device', type=int, default=0, help='GPU device id')
     parser.add_argument('--thread', type=int, default=4,
-                        help='number of threads')
-    
-    #The following arguments are only applicable for CARD model
+                        help='number of threads') 
+    # The remaining arguments are only used for CARD model
+    # For CARD: config file should be addressed instead of using dataset name.
+    parser.add_argument('--config', type=str, help='Path to the config file')   
+    # for CARD model, it is possible to train one split or all of them together
+    # can be used for cross-validation set up (run all splits)
+    parser.add_argument('--run_all', action='store_true', 
+                        help='Whether to run all train test splits')    
+    # using --split it is possible to train for different splits seperately.
+    parser.add_argument('--split', type=int, default=0,
+                        help='which split to use for regression data')
     #TODO: check MODEL_VERSION_DIR in args to see how to save the result in a
     # more meaningful path! do wee need: ${RUN_NAME}_${SERVER_NAME}? or even: ${N_STEPS}steps
     parser.add_argument('--exp', type=str, default='exp',
                         help='Path for saving running related data.')
     parser.add_argument('--doc', type=str, 
-                        help='Name of the log folder- for documentation purpose')
-    parser.add_argument('--config', type=str, help='Path to the config file')
+                        help='Name of the log folder- for \
+                            documentation purpose')
     parser.add_argument('--comment', type=str, default='',
                         help='A string for experiment comment')
     parser.add_argument('--verbose', type=str, default='info', 
-                        help='Verbose level: info | debug | warning | critical')
-    parser.add_argument('-i', '--image_folder', type=str, default='images',
-                        help='The folder name of samples')
-    # if set to true: only deterministic model is trained.
-    parser.add_argument('--train_guidance_only', action='store_true', 
-                        help='Whether to only pre-train the guidance model f_phi')
+                        help='Verbose level: info | debug | warning | critical')    
     # to handle test for CARD model
     parser.add_argument('--test', action='store_true',
                         help='Whether to test the model')
-    # can be used for cross-validation set up.
-    parser.add_argument('--run_all', action='store_true', 
-                        help='Whether to run all train test splits')
-    # using --split it is possible to train for different splits seperately.
-    parser.add_argument('--split', type=int, default=0,
-                        help='which split to use for regression data')
+    # for CARD model: if set to true, only deterministic model is trained.
+    parser.add_argument('--train_guidance_only', action='store_true', 
+                        help='Whether to only pre-train the guidance model f_phi')
+    parser.add_argument('--use_pretrained', action='store_true')
+    parser.add_argument('--resume_training', action='store_true',
+                        help='Whether to resume training')
     # --init_split can be used to resume training
     parser.add_argument('--init_split', type=int, default=0,
                         help='initial split to train for regression data')
-    #TODO: important! use the following in large-scale experiments.
-    parser.add_argument( '--ni', action='store_true', 
-                        help='No interaction. Suitable for Slurm Job launcher')
-    parser.add_argument('--use_pretrained', action='store_true')
+    #TODO: run experiments without knowledge from pre-trained deterministic model.
+    parser.add_argument('--noise_prior', action='store_true', 
+                        help='Whether to apply a noise prior distribution at \
+                            timestep T')
+    # if the following is not specified explicitly: f_phi is used in concatanation
+    parser.add_argument('--no_cat_f_phi', action='store_true',
+                        help='Whether to not concatenate f_phi as part of \
+                            eps_theta input')
+    parser.add_argument('--interpolation', action='store_true')                       
+    parser.add_argument('--fid', action='store_true')    
+    parser.add_argument('-i', '--image_folder', type=str, default='images',
+                        help='The folder name of samples')
     parser.add_argument('--rmse_timestep', type=int, default=0,
                         help='selected timestep to report metric y RMSE')
     parser.add_argument('--qice_timestep', type=int, default=0,
@@ -132,22 +144,12 @@ def main():
                         help='selected timestep to report metric y PICP')
     parser.add_argument('--nll_timestep', type=int, default=0,
                         help='selected timestep to report metric y NLL')
+    #TODO: important! use the following in large-scale experiments.
+    parser.add_argument( '--ni', action='store_true', 
+                        help='No interaction. Suitable for Slurm Job launcher')
     #TODO: important! check how much is important the following arg.
     parser.add_argument('--sample_type', type=str, default='generalized',
                         help='sampling approach (generalized or ddpm_noisy)')
-    # loss option for CARD model
-    parser.add_argument('--loss', type=str, default='card_conditional',
-                        help='Which loss to use')
-    #TODO: run experiments without knowledge from pre-trained deterministic model.
-    parser.add_argument('--noise_prior', action='store_true', 
-                        help='Whether to apply a noise prior distribution at timestep T')
-    # if the following is not specified explicitly: f_phi is used in concatanation
-    parser.add_argument('--no_cat_f_phi', action='store_true',
-                        help='Whether to not concatenate f_phi as part of eps_theta input')
-    parser.add_argument('--fid', action='store_true')
-    parser.add_argument('--interpolation', action='store_true')
-    parser.add_argument('--resume_training', action='store_true',
-                        help='Whether to resume training')
     #TODO: check how much is important the following arg.
     parser.add_argument('--skip_type', type=str, default='uniform',
                         help='skip according to (uniform or quadratic)')
@@ -158,12 +160,19 @@ def main():
                         help='eta used to control the variances of sigma')
     #TODO: check what does the follwing control?
     parser.add_argument('--sequence', action='store_true')
+    # loss option for CARD model
+    parser.add_argument('--loss', type=str, default='card_conditional',
+                        help='Which loss to use')
+    # loss option for guidance model
+    parser.add_argument('--loss_guidance', type=str, default='L1',
+                        help='Which loss to use for guidance model: L1/L2')
     #TODO: check the functionality of following arg
     parser.add_argument('--nll_global_var', action='store_true',
                         help='Apply global variance for NLL computation')
     #TODO: important! check how much is important the following arg.
     parser.add_argument('--nll_test_var', action='store_true',
-                        help='Apply sample variance of the test set for NLL computation')
+                        help='Apply sample variance of the test set for NLL \
+                            computation')
     # Conditional transport options
     #TODO: important! check how much is important the following 2-3 args.
     parser.add_argument('--use_d', action='store_true',
@@ -174,6 +183,7 @@ def main():
                         help='number of samples used in forward and reverse') 
     args = parser.parse_args()
     
+    # A separate execution route for CARD model    
     if args.UQ == 'CARD':
         # set scientific number prints to False
         torch.set_printoptions(sci_mode=False)
