@@ -107,6 +107,10 @@ class Diffusion(object):
             print('Currently only DALSTM model is supported.')
             pass
 
+    ##########################################################################
+    ################# Auxiliary functions for train and test #################
+    ##########################################################################
+
     # Compute guiding Prediction as diffusion condition
     def compute_guiding_Prediction(self, x):
         # Compute y_0_hat, to be used as the Gaussian mean at time step T.
@@ -368,7 +372,130 @@ class Diffusion(object):
             gen_y_by_batch_list[current_t] = np.concatenate(
                 [gen_y_by_batch_list[current_t], gen_y], axis=0)
         return gen_y
+    
+    
+    def store_y_se_at_step_t(self, config=None, idx=None, dataset_object=None,
+                             y_batch=None, gen_y=None, y_se_by_batch_list=None,
+                             y_ae_by_batch_list=None):
+        
+        current_t = self.num_timesteps - idx
+        if self.args.loss_guidance == 'L2':            
+            # compute sqaured error in each batch
+            y_se = self.compute_Prediction_SE_AE(
+                config=config, dataset_object=dataset_object,
+                y_batch=y_batch, generated_y=gen_y)
+            if len(y_se_by_batch_list[current_t]) == 0:
+                y_se_by_batch_list[current_t] = y_se
+            # TODO: resolve the problem without padding if it is possible!
+            else:
+                try:
+                    y_se_by_batch_list[current_t] = np.concatenate(
+                        [y_se_by_batch_list[current_t], y_se], axis=0)
+                except:
+                    # handle exception for the last minibatch by padding
+                    pad_value = int(
+                        config.testing.batch_size - y_se.shape[1])
+                    y_se_resized = np.pad(y_se, ((0, 0), (0, pad_value)))
+                    y_se_by_batch_list[current_t] = np.concatenate(
+                        [y_se_by_batch_list[current_t], y_se_resized], axis=0)
+            return y_se_by_batch_list
+                    
+        else:
+            # compute absolute error in each batch
+            y_ae = self.compute_Prediction_SE_AE(
+                config=config, dataset_object=dataset_object,
+                y_batch=y_batch, generated_y=gen_y)
+            if len(y_ae_by_batch_list[current_t]) == 0:
+                y_ae_by_batch_list[current_t] = y_ae
+            # TODO: resolve the problem without padding if it is possible!
+            else:
+                try:
+                    y_ae_by_batch_list[current_t] = np.concatenate(
+                        [y_ae_by_batch_list[current_t], y_ae], axis=0) 
+                except:
+                    # handle exception for the last minibatch by padding
+                    pad_value = int(
+                        config.testing.batch_size - y_ae.shape[1])
+                    y_ae_resized = np.pad(y_ae, ((0, 0), (0, pad_value)))                     
+                    #print(np.shape(y_ae_by_batch_list[current_t]))
+                    #print(np.shape(y_se))
+                    y_ae_by_batch_list[current_t] = np.concatenate(
+                        [y_ae_by_batch_list[current_t], y_ae_resized], axis=0)
+                    
+            return y_ae_by_batch_list
 
+    
+    def compute_batch_NLL(self, config, dataset_object, y_batch, generated_y):
+        """
+        generated_y: has a shape of:
+            (current_batch_size, n_z_samples, dim_y)
+        NLL computation implementation from MC dropout repo
+        https://github.com/yaringal/DropoutUncertaintyExps/blob/master/net/net.py,
+        directly from MC Dropout paper Eq. (8).
+        """
+        #print(generated_y.shape)
+        y_true = y_batch.cpu().detach().numpy()
+        #batch_size = generated_y.shape[0]  
+        if config.model.target_norm:
+            max_target_value = dataset_object.return_max_target_arrtibute()
+            # unnormalize true y
+            y_true = (max_target_value * y_true).astype(np.float32)
+            # unnormalize generated y
+            generated_y = (max_target_value * generated_y)    
+              
+        generated_y = generated_y.swapaxes(0, 1)
+        # obtain precision value and compute test batch NLL
+        if self.tau is not None:
+            tau = self.tau
+        else:
+            gen_y_var = torch.from_numpy(
+                generated_y).var(dim=0, unbiased=True).numpy()
+            tau = 1 / gen_y_var
+        nll = -(logsumexp(-0.5 * tau * (y_true[None] - generated_y) ** 2., 0)
+                - np.log(config.testing.n_z_samples)
+                - 0.5 * np.log(2 * np.pi) + 0.5 * np.log(tau))
+        return nll
+
+
+    def store_nll_at_step_t(self, config=None, idx=None, dataset_object=None,
+                            y_batch=None, gen_y=None, nll_by_batch_list=None):
+        current_t = self.num_timesteps - idx
+        # compute negative log-likelihood in each batch
+        nll = self.compute_batch_NLL(config=config,
+                                dataset_object=dataset_object,
+                                y_batch=y_batch, generated_y=gen_y)
+        if len(nll_by_batch_list[current_t]) == 0:
+            nll_by_batch_list[current_t] = nll
+        else:
+            try:
+                nll_by_batch_list[current_t] = np.concatenate(
+                    [nll_by_batch_list[current_t], nll], axis=0)
+            except:
+                # TODO: check the root cause and if possible handle without padding
+                # handle exception for the last minibatch by padding
+                pad_value = int(config.testing.batch_size - nll.shape[1])
+                nll_resized = np.pad(nll, ((0, 0), (0, pad_value)))    
+                nll_by_batch_list[current_t] = np.concatenate(
+                    [nll_by_batch_list[current_t], nll_resized], axis=0)
+        return nll_by_batch_list
+
+    # TODO: the following condition does not work for ppm datasets: should be adjusted
+    def set_NLL_global_precision(self, dataset_object=None, test_var=True,
+                                 max_targ=None):
+        if test_var:
+            # compute test set sample variance
+            if self.config.model.target_norm:
+                #TODO: it there is some error: try removinf astype
+                y_test_unnorm = (max_targ * dataset_object.y_test).astype(
+                    np.float32)
+            else:
+                y_test_unnorm = dataset_object.y_test.astype(np.float32)
+            y_test_unnorm = y_test_unnorm if type(y_test_unnorm) is torch.Tensor \
+                else torch.from_numpy(y_test_unnorm)
+            self.tau = 1 / (y_test_unnorm.var(unbiased=True).item())
+        else:
+            self.tau = 1
+            
 ##############################################################################
 ################### Train function for card_regression class #################
 ##############################################################################
@@ -835,130 +962,9 @@ class Diffusion(object):
         Evaluate model on regression tasks on test set.
         """
         kfold_handler = self.kfold_handler
-        
-        ######################################################################
-        #### local functions within the class function scope #################
-        ######################################################################
-        
-
-        def store_y_se_at_step_t(config, idx, dataset_object, y_batch, gen_y):
-            
-            current_t = self.num_timesteps - idx
-            if self.args.loss_guidance == 'L2':            
-                # compute sqaured error in each batch
-                y_se = self.compute_Prediction_SE_AE(
-                    config=config, dataset_object=dataset_object,
-                    y_batch=y_batch, generated_y=gen_y)
-                if len(y_se_by_batch_list[current_t]) == 0:
-                    y_se_by_batch_list[current_t] = y_se
-                # TODO: resolve the problem without padding if it is possible!
-                else:
-                    try:
-                        y_se_by_batch_list[current_t] = np.concatenate(
-                            [y_se_by_batch_list[current_t], y_se], axis=0)
-                    except:
-                        # handle exception for the last minibatch by padding
-                        pad_value = int(
-                            config.testing.batch_size - y_se.shape[1])
-                        y_se_resized = np.pad(y_se, ((0, 0), (0, pad_value)))
-                        y_se_by_batch_list[current_t] = np.concatenate(
-                            [y_se_by_batch_list[current_t], y_se_resized], axis=0)
-                        
-            else:
-                # compute absolute error in each batch
-                y_ae = self.compute_Prediction_SE_AE(
-                    config=config, dataset_object=dataset_object,
-                    y_batch=y_batch, generated_y=gen_y)
-                if len(y_ae_by_batch_list[current_t]) == 0:
-                    y_ae_by_batch_list[current_t] = y_ae
-                # TODO: resolve the problem without padding if it is possible!
-                else:
-                    try:
-                        y_ae_by_batch_list[current_t] = np.concatenate(
-                            [y_ae_by_batch_list[current_t], y_ae], axis=0) 
-                    except:
-                        # handle exception for the last minibatch by padding
-                        pad_value = int(
-                            config.testing.batch_size - y_ae.shape[1])
-                        y_ae_resized = np.pad(y_ae, ((0, 0), (0, pad_value)))                     
-                        #print(np.shape(y_ae_by_batch_list[current_t]))
-                        #print(np.shape(y_se))
-                        y_ae_by_batch_list[current_t] = np.concatenate(
-                            [y_ae_by_batch_list[current_t], y_ae_resized], axis=0)
-        
-        # TODO: the following condition does not work for ppm datasets: should be adjusted
-        def set_NLL_global_precision(test_var=True, max_targ=None):
-            if test_var:
-                # compute test set sample variance
-                if self.config.model.target_norm:
-                    #TODO: it there is some error: try removinf astype
-                    y_test_unnorm = (max_targ * dataset_object.y_test).astype(
-                        np.float32)
-                else:
-                    y_test_unnorm = dataset_object.y_test.astype(np.float32)
-                y_test_unnorm = y_test_unnorm if type(y_test_unnorm) is torch.Tensor \
-                    else torch.from_numpy(y_test_unnorm)
-                self.tau = 1 / (y_test_unnorm.var(unbiased=True).item())
-            else:
-                self.tau = 1
-
-        def compute_batch_NLL(config, dataset_object, y_batch, generated_y):
-            """
-            generated_y: has a shape of:
-                (current_batch_size, n_z_samples, dim_y)
-            NLL computation implementation from MC dropout repo
-            https://github.com/yaringal/DropoutUncertaintyExps/blob/master/net/net.py,
-            directly from MC Dropout paper Eq. (8).
-            """
-            #print(generated_y.shape)
-            y_true = y_batch.cpu().detach().numpy()
-            #batch_size = generated_y.shape[0]  
-            if config.model.target_norm:
-                max_target_value = dataset_object.return_max_target_arrtibute()
-                # unnormalize true y
-                y_true = (max_target_value * y_true).astype(np.float32)
-                # unnormalize generated y
-                generated_y = (max_target_value * generated_y)    
-                  
-            generated_y = generated_y.swapaxes(0, 1)
-            # obtain precision value and compute test batch NLL
-            if self.tau is not None:
-                tau = self.tau
-            else:
-                gen_y_var = torch.from_numpy(
-                    generated_y).var(dim=0, unbiased=True).numpy()
-                tau = 1 / gen_y_var
-            nll = -(logsumexp(-0.5 * tau * (y_true[None] - generated_y) ** 2., 0)
-                    - np.log(config.testing.n_z_samples)
-                    - 0.5 * np.log(2 * np.pi) + 0.5 * np.log(tau))
-            return nll
-
-        def store_nll_at_step_t(config, idx, dataset_object, y_batch, gen_y):
-            current_t = self.num_timesteps - idx
-            # compute negative log-likelihood in each batch
-            nll = compute_batch_NLL(config=config,
-                                    dataset_object=dataset_object,
-                                    y_batch=y_batch, generated_y=gen_y)
-            if len(nll_by_batch_list[current_t]) == 0:
-                nll_by_batch_list[current_t] = nll
-            else:
-                try:
-                    nll_by_batch_list[current_t] = np.concatenate(
-                        [nll_by_batch_list[current_t], nll], axis=0)
-                except:
-                    # TODO: check the root cause and if possible handle without padding
-                    # handle exception for the last minibatch by padding
-                    pad_value = int(config.testing.batch_size - nll.shape[1])
-                    nll_resized = np.pad(nll, ((0, 0), (0, pad_value)))    
-                    nll_by_batch_list[current_t] = np.concatenate(
-                        [nll_by_batch_list[current_t], nll_resized], axis=0)
-
-        ######################################################################
-        ######################################################################
-
         args = self.args
         config = self.config
-        split = args.split
+        #split = args.split
         log_path = os.path.join(self.args.log_path)
         dataset_object, dataset = get_dataset(args, config, test_set=True,
                                               kfold_handler=kfold_handler)
@@ -972,9 +978,10 @@ class Diffusion(object):
         self.max_target_value = dataset_object.return_max_target_arrtibute()
         # set global prevision value for NLL computation if needed
         if args.nll_global_var:
-            set_NLL_global_precision(test_var=args.nll_test_var,
-                                     max_targ=self.max_target_value)
-
+            self.set_NLL_global_precision(dataset_object= dataset_object,
+                                          test_var=args.nll_test_var,
+                                          max_targ=self.max_target_value)
+        # define the model
         model = ConditionalGuidedModel(self.config)
         if getattr(self.config.testing, 'ckpt_id', None) is None:
             states = torch.load(os.path.join(log_path, 'ckpt.pth'),
@@ -1219,13 +1226,26 @@ class Diffusion(object):
                             current_batch_size=current_batch_size,
                             idx=idx, y_tile_seq=y_tile_seq,
                             gen_y_by_batch_list=gen_y_by_batch_list)
-                        store_y_se_at_step_t(config=config, idx=idx,
-                                             dataset_object=dataset_object,
-                                             y_batch=y_batch, gen_y=gen_y)
-                        store_nll_at_step_t(config=config, idx=idx,
-                                            dataset_object=dataset_object,
-                                            y_batch=y_batch, gen_y=gen_y) 
-                    
+                        # call function store_y_se_at_step_t
+                        if self.args.loss_guidance == 'L2':
+                            y_se_by_batch_list = self.store_y_se_at_step_t(
+                                config=config, idx=idx, 
+                                dataset_object=dataset_object,
+                                y_batch=y_batch, gen_y=gen_y,
+                                y_se_by_batch_list=y_se_by_batch_list,
+                                y_ae_by_batch_list=y_ae_by_batch_list)
+                        else:
+                            y_ae_by_batch_list = self.store_y_se_at_step_t(
+                                config=config, idx=idx, 
+                                dataset_object=dataset_object,
+                                y_batch=y_batch, gen_y=gen_y,
+                                y_se_by_batch_list=y_se_by_batch_list,
+                                y_ae_by_batch_list=y_ae_by_batch_list)                           
+                        nll_by_batch_list = self.store_nll_at_step_t(
+                            config=config, idx=idx, 
+                            dataset_object=dataset_object,
+                            y_batch=y_batch, gen_y=gen_y,
+                            nll_by_batch_list=nll_by_batch_list)                     
                     """
                     For the last gen_y (i.e. t=0):
                         save the result for instance-level analysis.
@@ -1287,9 +1307,21 @@ class Diffusion(object):
                         current_batch_size=current_batch_size, idx=mean_idx,
                         y_tile_seq=y_tile_seq,
                         gen_y_by_batch_list=gen_y_by_batch_list)
-                    store_y_se_at_step_t(config=config, idx=mean_idx,
-                                         dataset_object=dataset_object,
-                                         y_batch=y_batch, gen_y=gen_y)
+                    # call function store_y_se_at_step_t
+                    if self.args.loss_guidance == 'L2':
+                        y_se_by_batch_list = self.store_y_se_at_step_t(
+                            config=config, idx=mean_idx, 
+                            dataset_object=dataset_object,
+                            y_batch=y_batch, gen_y=gen_y,
+                            y_se_by_batch_list=y_se_by_batch_list,
+                            y_ae_by_batch_list=y_ae_by_batch_list)
+                    else:
+                        y_ae_by_batch_list = self.store_y_se_at_step_t(
+                            config=config, idx=mean_idx, 
+                            dataset_object=dataset_object,
+                            y_batch=y_batch, gen_y=gen_y,
+                            y_se_by_batch_list=y_se_by_batch_list,
+                            y_ae_by_batch_list=y_ae_by_batch_list) 
                     if coverage_idx != mean_idx:
                         _ = self.store_gen_y_at_step_t(
                             config=config,
@@ -1302,9 +1334,11 @@ class Diffusion(object):
                             current_batch_size=current_batch_size, 
                             idx=nll_idx, y_tile_seq=y_tile_seq,
                             gen_y_by_batch_list=gen_y_by_batch_list)
-                    store_nll_at_step_t(config=config, idx=nll_idx,
-                                        dataset_object=dataset_object,
-                                        y_batch=y_batch, gen_y=gen_y)
+                    nll_by_batch_list = self.store_nll_at_step_t(
+                        config=config, idx=nll_idx,
+                        dataset_object=dataset_object,
+                        y_batch=y_batch, gen_y=gen_y,
+                        nll_by_batch_list=nll_by_batch_list)
 
                 # make plot at particular mini-batches
                 if step % config.testing.plot_freq == 0: 
