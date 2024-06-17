@@ -259,6 +259,45 @@ class Diffusion(object):
                                   fontsize=23)
             axs[ax_idx].set_title('$p(\mathbf{y}_{' + str(cur_t) + '})$\n' + \
                                   kl_unnorm_str, fontsize=23)
+                
+    def compute_Prediction_SE_AE(self, config, dataset_object, y_batch,
+                                 generated_y, return_pred_mean=False):
+        # generated_y: has a shape of (current_batch_size, n_z_samples, dim_y)
+        #TODO: check functionality of trimmed_mean_range
+        # if it is always constant remove it from config file
+        low, high = config.testing.trimmed_mean_range
+        y_true = y_batch.cpu().detach().numpy()
+        y_pred_mean = None  # to be used to compute MAE/RMSE
+        if low == 50 and high == 50:
+            # use median of samples as the mean Prediction
+            y_pred_mean = np.median(generated_y, axis=1) 
+        else: 
+            """
+            Compute trimmed mean
+            i.e., discarding certain parts of the samples at both ends
+            """
+            generated_y.sort(axis=1)
+            low_idx = int(low / 100 * config.testing.n_z_samples)
+            high_idx = int(high / 100 * config.testing.n_z_samples)
+            y_pred_mean = (generated_y[:, low_idx:high_idx]).mean(axis=1)
+        if config.model.target_norm:
+            max_target_value = dataset_object.return_max_target_arrtibute()
+            y_true = max_target_value * y_true
+            y_pred_mean = max_target_value * y_pred_mean       
+        if return_pred_mean:
+            return y_pred_mean
+        else:
+            if self.args.loss_guidance == 'L2':
+                y_se = (y_pred_mean - y_true) ** 2
+                return y_se
+            else:
+                y_ae = abs(y_pred_mean - y_true)
+                return y_ae
+
+
+##############################################################################
+################### Train function for card_regression class #################
+##############################################################################
 
     def train(self):
         args = self.args
@@ -712,7 +751,10 @@ class Diffusion(object):
                                  model unnormalized y MAE is {:.8f}.".format(
                                  y_mae_aux_model))   
                                      
-                    
+
+##############################################################################
+################### test function for card_regression class #################
+##############################################################################                        
 
     def test(self):
         """
@@ -723,40 +765,7 @@ class Diffusion(object):
         ######################################################################
         #### local functions within the class function scope #################
         ######################################################################
-        def compute_Prediction_SE_AE(config, dataset_object, y_batch,
-                                     generated_y, return_pred_mean=False):
-            # generated_y: has a shape of (current_batch_size, n_z_samples, dim_y)
-            #TODO: check functionality of trimmed_mean_range
-            # if it is always constant remove it from config file
-            low, high = config.testing.trimmed_mean_range
-            y_true = y_batch.cpu().detach().numpy()
-            y_pred_mean = None  # to be used to compute MAE/RMSE
-            if low == 50 and high == 50:
-                # use median of samples as the mean Prediction
-                y_pred_mean = np.median(generated_y, axis=1) 
-            else: 
-                """
-                Compute trimmed mean
-                i.e., discarding certain parts of the samples at both ends
-                """
-                generated_y.sort(axis=1)
-                low_idx = int(low / 100 * config.testing.n_z_samples)
-                high_idx = int(high / 100 * config.testing.n_z_samples)
-                y_pred_mean = (generated_y[:, low_idx:high_idx]).mean(axis=1)
-            if config.model.target_norm:
-                max_target_value = dataset_object.return_max_target_arrtibute()
-                y_true = max_target_value * y_true
-                y_pred_mean = max_target_value * y_pred_mean       
-            if return_pred_mean:
-                return y_pred_mean
-            else:
-                if self.args.loss_guidance == 'L2':
-                    y_se = (y_pred_mean - y_true) ** 2
-                    return y_se
-                else:
-                    y_ae = abs(y_pred_mean - y_true)
-                    return y_ae
-
+        
         def compute_true_coverage_by_gen_QI(config, dataset_object,
                                             all_true_y, all_generated_y,
                                             verbose=True):
@@ -832,8 +841,8 @@ class Diffusion(object):
             current_t = self.num_timesteps - idx
             if self.args.loss_guidance == 'L2':            
                 # compute sqaured error in each batch
-                y_se = compute_Prediction_SE_AE(
-                    config=config, dataset_object=dataset_object, 
+                y_se = self.compute_Prediction_SE_AE(
+                    config=config, dataset_object=dataset_object,
                     y_batch=y_batch, generated_y=gen_y)
                 if len(y_se_by_batch_list[current_t]) == 0:
                     y_se_by_batch_list[current_t] = y_se
@@ -852,7 +861,7 @@ class Diffusion(object):
                         
             else:
                 # compute absolute error in each batch
-                y_ae = compute_Prediction_SE_AE(
+                y_ae = self.compute_Prediction_SE_AE(
                     config=config, dataset_object=dataset_object,
                     y_batch=y_batch, generated_y=gen_y)
                 if len(y_ae_by_batch_list[current_t]) == 0:
