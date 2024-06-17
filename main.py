@@ -40,11 +40,11 @@ def main_card(arg_set=None, kfold_handler=None):
         # TODO: check whether mae is better or keep working with rmse
         if arg_set.test:
             if config.data.dataset == 'uci': 
-                y_rmse_all_steps_list, y_qice_all_steps_list, \
-                    y_picp_all_steps_list, y_nll_all_steps_list = runner.test()
+                (y_rmse_all_steps_list, y_qice_all_steps_list, 
+                 y_picp_all_steps_list, y_nll_all_steps_list) = runner.test()
             elif config.data.dataset == 'ppm':
-                y_mae_all_steps_list, y_qice_all_steps_list, \
-                    y_picp_all_steps_list, y_nll_all_steps_list = runner.test()
+                (y_mae_all_steps_list, y_qice_all_steps_list,
+                 y_picp_all_steps_list, y_nll_all_steps_list) = runner.test()
             procedure = 'Testing'
         else:
             runner.train()
