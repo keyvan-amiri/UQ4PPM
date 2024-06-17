@@ -293,7 +293,57 @@ class Diffusion(object):
             else:
                 y_ae = abs(y_pred_mean - y_true)
                 return y_ae
+            
+    
+    def compute_true_coverage_by_gen_QI(config, dataset_object,
+                                        all_true_y, all_generated_y,
+                                        verbose=True):
+        n_bins = config.testing.n_bins
+        quantile_list = np.arange(n_bins + 1) * (100 / n_bins)
+        # compute generated y quantiles
+        y_pred_quantiles = np.percentile(all_generated_y.squeeze(),
+                                         q=quantile_list, axis=1)
+        y_true = all_true_y.T
+        quantile_membership_array = (
+            (y_true - y_pred_quantiles) > 0).astype(int)
+        y_true_quantile_membership = quantile_membership_array.sum(axis=0)
+        y_true_quantile_bin_count = np.array(
+            [(y_true_quantile_membership == v).sum() 
+             for v in np.arange(n_bins + 2)])
+        if verbose:
+            y_true_below_0, y_true_above_100 = y_true_quantile_bin_count[0], \
+                                               y_true_quantile_bin_count[-1]
+            logging.info(("We have {} true y smaller than min of generated y, " + \
+                          "and {} greater than max of generated y."
+                          ).format(y_true_below_0, y_true_above_100))
+        # combine true y falls outside of 0-100 gen y quantile to the first and last interval
+        y_true_quantile_bin_count[1] += y_true_quantile_bin_count[0]
+        y_true_quantile_bin_count[-2] += y_true_quantile_bin_count[-1]
+        y_true_quantile_bin_count_ = y_true_quantile_bin_count[1:-1]
+        # compute true y coverage ratio for each gen y quantile interval
+        y_true_ratio_by_bin = y_true_quantile_bin_count_ / dataset_object.test_n_samples
+        assert np.abs(
+            np.sum(y_true_ratio_by_bin) - 1) < 1e-10, "Sum of quantile\
+            coverage ratios shall be 1!"
+        qice_coverage_ratio = np.absolute(
+            np.ones(n_bins) / n_bins - y_true_ratio_by_bin).mean()
+        return y_true_ratio_by_bin, qice_coverage_ratio, y_true
 
+    
+    def compute_PICP(config, y_true, all_gen_y, return_CI=False):
+        """
+        Another coverage metric.
+        """
+        low, high = config.testing.PICP_range
+        CI_y_pred = np.percentile(all_gen_y.squeeze(), 
+                                  q=[low, high], axis=1)
+        # compute percentage of true y in the range of credible interval
+        y_in_range = (y_true >= CI_y_pred[0]) & (y_true <= CI_y_pred[1])
+        coverage = y_in_range.mean()
+        if return_CI:
+            return coverage, CI_y_pred, low, high
+        else:
+            return coverage, low, high
 
 ##############################################################################
 ################### Train function for card_regression class #################
@@ -766,54 +816,6 @@ class Diffusion(object):
         #### local functions within the class function scope #################
         ######################################################################
         
-        def compute_true_coverage_by_gen_QI(config, dataset_object,
-                                            all_true_y, all_generated_y,
-                                            verbose=True):
-            n_bins = config.testing.n_bins
-            quantile_list = np.arange(n_bins + 1) * (100 / n_bins)
-            # compute generated y quantiles
-            y_pred_quantiles = np.percentile(all_generated_y.squeeze(),
-                                             q=quantile_list, axis=1)
-            y_true = all_true_y.T
-            quantile_membership_array = (
-                (y_true - y_pred_quantiles) > 0).astype(int)
-            y_true_quantile_membership = quantile_membership_array.sum(axis=0)
-            y_true_quantile_bin_count = np.array(
-                [(y_true_quantile_membership == v).sum() 
-                 for v in np.arange(n_bins + 2)])
-            if verbose:
-                y_true_below_0, y_true_above_100 = y_true_quantile_bin_count[0], \
-                                                   y_true_quantile_bin_count[-1]
-                logging.info(("We have {} true y smaller than min of generated y, " + \
-                              "and {} greater than max of generated y."
-                              ).format(y_true_below_0, y_true_above_100))
-            # combine true y falls outside of 0-100 gen y quantile to the first and last interval
-            y_true_quantile_bin_count[1] += y_true_quantile_bin_count[0]
-            y_true_quantile_bin_count[-2] += y_true_quantile_bin_count[-1]
-            y_true_quantile_bin_count_ = y_true_quantile_bin_count[1:-1]
-            # compute true y coverage ratio for each gen y quantile interval
-            y_true_ratio_by_bin = y_true_quantile_bin_count_ / dataset_object.test_n_samples
-            assert np.abs(
-                np.sum(y_true_ratio_by_bin) - 1) < 1e-10, "Sum of quantile\
-                coverage ratios shall be 1!"
-            qice_coverage_ratio = np.absolute(
-                np.ones(n_bins) / n_bins - y_true_ratio_by_bin).mean()
-            return y_true_ratio_by_bin, qice_coverage_ratio, y_true
-
-        def compute_PICP(config, y_true, all_gen_y, return_CI=False):
-            """
-            Another coverage metric.
-            """
-            low, high = config.testing.PICP_range
-            CI_y_pred = np.percentile(all_gen_y.squeeze(), 
-                                      q=[low, high], axis=1)
-            # compute percentage of true y in the range of credible interval
-            y_in_range = (y_true >= CI_y_pred[0]) & (y_true <= CI_y_pred[1])
-            coverage = y_in_range.mean()
-            if return_CI:
-                return coverage, CI_y_pred, low, high
-            else:
-                return coverage, low, high
 
         def store_gen_y_at_step_t(config, current_batch_size, idx, y_tile_seq):
             """
@@ -1373,13 +1375,13 @@ class Diffusion(object):
                 all_gen_y = gen_y_by_batch_list[current_t]
                 (y_true_ratio_by_bin,
                  qice_coverage_ratio,
-                 y_true) = compute_true_coverage_by_gen_QI(
+                 y_true) = self.compute_true_coverage_by_gen_QI(
                      config=config, dataset_object=dataset_object,
                      all_true_y=all_true_y, all_generated_y=all_gen_y,
                      verbose=False)
                 y_qice_all_steps_list.append(qice_coverage_ratio)
                 # compute PICP
-                coverage, _, _ = compute_PICP(
+                coverage, _, _ = self.compute_PICP(
                     config=config, y_true=y_true, all_gen_y=all_gen_y)
                 y_picp_all_steps_list.append(coverage)
                 # compute NLL
@@ -1446,7 +1448,7 @@ class Diffusion(object):
             all_gen_y = gen_y_by_batch_list[config.testing.coverage_t]
             (y_true_ratio_by_bin, 
              qice_coverage_ratio,
-             y_true) = compute_true_coverage_by_gen_QI(
+             y_true) = self.compute_true_coverage_by_gen_QI(
                  config=config, dataset_object=dataset_object,
                  all_true_y=all_true_y, all_generated_y=all_gen_y, verbose=True)
             y_qice_all_steps_list.append(qice_coverage_ratio)
@@ -1467,7 +1469,7 @@ class Diffusion(object):
                               "quantile interval and optimal ratio is {:.8f}."
                               ).format(y_mae, qice_coverage_ratio))                
             # compute PICP -- another coverage metric
-            coverage, low, high = compute_PICP(
+            coverage, low, high = self.compute_PICP(
                 config=config, y_true=y_true, all_gen_y=all_gen_y)
             y_picp_all_steps_list.append(coverage)
             logging.info(("There are {:.4f}% of true test y in the range of " +
