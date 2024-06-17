@@ -344,6 +344,30 @@ class Diffusion(object):
             return coverage, CI_y_pred, low, high
         else:
             return coverage, low, high
+        
+    
+    def store_gen_y_at_step_t(self, config=None, current_batch_size=None,
+                              idx=None, y_tile_seq=None,
+                              gen_y_by_batch_list=None):
+        """
+        Store generated y from a mini-batch to 
+        the array of corresponding time step.
+        """
+        current_t = self.num_timesteps - idx
+        #TODO: check wheteher it is the same for other models: PGTNet, PT,...
+        gen_y = y_tile_seq[idx].reshape(current_batch_size,
+                                        config.testing.n_z_samples,
+                                        config.model.y_dim).cpu().numpy()
+        """
+        directly modify the dict value by concat np.array instead of append
+        np.array gen_y to list reduces a huge amount of memory consumption
+        """
+        if len(gen_y_by_batch_list[current_t]) == 0:
+            gen_y_by_batch_list[current_t] = gen_y
+        else:
+            gen_y_by_batch_list[current_t] = np.concatenate(
+                [gen_y_by_batch_list[current_t], gen_y], axis=0)
+        return gen_y
 
 ##############################################################################
 ################### Train function for card_regression class #################
@@ -817,27 +841,6 @@ class Diffusion(object):
         ######################################################################
         
 
-        def store_gen_y_at_step_t(config, current_batch_size, idx, y_tile_seq):
-            """
-            Store generated y from a mini-batch to 
-            the array of corresponding time step.
-            """
-            current_t = self.num_timesteps - idx
-            #TODO: check wheteher it is the same for other models: PGTNet, PT,...
-            gen_y = y_tile_seq[idx].reshape(current_batch_size,
-                                            config.testing.n_z_samples,
-                                            config.model.y_dim).cpu().numpy()
-            """
-            directly modify the dict value by concat np.array instead of append
-            np.array gen_y to list reduces a huge amount of memory consumption
-            """
-            if len(gen_y_by_batch_list[current_t]) == 0:
-                gen_y_by_batch_list[current_t] = gen_y
-            else:
-                gen_y_by_batch_list[current_t] = np.concatenate(
-                    [gen_y_by_batch_list[current_t], gen_y], axis=0)
-            return gen_y
-
         def store_y_se_at_step_t(config, idx, dataset_object, y_batch, gen_y):
             
             current_t = self.num_timesteps - idx
@@ -1211,16 +1214,17 @@ class Diffusion(object):
                 # a) all time steps or
                 if config.testing.compute_metric_all_steps:
                     for idx in range(self.num_timesteps + 1):
-                        gen_y = store_gen_y_at_step_t(
-                            config=config,
+                        gen_y = self.store_gen_y_at_step_t(
+                            config=config, 
                             current_batch_size=current_batch_size,
-                            idx=idx, y_tile_seq=y_tile_seq)
+                            idx=idx, y_tile_seq=y_tile_seq,
+                            gen_y_by_batch_list=gen_y_by_batch_list)
                         store_y_se_at_step_t(config=config, idx=idx,
                                              dataset_object=dataset_object,
                                              y_batch=y_batch, gen_y=gen_y)
                         store_nll_at_step_t(config=config, idx=idx,
                                             dataset_object=dataset_object,
-                                            y_batch=y_batch, gen_y=gen_y)                    
+                                            y_batch=y_batch, gen_y=gen_y) 
                     
                     """
                     For the last gen_y (i.e. t=0):
@@ -1278,23 +1282,26 @@ class Diffusion(object):
                     store generated y at certain step for MAE/RMSE and 
                     for QICE computation
                     """
-                    gen_y = store_gen_y_at_step_t(
+                    gen_y = self.store_gen_y_at_step_t(
                         config=config,
                         current_batch_size=current_batch_size, idx=mean_idx,
-                        y_tile_seq=y_tile_seq)
+                        y_tile_seq=y_tile_seq,
+                        gen_y_by_batch_list=gen_y_by_batch_list)
                     store_y_se_at_step_t(config=config, idx=mean_idx,
                                          dataset_object=dataset_object,
                                          y_batch=y_batch, gen_y=gen_y)
                     if coverage_idx != mean_idx:
-                        _ = store_gen_y_at_step_t(
+                        _ = self.store_gen_y_at_step_t(
                             config=config,
                             current_batch_size=current_batch_size,
-                            idx=coverage_idx, y_tile_seq=y_tile_seq)
+                            idx=coverage_idx, y_tile_seq=y_tile_seq,
+                            gen_y_by_batch_list=gen_y_by_batch_list)
                     if nll_idx != mean_idx and nll_idx != coverage_idx:
-                        _ = store_gen_y_at_step_t(
+                        _ = self.store_gen_y_at_step_t(
                             config=config,
                             current_batch_size=current_batch_size, 
-                            idx=nll_idx, y_tile_seq=y_tile_seq)
+                            idx=nll_idx, y_tile_seq=y_tile_seq,
+                            gen_y_by_batch_list=gen_y_by_batch_list)
                     store_nll_at_step_t(config=config, idx=nll_idx,
                                         dataset_object=dataset_object,
                                         y_batch=y_batch, gen_y=gen_y)
