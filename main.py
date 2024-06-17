@@ -17,11 +17,12 @@ import matplotlib.pyplot as plt
 import numpy as np
 from sklearn.model_selection import KFold
 import torch
+from models.card_regression import Diffusion
 from utils.DALSTM_train_eval import DALSTM_train_evaluate
 from utils.utils import parse_temp_config, parse_config
-from models.card_regression import Diffusion
-#TODO: resolve the following method!
-from utils import delete_preprocessd_tensors
+#TODO: uncomment this import after adjusting the method
+#from utils.utils import delete_preprocessd_tensors
+
 
 
 def main_card(arg_set=None, kfold_handler=None):
@@ -404,7 +405,9 @@ def main():
                     outfile.write('\n\nExperiment arguments:\n')
                     json.dump(args_dict, outfile)
                 print("\nTest metrics saved in .json file.")
-                #TODO: uncomment the following for large sclae experiments
+                # TODO: uncomment the following for large sclae experiments
+                # TODO: this should be applied outside calling CARD because
+                # in other UQ methods, we also need this functionality
                 # delete_preprocessd_tensors(temp_config) # delete preprocessed dataset tensors
         else:
             args.doc = args.doc + "/split_" + str(args.split)

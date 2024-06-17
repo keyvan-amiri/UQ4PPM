@@ -27,8 +27,9 @@ def set_random_seed(seed):
     if torch.cuda.is_available():
         torch.backends.cudnn.deterministic = True
         torch.backends.cudnn.benchmark = False
-        
-# function to set the optimizer object
+  
+# TODO: combine these two methods for better code structure
+# functions to set the optimizer object
 def set_optimizer (model, optimizer_type, base_lr, eps, weight_decay):
     eps = float(eps) #ensure to having a floating number
     if optimizer_type == 'NAdam':
@@ -49,6 +50,39 @@ def set_optimizer (model, optimizer_type, base_lr, eps, weight_decay):
     else:
         print(f'The optimizer {optimizer_type} is not supported')
     return optimizer
+
+def get_optimizer(config_optim, parameters):
+    if config_optim.optimizer == 'Adam':
+        return optim.Adam(parameters, lr=config_optim.lr,
+                          weight_decay=config_optim.weight_decay,
+                          betas=(config_optim.beta1, 0.999),
+                          amsgrad=config_optim.amsgrad,
+                          eps=config_optim.eps)
+    elif config_optim.optimizer == 'RMSProp':
+        return optim.RMSprop(parameters, lr=config_optim.lr,
+                             weight_decay=config_optim.weight_decay)
+    elif config_optim.optimizer == 'SGD':
+        return optim.SGD(parameters, lr=config_optim.lr, momentum=0.9)
+    elif config_optim.optimizer == 'NAdam':
+        return optim.NAdam(parameters, lr=config_optim.lr, eps=1e-07)  
+    else:
+        raise NotImplementedError(
+            'Optimizer {} not understood.'.format(config_optim.optimizer))
+
+#TODO: check scheduler anywhere in the code: instead of hard-coded use config        
+def get_optimizer_and_scheduler(config, parameters, epochs, init_epoch):
+    scheduler = None
+    optimizer = get_optimizer(config, parameters)
+    if hasattr(config, "T_0"):
+        T_0 = config.T_0
+    else:
+        T_0 = epochs // (config.n_restarts + 1)
+    if config.use_scheduler:
+        scheduler = optim.lr_scheduler.CosineAnnealingWarmRestarts(
+            optimizer, T_0=T_0, T_mult=config.T_mult, eta_min=config.eta_min,
+            last_epoch=-1)
+        scheduler.last_epoch = init_epoch - 1
+    return optimizer, scheduler
 
 
 # function to handle training the model
@@ -438,3 +472,22 @@ def parse_config(args=None):
     torch.backends.cudnn.benchmark = True
 
     return new_config, logger
+
+# optimize disk usage: remove unnecessary data inputs
+def delete_preprocessd_tensors (config):
+    _DATA_DIRECTORY_PATH = os.path.join(config.data.data_root,
+                                        config.data.dir, "data")      
+    _DATA_TRAIN_FILE_PATH = os.path.join(_DATA_DIRECTORY_PATH,
+                                         "x_train.pt")
+    _TARGET_TRAIN_FILE_PATH = os.path.join(_DATA_DIRECTORY_PATH,
+                                           "y_train.pt")
+    _DATA_TEST_FILE_PATH = os.path.join(_DATA_DIRECTORY_PATH,
+                                        "x_test.pt")
+    _TARGET_TEST_FILE_PATH = os.path.join(_DATA_DIRECTORY_PATH,
+                                          "y_test.pt")
+    pre_processing_paths = [_DATA_TRAIN_FILE_PATH,
+                            _TARGET_TRAIN_FILE_PATH,
+                            _DATA_TEST_FILE_PATH,
+                            _TARGET_TEST_FILE_PATH]
+    for file_path in pre_processing_paths:
+        os.remove(file_path)

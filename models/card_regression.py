@@ -9,8 +9,6 @@ import os
 import logging
 import time
 import gc
-#import sys
-#import math
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -18,16 +16,13 @@ import torch
 import torch.nn as nn
 import torch.utils.data as data
 from scipy.special import logsumexp
-
 from models.dalstm import DALSTMModel
 from models.conditional_guided import ConditionalGuidedModel
 from utils.diffusion_utils import make_beta_schedule, EMA
 from utils.diffusion_utils import q_sample, p_sample_loop
 from utils.early_stopping import EarlyStopping
-#from model import *
-#from utils import *
-#from diffusion_utils import *
-from utils import get_dataset, get_optimizer
+from utils.utils import get_optimizer
+from utils.data_loader import get_dataset
 
 
 plt.style.use('ggplot')
