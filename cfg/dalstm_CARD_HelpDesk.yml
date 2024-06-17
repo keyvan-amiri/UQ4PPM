@@ -7,6 +7,7 @@ data:
     preprocessing_config: "preprocessing_config.yaml" # shared for all event logs
 
 model:
+    type: dalstm
     data_dim: 453
     x_dim: 453 # number of features after pre-processing the data
     max_len: 14 # maximum sequence length for DALSTM as guidance model

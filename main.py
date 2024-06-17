@@ -15,7 +15,6 @@ import time
 from datetime import datetime, timezone, timedelta
 import matplotlib.pyplot as plt
 import numpy as np
-from sklearn.model_selection import KFold
 import torch
 from models.card_regression import Diffusion
 from utils.DALSTM_train_eval import DALSTM_train_evaluate
@@ -25,7 +24,7 @@ from utils.utils import parse_temp_config, parse_config
 
 
 
-def main_card(arg_set=None, kfold_handler=None):
+def main_card(arg_set=None):
     config, logger = parse_config(args=arg_set)
 
     logging.info('Writing log file to {}'.format(arg_set.log_path))
@@ -34,16 +33,14 @@ def main_card(arg_set=None, kfold_handler=None):
     if arg_set.loss != 'card_conditional':
         raise NotImplementedError('Invalid loss option')
     try:
-        runner = Diffusion(arg_set, config, device=config.device,
-                           kfold_handler=kfold_handler)
+        runner = Diffusion(arg_set, config, device=config.device)
         start_time = time.time()
         procedure = None
-        # TODO: check whether mae is better or keep working with rmse
         if arg_set.test:
-            if config.data.dataset == 'uci': 
+            if arg_set.loss_guidance == 'L2':
                 (y_rmse_all_steps_list, y_qice_all_steps_list, 
                  y_picp_all_steps_list, y_nll_all_steps_list) = runner.test()
-            elif config.data.dataset == 'ppm':
+            else:
                 (y_mae_all_steps_list, y_qice_all_steps_list,
                  y_picp_all_steps_list, y_nll_all_steps_list) = runner.test()
             procedure = 'Testing'
@@ -59,14 +56,13 @@ def main_card(arg_set=None, kfold_handler=None):
             logger.removeHandler(handler)
             handler.close()
         # return test metric lists
-        # TODO: check whether mae is better or keep working with rmse
         if arg_set.test:
-            if config.data.dataset == "uci":
-                return y_rmse_all_steps_list, y_qice_all_steps_list, \
-                    y_picp_all_steps_list, y_nll_all_steps_list, config
-            elif config.data.dataset == "ppm":
-                return y_mae_all_steps_list, y_qice_all_steps_list, \
-                    y_picp_all_steps_list, y_nll_all_steps_list, config
+            if arg_set.loss_guidance == 'L2':
+                return (y_rmse_all_steps_list, y_qice_all_steps_list, 
+                        y_picp_all_steps_list, y_nll_all_steps_list, config)
+            else:
+                return (y_mae_all_steps_list, y_qice_all_steps_list, 
+                        y_picp_all_steps_list, y_nll_all_steps_list, config)
     except Exception:
         logging.error(traceback.format_exc())
 
@@ -190,49 +186,40 @@ def main():
         torch.set_printoptions(sci_mode=False)
         temp_config = parse_temp_config(args.doc)
         if args.run_all:
-            # TODO: check whether mae is better or keep working with rmse
-            if temp_config.data.dataset == "ppm":
-                y_mae_all_splits_all_steps_list, \
-                    y_qice_all_splits_all_steps_list, \
-                        y_picp_all_splits_all_steps_list, \
-                            y_nll_all_splits_all_steps_list = [], [], [], []
-            else:
+            if args.loss_guidance == 'L2':
                 y_rmse_all_splits_all_steps_list, \
                     y_qice_all_splits_all_steps_list, \
                         y_picp_all_splits_all_steps_list,\
                             y_nll_all_splits_all_steps_list = [], [], [], []
+            else:
+                y_mae_all_splits_all_steps_list, \
+                    y_qice_all_splits_all_steps_list, \
+                        y_picp_all_splits_all_steps_list, \
+                            y_nll_all_splits_all_steps_list = [], [], [], []
             original_doc = args.doc
             original_config = args.config
-            # check for holdout/cross-validation set up.
-            if args.split_num > 1:
-                # the first seed is the random seed for cross-validation split
-                kfold_handler = KFold(n_splits=args.split_num,
-                                      random_state=args.seed[0], shuffle=True)
-            else:
-                kfold_handler = None
             for split in range(args.init_split, args.split_num):
                 args.split = split
                 args.doc = original_doc + '/split_' + str(args.split)
                 if args.test:
                     args.config = original_config + args.doc + '/config.yml'
-                    # TODO: check whether mae is better or keep working with rmse
-                    if temp_config.data.dataset == "ppm":
-                        y_mae_all_steps_list, y_qice_all_steps_list, \
-                            y_picp_all_steps_list, y_nll_all_steps_list,\
-                                config = main_card(arg_set= args,
-                                                   kfold_handler=kfold_handler)
-                        y_mae_all_splits_all_steps_list.append(y_mae_all_steps_list)
+                    if args.loss_guidance == 'L2':
+                        (y_rmse_all_steps_list, y_qice_all_steps_list,
+                         y_picp_all_steps_list, y_nll_all_steps_list, config
+                         ) = main_card(arg_set= args)
+                        y_rmse_all_splits_all_steps_list.append(
+                            y_rmse_all_steps_list)    
                     else:
-                        y_rmse_all_steps_list, y_qice_all_steps_list, \
-                            y_picp_all_steps_list, y_nll_all_steps_list,\
-                                config = main_card(arg_set= args,
-                                                   kfold_handler=kfold_handler)
-                        y_rmse_all_splits_all_steps_list.append(y_rmse_all_steps_list)                
+                        (y_mae_all_steps_list, y_qice_all_steps_list, 
+                         y_picp_all_steps_list, y_nll_all_steps_list, config
+                         ) = main_card(arg_set= args)
+                        y_mae_all_splits_all_steps_list.append(
+                            y_mae_all_steps_list)            
                     y_qice_all_splits_all_steps_list.append(y_qice_all_steps_list)
                     y_picp_all_splits_all_steps_list.append(y_picp_all_steps_list)
                     y_nll_all_splits_all_steps_list.append(y_nll_all_steps_list)
                 else:
-                    main_card(arg_set= args, kfold_handler=kfold_handler)
+                    main_card(arg_set= args)
             # summary statistics across all splits
             if args.run_all and args.test:
                 n_timesteps = config.diffusion.timesteps
@@ -244,15 +231,14 @@ def main():
                     n_timesteps=rmse_idx=qice_idx=picp_idx=nll_idx=0
                 #print(len(y_mae_all_splits_all_steps_list))
                 #print(y_mae_all_splits_all_steps_list[0])
-                # TODO: check whether mae is better or keep working with rmse
-                if temp_config.data.dataset == "ppm":
-                    y_mae_all_splits_list = [metric_list[rmse_idx] 
-                                             for metric_list in 
-                                             y_mae_all_splits_all_steps_list]
-                else:
+                if args.loss_guidance == 'L2':
                     y_rmse_all_splits_list = [metric_list[rmse_idx] 
                                               for metric_list in 
                                               y_rmse_all_splits_all_steps_list]
+                else:
+                    y_mae_all_splits_list = [metric_list[rmse_idx] 
+                                             for metric_list in 
+                                             y_mae_all_splits_all_steps_list]                   
                 y_qice_all_splits_list = [metric_list[qice_idx]
                                           for metric_list in
                                           y_qice_all_splits_all_steps_list]
@@ -264,13 +250,12 @@ def main():
                                          y_nll_all_splits_all_steps_list]
 
                 print("\n\n================ Results Across Splits ================")
-                # TODO: check whether mae is better or keep working with rmse
-                if temp_config.data.dataset == "ppm":
-                    print(f"y_MAE mean: {np.mean(y_mae_all_splits_list)} \
-                          y_MAE std: {np.std(y_mae_all_splits_list)}")
-                else:
+                if args.loss_guidance == 'L2':
                     print(f"y_RMSE mean: {np.mean(y_rmse_all_splits_list)}\
                           y_RMSE std: {np.std(y_rmse_all_splits_list)}")
+                else:
+                    print(f"y_MAE mean: {np.mean(y_mae_all_splits_list)} \
+                          y_MAE std: {np.std(y_mae_all_splits_list)}")
                 print(f"QICE mean: {np.mean(y_qice_all_splits_list)}\
                       QICE std: {np.std(y_qice_all_splits_list)}")
                 print(f"PICP mean: {np.mean(y_picp_all_splits_list)}\
@@ -279,19 +264,18 @@ def main():
                       NLL std: {np.std(y_nll_all_splits_list)}")
 
                 # plot mean of all metric across all splits at all time steps during reverse diffusion
-                # TODO: check whether mae is better or keep working with rmse
-                if temp_config.data.dataset == "ppm": 
-                    y_mae_all_splits_all_steps_array = np.array(
-                        y_mae_all_splits_all_steps_list)        
-                    y_mae_mean_all_splits_list = [np.mean(
-                            y_mae_all_splits_all_steps_array[:, idx])
-                        for idx in range(n_timesteps + 1)]                    
-                else:
+                if args.loss_guidance == 'L2':
                     y_rmse_all_splits_all_steps_array = np.array(
                         y_rmse_all_splits_all_steps_list)
                     y_rmse_mean_all_splits_list = [np.mean(
                             y_rmse_all_splits_all_steps_array[:, idx]) 
-                        for idx in range(n_timesteps + 1)]
+                        for idx in range(n_timesteps + 1)]                 
+                else:
+                    y_mae_all_splits_all_steps_array = np.array(
+                        y_mae_all_splits_all_steps_list)        
+                    y_mae_mean_all_splits_list = [np.mean(
+                            y_mae_all_splits_all_steps_array[:, idx])
+                        for idx in range(n_timesteps + 1)]  
                 y_qice_all_splits_all_steps_array = np.array(
                     y_qice_all_splits_all_steps_list)
                 y_picp_all_splits_all_steps_array = np.array(
@@ -314,20 +298,18 @@ def main():
                 xticks = np.arange(0, n_timesteps + 1,
                                    config.diffusion.vis_step)
                 # MAE/RMSE
-                # TODO: check whether mae is better or keep working with rmse
-                if temp_config.data.dataset == "ppm":
-                    axs[0].plot(y_mae_mean_all_splits_list)
-                else:
+                if args.loss_guidance == 'L2':
                     axs[0].plot(y_rmse_mean_all_splits_list)
+                else:   
+                    axs[0].plot(y_mae_mean_all_splits_list)
                 # axs[0].set_title('mean y RMSE of All Splits across All Timesteps', fontsize=14)
                 axs[0].set_xlabel('timestep', fontsize=12)
                 axs[0].set_xticks(xticks)
                 axs[0].set_xticklabels(xticks[::-1])
-                # TODO: check whether mae is better or keep working with rmse
-                if temp_config.data.dataset == "ppm":
-                    axs[0].set_ylabel('y MAE', fontsize=12)
-                else:
+                if args.loss_guidance == 'L2':
                     axs[0].set_ylabel('y RMSE', fontsize=12)
+                else:
+                    axs[0].set_ylabel('y MAE', fontsize=12)                    
                 # NLL
                 axs[1].plot(y_nll_mean_all_splits_list)
                 # axs[3].set_title('mean y NLL of All Splits across All Timesteps', fontsize=14)
@@ -368,19 +350,7 @@ def main():
                         "%Y%m%d-%H%M%S-%f")  # Europe Central time
                 res_file_path = os.path.join(
                     args.exp, "logs", original_doc, "metrics_all_splits")
-                # TODO: check whether mae is better or keep working with rmse
-                if temp_config.data.dataset == "ppm":
-                    res_dict = {'split_num': args.split_num, 'task': original_doc,
-                                'y_MAE mean': float(np.mean(y_mae_all_splits_list)),
-                                'y_MAE std': float(np.std(y_mae_all_splits_list)),
-                                'QICE mean': float(np.mean(y_qice_all_splits_list)),
-                                'QICE std': float(np.std(y_qice_all_splits_list)),
-                                'PICP mean': float(np.mean(y_picp_all_splits_list)),
-                                'PICP std': float(np.std(y_picp_all_splits_list)),
-                                'NLL mean': float(np.mean(y_nll_all_splits_list)),
-                                'NLL std': float(np.std(y_nll_all_splits_list))
-                                }
-                else:
+                if args.loss_guidance == 'L2':
                     res_dict = {'split_num': args.split_num, 'task': original_doc,
                                 'y_RMSE mean': float(np.mean(y_rmse_all_splits_list)),
                                 'y_RMSE std': float(np.std(y_rmse_all_splits_list)),
@@ -390,7 +360,18 @@ def main():
                                 'PICP std': float(np.std(y_picp_all_splits_list)),
                                 'NLL mean': float(np.mean(y_nll_all_splits_list)),
                                 'NLL std': float(np.std(y_nll_all_splits_list))
-                                }                
+                                }  
+                else:
+                    res_dict = {'split_num': args.split_num, 'task': original_doc,
+                                'y_MAE mean': float(np.mean(y_mae_all_splits_list)),
+                                'y_MAE std': float(np.std(y_mae_all_splits_list)),
+                                'QICE mean': float(np.mean(y_qice_all_splits_list)),
+                                'QICE std': float(np.std(y_qice_all_splits_list)),
+                                'PICP mean': float(np.mean(y_picp_all_splits_list)),
+                                'PICP std': float(np.std(y_picp_all_splits_list)),
+                                'NLL mean': float(np.mean(y_nll_all_splits_list)),
+                                'NLL std': float(np.std(y_nll_all_splits_list))
+                                }              
                 args_dict = {'task': config.data.dataset,
                              'loss': args.loss,
                              'guidance': config.diffusion.conditioning_signal,

@@ -29,7 +29,7 @@ plt.style.use('ggplot')
 
 
 class Diffusion(object):
-    def __init__(self, args, config, device=None, kfold_handler=None):
+    def __init__(self, args, config, device=None):
         self.args = args
         self.config = config
         if device is None:
@@ -39,7 +39,6 @@ class Diffusion(object):
                 else torch.device("cpu")
             )
         self.device = device
-        self.kfold_handler = kfold_handler
         self.model_var_type = config.model.var_type
         self.num_timesteps = config.diffusion.timesteps
         self.vis_step = config.diffusion.vis_step
@@ -499,20 +498,17 @@ class Diffusion(object):
         args = self.args
         config = self.config
         tb_logger = self.config.tb_logger
-        kfold_handler = self.kfold_handler
         
         # first obtain test set for pre-trained model evaluation
         logging.info("Test set info:")
-        test_set_object, test_set = get_dataset(args, config, test_set=True,
-                                                kfold_handler=kfold_handler)
+        test_set_object, test_set = get_dataset(args, config, test_set=True)
         test_loader = data.DataLoader(test_set,
                                       batch_size=config.testing.batch_size,
                                       num_workers=config.data.num_workers,)
         
         # obtain training set
         logging.info("Training set info:")
-        dataset_object, dataset = get_dataset(args, config, test_set=False,
-                                              kfold_handler=kfold_handler)
+        dataset_object, dataset = get_dataset(args, config, test_set=False)
         self.dataset_object = dataset_object
         self.mean_target_value = dataset_object.return_mean_target_arrtibute()
         self.max_target_value = dataset_object.return_max_target_arrtibute()
@@ -544,8 +540,7 @@ class Diffusion(object):
                                          num_workers=config.data.num_workers,)
             logging.info("Training subset info:")
             train_subset_object, train_subset = get_dataset(
-                args, config, test_set=False, validation=True,
-                kfold_handler=kfold_handler)
+                args, config, test_set=False, validation=True)
             train_subset_loader = data.DataLoader(
                 train_subset, batch_size=config.training.batch_size,
                 shuffle=True, num_workers=config.data.num_workers,)
@@ -956,13 +951,11 @@ class Diffusion(object):
         """
         Evaluate model on regression tasks on test set.
         """
-        kfold_handler = self.kfold_handler
         args = self.args
         config = self.config
         #split = args.split
         log_path = os.path.join(self.args.log_path)
-        dataset_object, dataset = get_dataset(args, config, test_set=True,
-                                              kfold_handler=kfold_handler)
+        dataset_object, dataset = get_dataset(args, config, test_set=True)
         test_loader = data.DataLoader(
             dataset,
             batch_size=config.testing.batch_size,

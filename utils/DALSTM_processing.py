@@ -516,6 +516,10 @@ class DALSTM_preprocessing ():
             "DALSTM_test_length_list_"+self.dataset_name+".pkl")    
         scaler_path = os.path.join(
             self.dataset_path, "DALSTM_max_train_val_"+self.dataset_name+".pkl")
+        target_mean_path = os.path.join(
+            self.dataset_path, "DALSTM_mean_train_val_"+self.dataset_name+".pkl")
+        target_median_path = os.path.join(
+            self.dataset_path, "DALSTM_median_train_val_"+self.dataset_name+".pkl")
         input_size_path = os.path.join(
             self.dataset_path, "DALSTM_input_size_"+self.dataset_name+".pkl")
         max_len_path = os.path.join(
@@ -581,15 +585,26 @@ class DALSTM_preprocessing ():
         y_test /= (24*3600) 
         # Target attribute normalization
         if self.normalization:
+            # get the maximum value for remaining time in train and val sets.
             max_y_train = np.max(y_train)
             max_y_val = np.max(y_val)
-            max_train_val = np.max([max_y_train, max_y_val])
+            max_train_val = np.max([max_y_train, max_y_val])         
             #print(max_train_val)
+            # concatenate remaining times for training and validations sets
+            y_train_val = np.concatenate(y_train, y_val)
+            # get mean and median of remaining time for CARD model
+            mean_target_value = np.mean(y_train_val)
+            median_target_value = np.median(y_train_val)            
+            # min-max normalization (we assume min equals zero)
             y_train /= max_train_val
             y_val /= max_train_val
             y_test /= max_train_val
         else:
             max_train_val = None
+            mean_target_value = None
+            median_target_value = None
+            
+            
         # convert numpy arrays to tensors
         # manage disk space for huge event logs
         if (('BPIC15' in self.dataset_name) or 
@@ -619,6 +634,10 @@ class DALSTM_preprocessing ():
             pickle.dump(test_lengths, file)
         with open(scaler_path, 'wb') as file:
             pickle.dump(max_train_val, file)
+        with open(target_mean_path, 'wb') as file:
+            pickle.dump(mean_target_value, file)
+        with open(target_median_path, 'wb') as file:
+            pickle.dump(median_target_value, file)
         with open(input_size_path, 'wb') as file:
             pickle.dump(input_size, file)
         with open(max_len_path, 'wb') as file:
