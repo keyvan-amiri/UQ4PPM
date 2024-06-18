@@ -1,15 +1,20 @@
 dws-15.informatik.uni-mannheim.de
 tmux new -s uq4ppm
 conda activate graphgps
+conda activate card
 tmux attach-session -t uq4ppm
 
-python preprocess.py --datasets env_permit
-python main.py --dataset env_permit --model dalstm --UQ deterministic --split holdout --seed 42 --device 0
-python main.py --dataset env_permit --model dalstm --UQ DA --split holdout --seed 42 --device 0
-python main.py --dataset env_permit --model dalstm --UQ CDA --split holdout --seed 42 --device 0
-python main.py --dataset env_permit --model dalstm --UQ DA_A --split holdout --seed 42 --device 0
-python main.py --dataset env_permit --model dalstm --UQ CDA_A --split holdout --seed 42 --device 0
-python evaluation.py --dataset env_permit --model dalstm
+
+bash training_scripts/run_ppm_HelpDesk.sh
+
+
+python preprocess.py --datasets HelpDesk
+python main.py --dataset HelpDesk --model dalstm --UQ deterministic --split_mode holdout --seed 42 --device 0
+python main.py --dataset HelpDesk --model dalstm --UQ DA --split_mode holdout --seed 42 --device 0
+python main.py --dataset HelpDesk --model dalstm --UQ CDA --split_mode holdout --seed 42 --device 0
+python main.py --dataset HelpDesk --model dalstm --UQ DA_A --split_mode holdout --seed 42 --device 0
+python main.py --dataset HelpDesk --model dalstm --UQ CDA_A --split_mode holdout --seed 42 --device 0
+python evaluation.py --dataset HelpDesk --model dalstm
 
 
 

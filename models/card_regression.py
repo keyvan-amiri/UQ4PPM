@@ -88,14 +88,15 @@ class Diffusion(object):
         # initial Prediction model as guided condition
         self.cond_pred_model = None
         if config.diffusion.conditioning_signal == "DALSTM":
-            self.cond_pred_model = DALSTMModel(input_size=config.model.x_dim,
-                                               hidden_size=config.diffusion.nonlinear_guidance.hidden_size,
-                                               n_layers=config.diffusion.nonlinear_guidance.n_layers,
-                                               max_len=config.model.max_len,
-                                               linear_hidden_size=config.diffusion.nonlinear_guidance.linear_hidden_size,
-                                               dropout=config.diffusion.nonlinear_guidance.dropout,
-                                               p_fix=config.diffusion.nonlinear_guidance.dropout_rate
-                                               ).to(self.device)          
+            self.cond_pred_model = DALSTMModel(
+                input_size=config.model.x_dim,
+                hidden_size=config.diffusion.nonlinear_guidance.hidden_size,
+                n_layers=config.diffusion.nonlinear_guidance.n_layers,
+                max_len=config.model.max_len, 
+                linear_hidden_size=config.diffusion.nonlinear_guidance.linear_hidden_size,
+                dropout=config.diffusion.nonlinear_guidance.dropout,
+                p_fix=config.diffusion.nonlinear_guidance.dropout_rate).to(
+                    self.device)          
         else:
             #TODO: implementation for ProcessTransformer and PGTNet
             print('Currently only DALSTM model is supported.')
@@ -127,7 +128,8 @@ class Diffusion(object):
         for batch in dataset_loader:
             x_batch = batch[0].to(self.device)
             y_batch = batch[1].to(self.device)
-            y_batch_pred_mean = self.compute_guiding_Prediction(x_batch).cpu().detach().numpy()
+            y_batch_pred_mean = self.compute_guiding_Prediction(
+                x_batch).cpu().detach().numpy()
             y_batch = y_batch.cpu().detach().numpy()
             if self.config.model.target_norm and eval_mode=="inverse_norm":
                 # inverse min-max normalization

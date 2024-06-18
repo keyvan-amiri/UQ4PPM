@@ -79,7 +79,7 @@ def main():
                         help='Type of the predictive model')
     parser.add_argument('--UQ', default='deterministic',
                         help='Uncertainty quantification method to be used')
-    parser.add_argument('--split', default='holdout',
+    parser.add_argument('--split_mode', default='holdout',
                         help='The data split that is used')
     parser.add_argument('--split_num', type=int, default=5,
                         help='Number of splits that is used')
@@ -409,7 +409,7 @@ def main():
         cfg['net'] = args.model
         cfg['uq_method'] = args.UQ
         cfg['dataset'] = args.dataset
-        cfg['split'] = args.split
+        cfg['split'] = args.split_mode
         cfg['n_splits'] = args.split_num
         cfg['device'] = device_name
         cfg['seed'] = args.seed
