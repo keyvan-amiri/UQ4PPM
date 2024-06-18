@@ -41,6 +41,7 @@ def main():
         # get ground truth as well as mean and std for predictions
         pred_mean = df['Prediction'].values 
         y = df['GroundTruth'].values
+        # TODO: add CARD model the first condition!
         if (prefix=='DA_A' or prefix=='CDA_A'):
             pred_std = df['Total_Uncertainty'].values 
         else:

@@ -224,12 +224,10 @@ class Diffusion(object):
                                          ).mean(1).reshape(-1, 1)
         else:
             y_mean = cur_y.cpu()
-        # TODO: change the following if normalization is conducted differently
-        if self.config.data.dataset == "ppm":
-            if self.config.model.target_norm:
-                y_t_unnorm = y_mean * max_targ
-            else:
-                y_t_unnorm = y_mean
+        if self.config.model.target_norm:
+            y_t_unnorm = y_mean * max_targ
+        else:
+            y_t_unnorm = y_mean
         return y_t_unnorm
 
     #TODO: check the resultant plots, and if necessary adjust compute_unnorm_y. is it really unnorm?
@@ -680,10 +678,10 @@ class Diffusion(object):
                     However, we used min-max normalization to keep the original
                     distrbution of remining time which often does not follow a
                     normal distribution. (we assume that the minimum value is
-                                          zero and thus only use max value)
-                    In contrst, in the original
-                    implementation of CARD standardization is used, and thus,
-                    zero reflect the mean of the target attribute.                     
+                    zero and thus only use max value)
+                    In contrst, in the original implementation of CARD:
+                    standardization is used, and thus, zero reflect the mean
+                    of the target attribute.                     
                     """
                     logging.info('Prior distribution at timestep T \
                                  has a mean of 0.')

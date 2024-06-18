@@ -92,6 +92,11 @@ class DALSTM_Dataset(object):
                 raise NormalizationError(
                     'Repeat pre-processing step with target normalization')
             else:
+                """
+                Although normalization is not applied we still need
+                maximum, mean, and median of remaining time (in case we want to
+                use a noise_prior instead of pre-trained deterministic model.
+                """
                 self.max_target_value = torch.max(
                     torch.cat((y_train, y_val), 0)).numpy()
                 self.mean_target_value = torch.mean(

@@ -629,15 +629,18 @@ class DALSTM_preprocessing ():
         torch.save(y_train, y_train_path)
         torch.save(y_val, y_val_path)
         torch.save(y_test, y_test_path)
-        # save test prefix lengths, normalization constat, max_len, input_size
+        # save test prefix lengths
         with open(test_length_path, 'wb') as file:
             pickle.dump(test_lengths, file)
+        # save normalization constant (maximum remaining time in training data)
         with open(scaler_path, 'wb') as file:
             pickle.dump(max_train_val, file)
+        # Save mean and median for remaining time
         with open(target_mean_path, 'wb') as file:
             pickle.dump(mean_target_value, file)
         with open(target_median_path, 'wb') as file:
             pickle.dump(median_target_value, file)
+        # save max_len, input_size to be used in the definition of model
         with open(input_size_path, 'wb') as file:
             pickle.dump(input_size, file)
         with open(max_len_path, 'wb') as file:
