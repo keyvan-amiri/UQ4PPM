@@ -365,7 +365,7 @@ def parse_config(args=None):
     args.log_path = os.path.join(args.exp, "logs", args.doc)
     # parse config file
     with open(os.path.join(args.config), "r") as f:
-        if args.sample or args.test:
+        if args.test:
             config = yaml.unsafe_load(f)
             new_config = config
         else:
@@ -452,7 +452,7 @@ def parse_config(args=None):
         logger.addHandler(handler2)
         logger.setLevel(level)
 
-        if args.sample or args.test:
+        if args.test:
             os.makedirs(args.im_path, exist_ok=True)
 
     # add device
@@ -467,7 +467,9 @@ def parse_config(args=None):
         print('Using {} threads'.format(args.thread))
 
     # set random seed
-    set_random_seed(args.seed)
+    if isinstance(args.seed, list):
+        seed = int(args.seed[0])       
+    set_random_seed(seed)
 
     torch.backends.cudnn.benchmark = True
 

@@ -38,7 +38,6 @@ diffusion:
         hidden_size: 150 # number of neurons in LSTM layers in both guidance and noise estimation models
         dropout: True # whether to use dropout in both guidance and noise estimation models
         dropout_rate: 0.2 # dropout probability to be used in both guidance and noise estimation models
-        linear_hidden_size: 5 # size of the second linear layer in DALSTM as guidance model
         apply_early_stopping: True
         n_pretrain_max_epochs: 1000
         train_ratio: 0.8  # for splitting original train into train and validation set for hyperparameter tuning

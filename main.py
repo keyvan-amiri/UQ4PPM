@@ -81,10 +81,12 @@ def main():
                         help='Uncertainty quantification method to be used')
     parser.add_argument('--split_mode', default='holdout',
                         help='The data split that is used')
-    parser.add_argument('--split_num', type=int, default=5,
+    parser.add_argument('--n_splits', type=int, default=5,
                         help='Number of splits that is used')
+    # for CARD model, each seed should be executed separately, but for other
+    # approaches the code can handle multiple seeds
     parser.add_argument('--seed', nargs='+', help='Random seed to use',
-                        required=True) #can handle multiple seeds
+                        required=True)
     parser.add_argument('--device', type=int, default=0, help='GPU device id')
     parser.add_argument('--thread', type=int, default=4,
                         help='number of threads') 
@@ -198,7 +200,7 @@ def main():
                             y_nll_all_splits_all_steps_list = [], [], [], []
             original_doc = args.doc
             original_config = args.config
-            for split in range(args.init_split, args.split_num):
+            for split in range(args.init_split, args.n_splits):
                 args.split = split
                 args.doc = original_doc + '/split_' + str(args.split)
                 if args.test:
@@ -351,7 +353,7 @@ def main():
                 res_file_path = os.path.join(
                     args.exp, "logs", original_doc, "metrics_all_splits")
                 if args.loss_guidance == 'L2':
-                    res_dict = {'split_num': args.split_num, 'task': original_doc,
+                    res_dict = {'split_num': args.n_splits, 'task': original_doc,
                                 'y_RMSE mean': float(np.mean(y_rmse_all_splits_list)),
                                 'y_RMSE std': float(np.std(y_rmse_all_splits_list)),
                                 'QICE mean': float(np.mean(y_qice_all_splits_list)),
@@ -362,7 +364,7 @@ def main():
                                 'NLL std': float(np.std(y_nll_all_splits_list))
                                 }  
                 else:
-                    res_dict = {'split_num': args.split_num, 'task': original_doc,
+                    res_dict = {'split_num': args.n_splits, 'task': original_doc,
                                 'y_MAE mean': float(np.mean(y_mae_all_splits_list)),
                                 'y_MAE std': float(np.std(y_mae_all_splits_list)),
                                 'QICE mean': float(np.mean(y_qice_all_splits_list)),
@@ -376,7 +378,7 @@ def main():
                              'loss': args.loss,
                              'guidance': config.diffusion.conditioning_signal,
                              'n_timesteps': n_timesteps,
-                             'split_num': args.split_num
+                             'split_num': args.n_splits
                              }
                 # save metrics and model hyperparameters to a json file
                 if not os.path.exists(res_file_path):
@@ -410,7 +412,7 @@ def main():
         cfg['uq_method'] = args.UQ
         cfg['dataset'] = args.dataset
         cfg['split'] = args.split_mode
-        cfg['n_splits'] = args.split_num
+        cfg['n_splits'] = args.n_splits
         cfg['device'] = device_name
         cfg['seed'] = args.seed
         if args.model == 'dalstm':

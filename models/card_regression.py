@@ -93,10 +93,9 @@ class Diffusion(object):
                 hidden_size=config.diffusion.nonlinear_guidance.hidden_size,
                 n_layers=config.diffusion.nonlinear_guidance.n_layers,
                 max_len=config.model.max_len, 
-                linear_hidden_size=config.diffusion.nonlinear_guidance.linear_hidden_size,
                 dropout=config.diffusion.nonlinear_guidance.dropout,
                 p_fix=config.diffusion.nonlinear_guidance.dropout_rate).to(
-                    self.device)          
+                    self.device)                          
         else:
             #TODO: implementation for ProcessTransformer and PGTNet
             print('Currently only DALSTM model is supported.')

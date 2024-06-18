@@ -36,7 +36,7 @@ class DALSTM_Dataset(object):
         # get dataset name, and the path to pre-processed data
         self.dataset = config.data.dir
         self.dalstm_class = 'DALSTM_' + self.dataset
-        root_path = os.path.dirname(os.path.abspath(__file__))       
+        root_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))        
         self.dataset_path =  os.path.join(
             os.path.join(root_path, 'datasets'), self.dalstm_class)
         # get relevant paths to import all required data

@@ -591,7 +591,7 @@ class DALSTM_preprocessing ():
             max_train_val = np.max([max_y_train, max_y_val])         
             #print(max_train_val)
             # concatenate remaining times for training and validations sets
-            y_train_val = np.concatenate(y_train, y_val)
+            y_train_val = np.concatenate([y_train, y_val])
             # get mean and median of remaining time for CARD model
             mean_target_value = np.mean(y_train_val)
             median_target_value = np.median(y_train_val)            
