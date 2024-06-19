@@ -1370,11 +1370,19 @@ class Diffusion(object):
             instance_level_df[['Prefix_length']] = instance_level_df[['Prefix_length']].astype(int)
             # TODO: Save the final result in results folder with specified 
             # UQ method to be used alongside other methods!
+            instance_level_df.to_csv(os.path.join(
+                self.args.log_path, 'instance_level_Predictions.csv'),
+                index=False) 
+            # create another copy alongside csv results of other methods
+            if self.args.n_splits == 1:
+                csv_name = 'CARD_holdout_seed_{}_inference_result_.csv'.format(
+                    self.arg.seed)
+            else:
+                csv_name = 'CARD_holdout_fold{}_seed_{}_inference_result_.csv'.format(
+                    self.args.split, self.arg.seed)   
             instance_level_df.to_csv(
-                os.path.join(self.args.log_path,
-                             "instance_level_Predictions.csv"), index=False)   
-            
-        
+                os.path.join(self.args.instance_path, csv_name), index=False)       
+
         ################## compute metrics on test set ##################
         all_true_y = np.concatenate(true_y_by_batch_list, axis=0)
         if config.testing.plot_gen:

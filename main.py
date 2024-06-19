@@ -206,10 +206,13 @@ def main():
     if args.UQ == 'CARD':
         # set scientific number prints to False
         torch.set_printoptions(sci_mode=False)
+        # set a path for instance-level predictions
+        instance_path = os.path.join(root_path, 'results', args.dataset,
+                                     args.model)
+        args.instance_path = instance_path
         # set a path for saving running related data.
-        exp_path = os.path.join(root_path, 'results', args.dataset, args.model,
-                                'card')
-        args.exp = exp_path
+        exp_path = os.path.join(instance_path, 'card')
+        args.exp = exp_path       
         # set the log folder- for documentation purpose
         args.doc =  args.model + '_card_' + args.dataset                                
         # set the configuration file based on train/test task        
@@ -233,9 +236,6 @@ def main():
             with open(max_len_path, 'rb') as file:
                 args.max_len = pickle.load(file)   
 
-        
-
-        
         temp_config = parse_temp_config(args.doc)
         
         if args.run_all:
