@@ -24,15 +24,15 @@ class ConditionalLinear(nn.Module):
 
 
 class ConditionalGuidedModel(nn.Module):
-    def __init__(self, config):
+    def __init__(self, config, args):
         super(ConditionalGuidedModel, self).__init__()
         n_steps = config.diffusion.timesteps + 1
-        data_dim = config.model.y_dim
+        # original implementation: config.model.y_dim instead of 1
+        data_dim = 1
         feature_dim = config.model.feature_dim
         hidden_size = config.diffusion.nonlinear_guidance.hidden_size
         dropout_rate = config.diffusion.nonlinear_guidance.dropout_rate
-        max_len = config.model.max_len
-        self.arch = config.model.arch
+        max_len = args.max_len
         self.cat_x = config.model.cat_x
         self.cat_y_pred = config.model.cat_y_pred
         self.dalstm = True if config.diffusion.conditioning_signal == "DALSTM" else False
@@ -45,8 +45,9 @@ class ConditionalGuidedModel(nn.Module):
                 # TODO: for further implementation of ProcessTransformer and PGTNet
                 print('to be implemented')
         if self.cat_y_pred:
-            data_dim += config.model.y_dim
-        self.lstm1 = nn.LSTM(config.model.x_dim, hidden_size, batch_first=True)
+            # original implementation: config.model.y_dim instead of 1
+            data_dim += 1
+        self.lstm1 = nn.LSTM(args.x_dim, hidden_size, batch_first=True)
         self.lstm2 = nn.LSTM(hidden_size, hidden_size, batch_first=True)        
         self.dropout_layer = nn.Dropout(p=dropout_rate)
         self.batch_norm1 = nn.BatchNorm1d(max_len) 
@@ -63,7 +64,7 @@ class ConditionalGuidedModel(nn.Module):
             if self.dropout:
                 x = self.dropout_layer(x)
             x = self.batch_norm1(x)
-            if self.arch == 'LSTM' and self.n_layers > 1:
+            if self.n_layers > 1:
                 for i in range(self.n_layers - 1):
                     x, (hidden_state,cell_state) = self.lstm2(
                         x, (hidden_state,cell_state))

@@ -10,6 +10,7 @@ import yaml
 import json
 import sys
 import logging
+import pickle
 import traceback
 import time
 from datetime import datetime, timezone, timedelta
@@ -220,6 +221,20 @@ def main():
             config_path = os.path.join(root_path, 'cfg',
                                 args.model+'_'+args.dataset+'_card'+'.yml')
         args.config = config_path
+        # load dimensions of the model and add them to args
+        if args.model == 'dalstm':
+            dalstm_class = 'DALSTM_' + args.dataset
+            x_dim_path = os.path.join(root_path, 'datasets', dalstm_class,
+                                    'DALSTM_input_size_HelpDesk.pkl')
+            with open(x_dim_path, 'rb') as file:
+                args.x_dim = pickle.load(file)            
+            max_len_path = os.path.join(root_path, 'datasets', dalstm_class,
+                                    'DALSTM_max_len_HelpDesk.pkl')
+            with open(max_len_path, 'rb') as file:
+                args.max_len = pickle.load(file)   
+
+        
+
         
         temp_config = parse_temp_config(args.doc)
         
@@ -301,7 +316,10 @@ def main():
                 print(f"NLL mean: {np.mean(y_nll_all_splits_list)}\
                       NLL std: {np.std(y_nll_all_splits_list)}")
 
-                # plot mean of all metric across all splits at all time steps during reverse diffusion
+                """
+                plot mean of all metric across all splits at all time steps
+                during reverse diffusion
+                """
                 if args.loss_guidance == 'L2':
                     y_rmse_all_splits_all_steps_array = np.array(
                         y_rmse_all_splits_all_steps_list)

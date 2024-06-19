@@ -8,15 +8,10 @@ data:
 
 model:
     type: dalstm
-    data_dim: 453
-    x_dim: 453 # number of features after pre-processing the data
-    max_len: 14 # maximum sequence length for DALSTM as guidance model
-    y_dim: 1 # In our regression task at hand is always 1
     target_norm: True # whether to use normalization for target attribute or not
     cat_x: True # whether to concatanate data features (x) to the input of noise estimation network or not
     feature_dim: 128 # dimension for linear layer used in noise estimation network
     var_type: fixedlarge # fixedlarge or fixedsmall
-    arch: LSTM # architecture that is used for noise estimation network
     ema_rate: 0.9999
     ema: True
 
@@ -40,8 +35,6 @@ diffusion:
         dropout_rate: 0.2 # dropout probability to be used in both guidance and noise estimation models
         apply_early_stopping: True
         n_pretrain_max_epochs: 1000
-        train_ratio: 0.8  # for splitting original train into train and validation set for hyperparameter tuning
-        train_test_ratio: 0.8 # only for holdout approach otherwise sizes are inferred from number of splits
         patience: 50 # patience for early stopping for guidance model
         delta: 0  # hyperparameter for improvement measurement in the early stopping scheme
 

@@ -89,10 +89,10 @@ class Diffusion(object):
         self.cond_pred_model = None
         if config.diffusion.conditioning_signal == "DALSTM":
             self.cond_pred_model = DALSTMModel(
-                input_size=config.model.x_dim,
+                input_size=args.x_dim,
                 hidden_size=config.diffusion.nonlinear_guidance.hidden_size,
                 n_layers=config.diffusion.nonlinear_guidance.n_layers,
-                max_len=config.model.max_len, 
+                max_len=args.max_len, 
                 dropout=config.diffusion.nonlinear_guidance.dropout,
                 p_fix=config.diffusion.nonlinear_guidance.dropout_rate).to(
                     self.device)                          
@@ -350,9 +350,10 @@ class Diffusion(object):
         """
         current_t = self.num_timesteps - idx
         #TODO: check wheteher it is the same for other models: PGTNet, PT,...
+        # in original implementation: config.model.y_dim is used instead of 1.
         gen_y = y_tile_seq[idx].reshape(current_batch_size,
                                         config.testing.n_z_samples,
-                                        config.model.y_dim).cpu().numpy()
+                                        1).cpu().numpy()
         """
         directly modify the dict value by concat np.array instead of append
         np.array gen_y to list reduces a huge amount of memory consumption
@@ -541,7 +542,7 @@ class Diffusion(object):
             train_subset_loader = data.DataLoader(
                 train_subset, batch_size=config.training.batch_size,
                 shuffle=True, num_workers=config.data.num_workers,)
-        model = ConditionalGuidedModel(config)
+        model = ConditionalGuidedModel(config, args)
         model = model.to(self.device)
                
         # evaluate f_phi(x) on both training and test set
@@ -714,8 +715,9 @@ class Diffusion(object):
                     #TODO: add necessary code for PGTNET, PT, ...
                     if config.diffusion.conditioning_signal == "NN":
                         xy_0 = xy_0.to(self.device)
-                        x_batch = xy_0[:, :-config.model.y_dim]
-                        y_batch = xy_0[:, -config.model.y_dim:]  # shape: (batch_size, 1)
+                        # original implementation: config.model.y_dim instead of 1
+                        x_batch = xy_0[:, :-1]
+                        y_batch = xy_0[:, -1:]  # shape: (batch_size, 1)
                     if config.diffusion.conditioning_signal == "DALSTM":
                         x_batch = xy_0[0].to(self.device)
                         y_batch = xy_0[1].to(self.device)                        
@@ -966,7 +968,7 @@ class Diffusion(object):
                                           test_var=args.nll_test_var,
                                           max_targ=self.max_target_value)
         # define the model
-        model = ConditionalGuidedModel(self.config)
+        model = ConditionalGuidedModel(self.config, self.args)
         if getattr(self.config.testing, 'ckpt_id', None) is None:
             states = torch.load(os.path.join(log_path, 'ckpt.pth'),
                                 map_location=self.device)
@@ -1172,7 +1174,7 @@ class Diffusion(object):
                 x_tile = (x_batch.repeat(
                     config.testing.n_z_samples, 1, 1).transpose(0, 1)).to(
                         self.device).flatten(0, 1).view(
-                            -1, config.model.max_len, config.model.x_dim)
+                            -1, args.max_len, self.args.x_dim)
                               
                 n_samples_gen_y_for_plot = 2 
                 if config.testing.plot_gen:
