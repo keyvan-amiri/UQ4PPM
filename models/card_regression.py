@@ -292,10 +292,13 @@ class Diffusion(object):
                 return y_ae
             
     
-    def compute_true_coverage_by_gen_QI(config, dataset_object,
+    def compute_true_coverage_by_gen_QI(dataset_object,
                                         all_true_y, all_generated_y,
                                         verbose=True):
-        n_bins = config.testing.n_bins
+        # TODO: check whether control over n_bins is necessary or hard-coded one is ok!
+        # if it is ok, remove the relevant attribute from config file.
+        #n_bins = config.testing.n_bins
+        n_bins=10
         quantile_list = np.arange(n_bins + 1) * (100 / n_bins)
         # compute generated y quantiles
         y_pred_quantiles = np.percentile(all_generated_y.squeeze(),
@@ -327,11 +330,13 @@ class Diffusion(object):
         return y_true_ratio_by_bin, qice_coverage_ratio, y_true
 
     
-    def compute_PICP(config, y_true, all_gen_y, return_CI=False):
-        """
-        Another coverage metric.
-        """
-        low, high = config.testing.PICP_range
+    def compute_PICP(y_true, all_gen_y, return_CI=False):
+        # Another coverage metric.
+        # TODO: check whether control over low and high is necessary or hard-coded one is ok!
+        # if it is ok, remove the relevant attribute from config file.
+        #low , high = config.testing.PICP_range
+        low = 2.5
+        high = 97.5
         CI_y_pred = np.percentile(all_gen_y.squeeze(), 
                                   q=[low, high], axis=1)
         # compute percentage of true y in the range of credible interval
@@ -952,7 +957,6 @@ class Diffusion(object):
         """
         args = self.args
         config = self.config
-        #split = args.split
         log_path = os.path.join(self.args.log_path)
         dataset_object, dataset = get_dataset(args, config, test_set=True)
         test_loader = data.DataLoader(
@@ -1400,6 +1404,8 @@ class Diffusion(object):
                     y_mae = np.mean(y_ae_by_batch_list[current_t])
                     y_mae_all_steps_list.append(y_mae)                
                 # compute QICE
+                #^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                """
                 all_gen_y = gen_y_by_batch_list[current_t]
                 (y_true_ratio_by_bin,
                  qice_coverage_ratio,
@@ -1407,10 +1413,27 @@ class Diffusion(object):
                      config=config, dataset_object=dataset_object,
                      all_true_y=all_true_y, all_generated_y=all_gen_y,
                      verbose=False)
+                """
+                all_gen_y = gen_y_by_batch_list[current_t]
+                (y_true_ratio_by_bin,
+                 qice_coverage_ratio,
+                 y_true) = self.compute_true_coverage_by_gen_QI(
+                     dataset_object=dataset_object,
+                     all_true_y=all_true_y, all_generated_y=all_gen_y,
+                     verbose=False)                
+                print('this part is reached')
+                #^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
                 y_qice_all_steps_list.append(qice_coverage_ratio)
                 # compute PICP
+                #^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                """
                 coverage, _, _ = self.compute_PICP(
                     config=config, y_true=y_true, all_gen_y=all_gen_y)
+                """
+                coverage, _, _ = self.compute_PICP(y_true=y_true, all_gen_y=all_gen_y)
+                
+                print('this part is reached')
+                #^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
                 y_picp_all_steps_list.append(coverage)
                 # compute NLL
                 y_nll = np.mean(nll_by_batch_list[current_t])

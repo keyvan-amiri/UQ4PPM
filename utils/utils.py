@@ -452,8 +452,7 @@ def parse_config(args=None):
         logger.addHandler(handler2)
         logger.setLevel(level)
 
-        if args.test:
-            os.makedirs(args.im_path, exist_ok=True)
+        os.makedirs(args.im_path, exist_ok=True)
 
     # add device
     device_name = f'cuda:{args.device}' if torch.cuda.is_available() else 'cpu'

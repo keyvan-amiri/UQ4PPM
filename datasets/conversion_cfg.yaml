@@ -4,7 +4,7 @@ env_permit:
   case_categorical: ['responsible', 'department', 'channel', 'group'] # without 'case:' string
   case_numerical: []
 HelpDesk:
-  event_attributes: ['org:resource', 'workgroup', 'seriousness_2', 'service_level' , 'service_type', 'customer']
-  event_num_att: [] 
-  case_attributes: ['responsible_section', 'support_section', 'product'] 
-  case_num_att: []
+  event_categorical: ['org:resource', 'workgroup', 'seriousness_2', 'service_level' , 'service_type', 'customer']
+  event_numerical: [] 
+  case_categorical: ['responsible_section', 'support_section', 'product'] 
+  case_numerical: []

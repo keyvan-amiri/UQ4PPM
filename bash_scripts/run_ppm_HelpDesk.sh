@@ -13,7 +13,7 @@ export DEVICE_ID=0
 export CAT_F_PHI=_cat_f_phi
 export MODEL_VERSION_DIR=card_conditional_ppm_results/${N_STEPS}steps/dalstm/${RUN_NAME}/f_phi_prior${CAT_F_PHI}
 
-#python preprocess.py --datasets ${DATASET} --normalization
+python preprocess.py --datasets ${DATASET} --normalization
 #python main.py --dataset ${DATASET} --model ${MODEL} --UQ deterministic --split_mode ${SPLIT_MODE} --seed ${SEED} --device ${DEVICE_ID}
 #python main.py --dataset ${DATASET} --model ${MODEL} --UQ DA --split_mode ${SPLIT_MODE} --seed ${SEED} --device ${DEVICE_ID}
 #python main.py --dataset ${DATASET} --model ${MODEL} --UQ CDA --split_mode ${SPLIT_MODE} --seed ${SEED} --device ${DEVICE_ID}

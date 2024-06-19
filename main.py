@@ -23,13 +23,14 @@ from utils.utils import parse_temp_config, parse_config
 #from utils.utils import delete_preprocessd_tensors
 
 
-
+#TODO: understand the role of log_path and use it to control the addresses
 def main_card(arg_set=None):
     config, logger = parse_config(args=arg_set)
 
     logging.info('Writing log file to {}'.format(arg_set.log_path))
     logging.info('Exp instance id = {}'.format(os.getpid()))
     logging.info('Exp comment = {}'.format(arg_set.comment))
+    # TODO: it seems that card_conditional is always there, remove the arg and all relevant code
     if arg_set.loss != 'card_conditional':
         raise NotImplementedError('Invalid loss option')
     try:
@@ -187,6 +188,7 @@ def main():
         # set scientific number prints to False
         torch.set_printoptions(sci_mode=False)
         temp_config = parse_temp_config(args.doc)
+        # TODO: set a default value for run_all and remove it for normal execution of the code
         if args.run_all:
             if args.loss_guidance == 'L2':
                 y_rmse_all_splits_all_steps_list, \
@@ -204,6 +206,7 @@ def main():
                 args.split = split
                 args.doc = original_doc + '/split_' + str(args.split)
                 if args.test:
+                    # TODO: understand the role of doc argument, use it for address control
                     args.config = original_config + args.doc + '/config.yml'
                     if args.loss_guidance == 'L2':
                         (y_rmse_all_steps_list, y_qice_all_steps_list,
