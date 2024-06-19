@@ -69,22 +69,6 @@ def get_optimizer(config_optim, parameters):
         raise NotImplementedError(
             'Optimizer {} not understood.'.format(config_optim.optimizer))
 
-#TODO: check scheduler anywhere in the code: instead of hard-coded use config        
-def get_optimizer_and_scheduler(config, parameters, epochs, init_epoch):
-    scheduler = None
-    optimizer = get_optimizer(config, parameters)
-    if hasattr(config, "T_0"):
-        T_0 = config.T_0
-    else:
-        T_0 = epochs // (config.n_restarts + 1)
-    if config.use_scheduler:
-        scheduler = optim.lr_scheduler.CosineAnnealingWarmRestarts(
-            optimizer, T_0=T_0, T_mult=config.T_mult, eta_min=config.eta_min,
-            last_epoch=-1)
-        scheduler.last_epoch = init_epoch - 1
-    return optimizer, scheduler
-
-
 # function to handle training the model
 def train_model(model=None, uq_method=None, heteroscedastic=None, 
                 train_loader=None, val_loader=None,
@@ -492,3 +476,14 @@ def delete_preprocessd_tensors (config):
                             _TARGET_TEST_FILE_PATH]
     for file_path in pre_processing_paths:
         os.remove(file_path)
+        
+# A method to get booleans from strings
+def str2bool(v):
+    if isinstance(v, bool):
+        return v
+    if v.lower() in ('yes', 'true', 't', 'y', '1'):
+        return True
+    elif v.lower() in ('no', 'false', 'f', 'n', '0'):
+        return False
+    else:
+        raise argparse.ArgumentTypeError('Boolean value expected.')

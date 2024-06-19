@@ -18,7 +18,7 @@ import numpy as np
 import torch
 from models.card_regression import Diffusion
 from utils.DALSTM_train_eval import DALSTM_train_evaluate
-from utils.utils import parse_temp_config, parse_config
+from utils.utils import parse_temp_config, parse_config, str2bool
 #TODO: uncomment this import after adjusting the method
 #from utils.utils import delete_preprocessd_tensors
 
@@ -30,8 +30,8 @@ def main_card(arg_set=None):
     logging.info('Writing log file to {}'.format(arg_set.log_path))
     logging.info('Exp instance id = {}'.format(os.getpid()))
     logging.info('Exp comment = {}'.format(arg_set.comment))
-    # TODO: it seems that card_conditional is always there, remove the arg and all relevant code
     if arg_set.loss != 'card_conditional':
+        # by defualt loss argument is set to card_conditional
         raise NotImplementedError('Invalid loss option')
     try:
         runner = Diffusion(arg_set, config, device=config.device)
@@ -72,70 +72,108 @@ def main():
    
     # Parse arguments     
     parser = argparse.ArgumentParser(
-        description='Probabilistic remaining time prediction')    
+        description='Probabilistic remaining time prediction') 
+    
+    ##########################################################################
+    #######################    general arguments    ##########################
+    ##########################################################################
+    
+    # Argument to select the dataset (i.e., an event log)
     parser.add_argument('--dataset', default='HelpDesk',
                         help='Datasets used by model')    
-    # some general configurations
+    """
+    Argument to select architecture:
+    For CARD: is the architecture of pre-trained point estimator.
+    For dropout approximation, and heterosedastic loss: backbone architecture
+    
+    """
     parser.add_argument('--model', default='pgtnet',
                         help='Type of the predictive model')
+    # select the uncertainty quantification approach
     parser.add_argument('--UQ', default='deterministic',
                         help='Uncertainty quantification method to be used')
-    parser.add_argument('--split_mode', default='holdout',
-                        help='The data split that is used')
+    """
+    Split arguments: --n_splits and --split_mode:
+    dropout and heterosedastic loss: split_mode should be explicitly defined
+    CARD: if --n_splits == 1, holdout split is used otherwise cv split
+    The default n_splits == 5, is used for preprocessing as well.
+    """
     parser.add_argument('--n_splits', type=int, default=5,
                         help='Number of splits that is used')
-    # for CARD model, each seed should be executed separately, but for other
-    # approaches the code can handle multiple seeds
+    parser.add_argument('--split_mode', default='holdout',
+                        help='The data split that is used')
+    """
+    seed argument:
+    CARD: each seed should be executed separately from command line.
+    Other approches can handle multiple seeds e.g., seed=[42,56,79]
+    """
     parser.add_argument('--seed', nargs='+', help='Random seed to use',
                         required=True)
+    # device and thread arguments.
     parser.add_argument('--device', type=int, default=0, help='GPU device id')
     parser.add_argument('--thread', type=int, default=4,
                         help='number of threads') 
-    # The remaining arguments are only used for CARD model
-    # For CARD: config file should be addressed instead of using dataset name.
-    parser.add_argument('--config', type=str, help='Path to the config file')   
-    # for CARD model, it is possible to train one split or all of them together
-    # can be used for cross-validation set up (run all splits)
-    parser.add_argument('--run_all', action='store_true', 
-                        help='Whether to run all train test splits')    
-    # using --split it is possible to train for different splits seperately.
-    parser.add_argument('--split', type=int, default=0,
-                        help='which split to use for regression data')
-    #TODO: check MODEL_VERSION_DIR in args to see how to save the result in a
-    # more meaningful path! do wee need: ${RUN_NAME}_${SERVER_NAME}? or even: ${N_STEPS}steps
-    parser.add_argument('--exp', type=str, default='exp',
-                        help='Path for saving running related data.')
-    parser.add_argument('--doc', type=str, 
-                        help='Name of the log folder- for \
-                            documentation purpose')
-    parser.add_argument('--comment', type=str, default='',
-                        help='A string for experiment comment')
-    parser.add_argument('--verbose', type=str, default='info', 
-                        help='Verbose level: info | debug | warning | critical')    
-    # to handle test for CARD model
+    
+    ##########################################################################
+    #########################    CARD arguments    ###########################
+    ##########################################################################
+    # if --test is provided evaluation is done, otherwise: training
     parser.add_argument('--test', action='store_true',
                         help='Whether to test the model')
-    # for CARD model: if set to true, only deterministic model is trained.
+    # if set to true, only deterministic model is trained.
     parser.add_argument('--train_guidance_only', action='store_true', 
                         help='Whether to only pre-train the guidance model f_phi')
-    parser.add_argument('--use_pretrained', action='store_true')
-    parser.add_argument('--resume_training', action='store_true',
-                        help='Whether to resume training')
-    # --init_split can be used to resume training
-    parser.add_argument('--init_split', type=int, default=0,
-                        help='initial split to train for regression data')
-    #TODO: run experiments without knowledge from pre-trained deterministic model.
+    """
+    CARD model arguments:
+        --noise_prior: to apply a noise prior instead of pre-trained model
+        in this case noise_prior_approach in configuration file can be used
+        to apply zero, mean, or median.
+        --loss_guidance: if L2 all CARD results are reorted in RMSE otherwise
+        it will be reported in MAE.     
+    """
     parser.add_argument('--noise_prior', action='store_true', 
                         help='Whether to apply a noise prior distribution at \
                             timestep T')
+    # loss option for guidance model
+    parser.add_argument('--loss_guidance', type=str, default='L2',
+                        help='Which loss to use for CARD model: L1/L2')
     # if the following is not specified explicitly: f_phi is used in concatanation
     parser.add_argument('--no_cat_f_phi', action='store_true',
                         help='Whether to not concatenate f_phi as part of \
-                            eps_theta input')
-    parser.add_argument('--interpolation', action='store_true')                       
-    parser.add_argument('--fid', action='store_true')    
-    parser.add_argument('-i', '--image_folder', type=str, default='images',
-                        help='The folder name of samples')
+                            eps_theta input')  
+    #TODO: important! check how much is important the following args (seems not importat)
+    parser.add_argument('--num_sample', type=int, default=1,
+                        help='number of samples used in forward and reverse') 
+    parser.add_argument('--timesteps', type=int, default=None,
+                            help='number of steps involved')
+    parser.add_argument('--eta', type=float, default=0.0, 
+                        help='eta used to control the variances of sigma')
+    # loss option for CARD model
+    parser.add_argument('--loss', type=str, default='card_conditional',
+                        help='Which loss to use')
+    
+    """
+    Execution control arguments:
+        --run_all: train or test all available splits together (default: True)
+        --split: to train or test different splits seperately
+        --init_split: can be used to resume training
+        --resume_training: to resume training
+        --ni:         
+    """
+    parser.add_argument('--run_all', type=str2bool, nargs='?',
+                        const=True, default=True,
+                        help='Whether to run all train test splits.')
+    parser.add_argument('--split', type=int, default=0,
+                        help='which split to use for regression data')
+    parser.add_argument('--init_split', type=int, default=0,
+                        help='initial split to train for regression data')
+    parser.add_argument('--resume_training', action='store_true',
+                        help='Whether to resume training')
+    #TODO: important! use the following in large-scale experiments.
+    parser.add_argument( '--ni', action='store_true', 
+                        help='No interaction. Suitable for Slurm Job launcher')
+    
+    # Evaluation metrics arguments:
     parser.add_argument('--rmse_timestep', type=int, default=0,
                         help='selected timestep to report metric y RMSE')
     parser.add_argument('--qice_timestep', type=int, default=0,
@@ -144,51 +182,47 @@ def main():
                         help='selected timestep to report metric y PICP')
     parser.add_argument('--nll_timestep', type=int, default=0,
                         help='selected timestep to report metric y NLL')
-    #TODO: important! use the following in large-scale experiments.
-    parser.add_argument( '--ni', action='store_true', 
-                        help='No interaction. Suitable for Slurm Job launcher')
-    #TODO: important! check how much is important the following arg.
-    parser.add_argument('--sample_type', type=str, default='generalized',
-                        help='sampling approach (generalized or ddpm_noisy)')
-    #TODO: check how much is important the following arg.
-    parser.add_argument('--skip_type', type=str, default='uniform',
-                        help='skip according to (uniform or quadratic)')
-    parser.add_argument('--timesteps', type=int, default=None,
-                        help='number of steps involved')
-    #TODO: important! check how much is important the following arg.
-    parser.add_argument('--eta', type=float, default=0.0, 
-                        help='eta used to control the variances of sigma')
-    #TODO: check what does the follwing control?
-    parser.add_argument('--sequence', action='store_true')
-    # loss option for CARD model
-    parser.add_argument('--loss', type=str, default='card_conditional',
-                        help='Which loss to use')
-    # loss option for guidance model
-    parser.add_argument('--loss_guidance', type=str, default='L1',
-                        help='Which loss to use for guidance model: L1/L2')
-    #TODO: check the functionality of following arg
+    # two following args are related to NLL computation
     parser.add_argument('--nll_global_var', action='store_true',
                         help='Apply global variance for NLL computation')
-    #TODO: important! check how much is important the following arg.
     parser.add_argument('--nll_test_var', action='store_true',
                         help='Apply sample variance of the test set for NLL \
                             computation')
-    # Conditional transport options
-    #TODO: important! check how much is important the following 2-3 args.
-    parser.add_argument('--use_d', action='store_true',
-                        help="Whether to take an adversarially trained feature encoder")
-    parser.add_argument('--full_joint', action='store_true',
-                        help='Whether to take fully joint matching')
-    parser.add_argument('--num_sample', type=int, default=1,
-                        help='number of samples used in forward and reverse') 
-    args = parser.parse_args()
+    
+    
+    # documentation arguments:
+    parser.add_argument('--comment', type=str, default='',
+                            help='A string for experiment comment')
+    parser.add_argument('--verbose', type=str, default='info', 
+                            help='Verbose level: info | debug | warning | critical')
+    parser.add_argument('-i', '--image_folder', type=str, default='images',
+                        help='The folder name of samples')    
+    
+    args = parser.parse_args()    
+    root_path = os.getcwd()
     
     # A separate execution route for CARD model    
     if args.UQ == 'CARD':
         # set scientific number prints to False
         torch.set_printoptions(sci_mode=False)
+        # set a path for saving running related data.
+        exp_path = os.path.join(root_path, 'results', args.dataset, args.model,
+                                'card')
+        args.exp = exp_path
+        # set the log folder- for documentation purpose
+        args.doc =  args.model + '_card_' + args.dataset                                
+        # set the configuration file based on train/test task        
+        if args.test:
+            # in test: configuration file is the one created during training
+            config_path = os.path.join(exp_path, 'logs')
+        else: 
+            # in training: there is a seprate configuration file for CARD
+            config_path = os.path.join(root_path, 'cfg',
+                                args.model+'_'+args.dataset+'_card'+'.yml')
+        args.config = config_path
+        
         temp_config = parse_temp_config(args.doc)
-        # TODO: set a default value for run_all and remove it for normal execution of the code
+        
         if args.run_all:
             if args.loss_guidance == 'L2':
                 y_rmse_all_splits_all_steps_list, \
@@ -206,7 +240,6 @@ def main():
                 args.split = split
                 args.doc = original_doc + '/split_' + str(args.split)
                 if args.test:
-                    # TODO: understand the role of doc argument, use it for address control
                     args.config = original_config + args.doc + '/config.yml'
                     if args.loss_guidance == 'L2':
                         (y_rmse_all_steps_list, y_qice_all_steps_list,
@@ -392,7 +425,7 @@ def main():
                     json.dump(args_dict, outfile)
                 print("\nTest metrics saved in .json file.")
                 # TODO: uncomment the following for large sclae experiments
-                # TODO: this should be applied outside calling CARD because
+                # this should be applied outside calling CARD because
                 # in other UQ methods, we also need this functionality
                 # delete_preprocessd_tensors(temp_config) # delete preprocessed dataset tensors
         else:
@@ -405,7 +438,6 @@ def main():
         # define device name
         device_name = f'cuda:{args.device}' if torch.cuda.is_available() else 'cpu'
         # read the relevant configuration file, and append
-        root_path = os.getcwd()
         cfg_file = os.path.join(root_path, 'cfg',
                                 args.model+'_'+args.dataset+'.yaml')
         with open(cfg_file, 'r') as f:
