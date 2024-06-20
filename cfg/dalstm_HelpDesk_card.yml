@@ -23,7 +23,7 @@ diffusion:
     timesteps: 200 #1000
     vis_step: 100
     num_figs: 10
-    conditioning_signal: "DALSTM"
+    noise_architecture: LSTM 
     noise_prior_approach: zero # zero: N(0,I) or median: N(normalized median,I) or mean: N(normalized mean,I) 
     nonlinear_guidance:
         pre_train: True # if True: first train point estimator, then use it as prior for diffusion model

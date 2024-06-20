@@ -545,7 +545,7 @@ class Diffusion(object):
                 shuffle=True, num_workers=config.data.num_workers,)
             
         # define the noise estimation nueral network model
-        if config.diffusion.conditioning_signal == "DALSTM":
+        if config.diffusion.noise_architecture == 'LSTM':
             model = ConditionalGuidedModelLSTM(config, args)
         else:
             model = ConditionalGuidedModelFNN(config, args)
@@ -853,7 +853,7 @@ class Diffusion(object):
                         step == 1):
                         # plot Prediction and ground truth
                         with torch.no_grad():
-                            if config.diffusion.conditioning_signal == "DALSTM":
+                            if config.diffusion.noise_architecture == 'LSTM':
                                 #TODO: check if possible move squeeze operations to the model!
                                 y_p_seq = p_sample_loop(
                                     model, x_batch, y_batch, y_T_mean,
@@ -971,7 +971,7 @@ class Diffusion(object):
                                           max_targ=self.max_target_value)
             
         # define the noise estimation nueral network model
-        if self.config.diffusion.conditioning_signal == "DALSTM":
+        if self.config.diffusion.noise_architecture == 'LSTM':
             model = ConditionalGuidedModelLSTM(self.config, self.args)
         else:
             model = ConditionalGuidedModelFNN(self.config, self.args)
