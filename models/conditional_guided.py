@@ -33,17 +33,11 @@ class ConditionalGuidedModelLSTM(nn.Module):
         dropout_rate = config.diffusion.nonlinear_guidance.dropout_rate
         self.cat_x = config.model.cat_x
         self.cat_y_pred = config.model.cat_y_pred
-        self.dalstm = True if config.diffusion.conditioning_signal == "DALSTM" else False
         self.n_layers = config.diffusion.nonlinear_guidance.n_layers
         self.dropout = config.diffusion.nonlinear_guidance.dropout       
         if self.cat_x:
-            if self.dalstm:
-                data_dim += hidden_size
-            else:
-                # TODO: for further implementation of ProcessTransformer and PGTNet
-                print('to be implemented')
+            data_dim += hidden_size
         if self.cat_y_pred:
-            # original implementation: config.model.y_dim instead of 1
             data_dim += 1
         self.lstm1 = nn.LSTM(args.x_dim, hidden_size, batch_first=True)
         self.lstm2 = nn.LSTM(hidden_size, hidden_size, batch_first=True)        
@@ -55,21 +49,18 @@ class ConditionalGuidedModelLSTM(nn.Module):
         self.lin4 = nn.Linear(feature_dim, 1)
 
     def forward(self, x, y_t, y_0_hat, t):
-        
-        # specialized computations for DALSTM model
-        if self.dalstm:
-            x, (hidden_state,cell_state) = self.lstm1(x)
-            if self.dropout:
-                x = self.dropout_layer(x)
-            x = self.batch_norm1(x)
-            if self.n_layers > 1:
-                for i in range(self.n_layers - 1):
-                    x, (hidden_state,cell_state) = self.lstm2(
-                        x, (hidden_state,cell_state))
-                    if self.dropout:
-                        x = self.dropout_layer(x)
-                    x = self.batch_norm1(x)            
-            x = x[:, -1, :] # only the last one in the sequence 
+        x, (hidden_state,cell_state) = self.lstm1(x)
+        if self.dropout:
+            x = self.dropout_layer(x)
+        x = self.batch_norm1(x)
+        if self.n_layers > 1:
+            for i in range(self.n_layers - 1):
+                x, (hidden_state,cell_state) = self.lstm2(
+                    x, (hidden_state,cell_state))
+                if self.dropout:
+                    x = self.dropout_layer(x)
+                x = self.batch_norm1(x)            
+        x = x[:, -1, :] # only the last one in the sequence 
             
         # add one dimension for later concatanation
         y_t = y_t.unsqueeze(1) 
