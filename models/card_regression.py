@@ -570,7 +570,9 @@ class Diffusion(object):
         else:
             ema_helper = None
        
-        # pre-train the non-linear guidance model
+
+        ############## pre-train the non-linear guidance model ###############
+        
         if config.diffusion.nonlinear_guidance.pre_train:
             n_guidance_model_pretrain_epochs = \
                 config.diffusion.nonlinear_guidance.n_pretrain_epochs
@@ -604,7 +606,7 @@ class Diffusion(object):
                               (train_val_end_time - train_val_start_time) / 60))
                 logging.info('\nAfter tuning for best total epochs, on \
                              training sebset and validation set:')
-                # check whether inverse normalization isrequired or not
+                # check whether inverse normalization is required or not
                 if self.config.model.target_norm:
                     self.evaluate_guidance_model_on_both_train_and_test_set(
                         train_subset_object, train_subset_loader,
@@ -613,7 +615,10 @@ class Diffusion(object):
                     self.evaluate_guidance_model_on_both_train_and_test_set(
                         train_subset_object, train_subset_loader,
                         val_set_object, val_loader, eval_mode='no_inverse_norm')
-                # reset guidance model weights for re-training on original training set
+                """
+                reset guidance model weights for re-training on original 
+                training set == training and vallidation sets together.
+                """
                 logging.info('\nReset guidance model weights...')
                 for layer in self.cond_pred_model.children():
                     if hasattr(layer, 'reset_parameters'):
@@ -649,8 +654,9 @@ class Diffusion(object):
             ]
             torch.save(aux_states, os.path.join(self.args.log_path,
                                                 'aux_ckpt.pth'))
-            
-        # train diffusion model
+        
+        ###################### train diffusion model #########################
+        
         if not self.args.train_guidance_only:
             start_epoch, step = 0, 0
             if self.args.resume_training:
@@ -700,6 +706,8 @@ class Diffusion(object):
                 data_start = time.time()
                 data_time = 0               
                 for i, xy_0 in enumerate(train_loader):
+                    # TODO: change the followings for other models PGTNet, PT,...
+                    # we might not need conditional signal, we already specified model type!
                     if config.diffusion.conditioning_signal == "DALSTM":
                         n = xy_0[0].size(0)
                     data_time += time.time() - data_start
@@ -713,11 +721,6 @@ class Diffusion(object):
                     t = torch.cat([t, self.num_timesteps - 1 - t], dim=0)[:n]
                     
                     #TODO: add necessary code for PGTNET, PT, ...
-                    if config.diffusion.conditioning_signal == "NN":
-                        xy_0 = xy_0.to(self.device)
-                        # original implementation: config.model.y_dim instead of 1
-                        x_batch = xy_0[:, :-1]
-                        y_batch = xy_0[:, -1:]  # shape: (batch_size, 1)
                     if config.diffusion.conditioning_signal == "DALSTM":
                         x_batch = xy_0[0].to(self.device)
                         y_batch = xy_0[1].to(self.device)                        
@@ -751,11 +754,10 @@ class Diffusion(object):
                             y_T_mean = torch.full(
                                 (y_batch.shape[0]),
                                 normalized_median_target_value).to(y_batch.device)                     
-
+                    # create a random tensor with N(0,1) dim: y_batch
                     e = torch.randn_like(y_batch).to(y_batch.device)
                     #print(y_batch.size())
                     #print(y_T_mean.size())
-                    #print('now call q_sample')
                     y_t_batch = q_sample(y_batch, y_T_mean,
                                          self.alphas_bar_sqrt,
                                          self.one_minus_alphas_bar_sqrt, t,
@@ -1376,10 +1378,10 @@ class Diffusion(object):
             # create another copy alongside csv results of other methods
             if self.args.n_splits == 1:
                 csv_name = 'CARD_holdout_seed_{}_inference_result_.csv'.format(
-                    self.arg.seed)
+                    self.args.seed)
             else:
                 csv_name = 'CARD_holdout_fold{}_seed_{}_inference_result_.csv'.format(
-                    self.args.split, self.arg.seed)   
+                    self.args.split, self.args.seed)   
             instance_level_df.to_csv(
                 os.path.join(self.args.instance_path, csv_name), index=False)       
 

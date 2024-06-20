@@ -129,15 +129,15 @@ def main():
         --noise_prior: to apply a noise prior instead of pre-trained model
         in this case noise_prior_approach in configuration file can be used
         to apply zero, mean, or median.
-        --loss_guidance: if L2 all CARD results are reorted in RMSE otherwise
-        it will be reported in MAE.     
+        --loss_guidance: loss function for guidance model that predicts y_0_hat.
+        If L2 all CARD, results are reorted in RMSE otherwise it will be
+        reported in MAE.     
     """
     parser.add_argument('--noise_prior', action='store_true', 
                         help='Whether to apply a noise prior distribution at \
                             timestep T')
-    # loss option for guidance model
     parser.add_argument('--loss_guidance', type=str, default='L2',
-                        help='Which loss to use for CARD model: L1/L2')
+                        help='Which loss to use for guidance model: L1/L2')
     # if the following is not specified explicitly: f_phi is used in concatanation
     parser.add_argument('--no_cat_f_phi', action='store_true',
                         help='Whether to not concatenate f_phi as part of \
@@ -214,11 +214,11 @@ def main():
         exp_path = os.path.join(instance_path, 'card')
         args.exp = exp_path       
         # set the log folder- for documentation purpose
-        args.doc =  args.model + '_card_' + args.dataset                                
+        args.doc =  args.model + '_' + args.dataset + '_card'                              
         # set the configuration file based on train/test task        
         if args.test:
             # in test: configuration file is the one created during training
-            config_path = os.path.join(exp_path, 'logs')
+            config_path = os.path.join(exp_path, 'logs/')
         else: 
             # in training: there is a seprate configuration file for CARD
             config_path = os.path.join(root_path, 'cfg',
@@ -430,7 +430,7 @@ def main():
                                 }              
                 args_dict = {'task': config.data.dataset,
                              'loss': args.loss,
-                             'guidance': config.diffusion.conditioning_signal,
+                             'guidance': config.model.type,
                              'n_timesteps': n_timesteps,
                              'split_num': args.n_splits
                              }
