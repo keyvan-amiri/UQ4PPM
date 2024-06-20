@@ -17,7 +17,8 @@ import torch.nn as nn
 import torch.utils.data as data
 from scipy.special import logsumexp
 from models.dalstm import DALSTMModel
-from models.conditional_guided import ConditionalGuidedModel
+from models.conditional_guided import ConditionalGuidedModelFNN
+from models.conditional_guided import ConditionalGuidedModelLSTM
 from utils.diffusion_utils import make_beta_schedule, EMA
 from utils.diffusion_utils import q_sample, p_sample_loop
 from utils.early_stopping import EarlyStopping
@@ -75,9 +76,9 @@ class Diffusion(object):
                 betas * (1.0 - alphas_cumprod_prev) / (1.0 - alphas_cumprod)
         )
         self.posterior_variance = posterior_variance
-        if self.model_var_type == "fixedlarge":
+        if self.model_var_type == 'fixedlarge':
             self.logvar = betas.log()
-        elif self.model_var_type == "fixedsmall":
+        elif self.model_var_type == 'fixedsmall':
             self.logvar = posterior_variance.clamp(min=1e-20).log()
         self.tau = None  # precision for test NLL computation
         # define loss function for point estimator model
@@ -87,7 +88,7 @@ class Diffusion(object):
             self.aux_cost_function = nn.L1Loss()        
         # initial Prediction model as guided condition
         self.cond_pred_model = None
-        if config.diffusion.conditioning_signal == "DALSTM":
+        if config.model.type == 'dalstm':            
             self.cond_pred_model = DALSTMModel(
                 input_size=args.x_dim,
                 hidden_size=config.diffusion.nonlinear_guidance.hidden_size,
@@ -169,14 +170,14 @@ class Diffusion(object):
             logging.info(("{} guidance model y RMSE " +
                           "\n\tof the training set and of the test set are " +
                           "\n\t{:.8f} and {:.8f}, respectively.").format(
-                              self.config.diffusion.conditioning_signal,
-                              y_train_loss_aux_model, y_test_loss_aux_model))
+                              self.config.model.type, y_train_loss_aux_model,
+                              y_test_loss_aux_model))
         else:
             logging.info(("{} guidance model y MAE " +
                           "\n\tof the training set and of the test set are " +
                           "\n\t{:.8f} and {:.8f}, respectively.").format(
-                              self.config.diffusion.conditioning_signal,
-                              y_train_loss_aux_model, y_test_loss_aux_model))                          
+                              self.config.model.type, y_train_loss_aux_model,
+                              y_test_loss_aux_model))                          
                           
     def nonlinear_guidance_model_train_step(self, x_batch, y_batch,
                                             aux_optimizer):
@@ -194,7 +195,7 @@ class Diffusion(object):
 
     def nonlinear_guidance_model_train_loop_per_epoch(self, train_batch_loader,
                                                       aux_optimizer, epoch):
-        if self.config.diffusion.conditioning_signal == "DALSTM":
+        if self.config.model.typel == 'dalstm':
             for batch in train_batch_loader:
                 x_batch = batch[0].to(self.device)
                 y_batch = batch[1].to(self.device)
@@ -542,7 +543,12 @@ class Diffusion(object):
             train_subset_loader = data.DataLoader(
                 train_subset, batch_size=config.training.batch_size,
                 shuffle=True, num_workers=config.data.num_workers,)
-        model = ConditionalGuidedModel(config, args)
+            
+        # define the noise estimation nueral network model
+        if config.diffusion.conditioning_signal == "DALSTM":
+            model = ConditionalGuidedModelLSTM(config, args)
+        else:
+            model = ConditionalGuidedModelFNN(config, args)
         model = model.to(self.device)
                
         # evaluate f_phi(x) on both training and test set
@@ -707,8 +713,8 @@ class Diffusion(object):
                 data_time = 0               
                 for i, xy_0 in enumerate(train_loader):
                     # TODO: change the followings for other models PGTNet, PT,...
-                    # we might not need conditional signal, we already specified model type!
-                    if config.diffusion.conditioning_signal == "DALSTM":
+                    # it depends on how batches include x,y information!
+                    if config.model.type == 'dalstm':
                         n = xy_0[0].size(0)
                     data_time += time.time() - data_start
                     model.train()
@@ -721,7 +727,8 @@ class Diffusion(object):
                     t = torch.cat([t, self.num_timesteps - 1 - t], dim=0)[:n]
                     
                     #TODO: add necessary code for PGTNET, PT, ...
-                    if config.diffusion.conditioning_signal == "DALSTM":
+                    # it depends on how x,y are saved in data batches!
+                    if config.model.type == 'DALSTM':
                         x_batch = xy_0[0].to(self.device)
                         y_batch = xy_0[1].to(self.device)                        
                         
@@ -772,8 +779,7 @@ class Diffusion(object):
                     # use the same noise sample e during training to compute loss
                     #TODO: check the meaning of the following to see whether related to L1 OR L2 loss or not
                     loss = (e - output).square().mean()  
-                    #if config.diffusion.conditioning_signal == "DALSTM":
-                        #loss = (e - output).abs().mean() # use the same noise sample e during training to compute loss
+                    #loss = (e - output).abs().mean() 
 
                     tb_logger.add_scalar("loss", loss, global_step=step)
 
@@ -830,11 +836,6 @@ class Diffusion(object):
                         if hasattr(config.diffusion.nonlinear_guidance,
                                    'joint_train'):
                             if config.diffusion.nonlinear_guidance.joint_train:
-                                # TODO: add other implementations in assert!
-                                # in the original implementation was NN!
-                                # So wee need it separately for PGTNet, PT, ....
-                                assert config.diffusion.conditioning_signal ==\
-                                    'DALSTM'
                                 aux_states = [
                                     self.cond_pred_model.state_dict(),
                                     aux_optimizer.state_dict(),
@@ -854,7 +855,6 @@ class Diffusion(object):
                         with torch.no_grad():
                             if config.diffusion.conditioning_signal == "DALSTM":
                                 #TODO: check if possible move squeeze operations to the model!
-                                # Need for squeeze!
                                 y_p_seq = p_sample_loop(
                                     model, x_batch, y_batch, y_T_mean,
                                     self.num_timesteps, self.alphas,
@@ -969,8 +969,13 @@ class Diffusion(object):
             self.set_NLL_global_precision(dataset_object= dataset_object,
                                           test_var=args.nll_test_var,
                                           max_targ=self.max_target_value)
-        # define the model
-        model = ConditionalGuidedModel(self.config, self.args)
+            
+        # define the noise estimation nueral network model
+        if self.config.diffusion.conditioning_signal == "DALSTM":
+            model = ConditionalGuidedModelLSTM(self.config, self.args)
+        else:
+            model = ConditionalGuidedModelFNN(self.config, self.args)
+            
         if getattr(self.config.testing, 'ckpt_id', None) is None:
             states = torch.load(os.path.join(log_path, 'ckpt.pth'),
                                 map_location=self.device)
@@ -1006,13 +1011,13 @@ class Diffusion(object):
                 dataset_object, test_loader, eval_mode='inverse_norm')
             logging.info('Test set unnormalized y RMSE on trained {}  \
                          guidance model is {:.8f}.'.format(
-                         config.diffusion.conditioning_signal, y_rmse_aux_model)) 
+                         config.model.type, y_rmse_aux_model)) 
         else:
             y_mae_aux_model = self.evaluate_guidance_model(
                 dataset_object, test_loader, eval_mode="inverse_norm")
             logging.info("Test set unnormalized y MAE on trained {} \
                          guidance model is {:.8f}.".format(
-                         config.diffusion.conditioning_signal, y_mae_aux_model))        
+                         config.model.type, y_mae_aux_model))        
 
         ######################################################################
         # sanity check

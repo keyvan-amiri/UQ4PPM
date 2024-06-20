@@ -23,16 +23,14 @@ class ConditionalLinear(nn.Module):
         return out
 
 
-class ConditionalGuidedModel(nn.Module):
+class ConditionalGuidedModelLSTM(nn.Module):
     def __init__(self, config, args):
-        super(ConditionalGuidedModel, self).__init__()
+        super(ConditionalGuidedModelLSTM, self).__init__()
         n_steps = config.diffusion.timesteps + 1
-        # original implementation: config.model.y_dim instead of 1
         data_dim = 1
         feature_dim = config.model.feature_dim
         hidden_size = config.diffusion.nonlinear_guidance.hidden_size
         dropout_rate = config.diffusion.nonlinear_guidance.dropout_rate
-        max_len = args.max_len
         self.cat_x = config.model.cat_x
         self.cat_y_pred = config.model.cat_y_pred
         self.dalstm = True if config.diffusion.conditioning_signal == "DALSTM" else False
@@ -50,7 +48,7 @@ class ConditionalGuidedModel(nn.Module):
         self.lstm1 = nn.LSTM(args.x_dim, hidden_size, batch_first=True)
         self.lstm2 = nn.LSTM(hidden_size, hidden_size, batch_first=True)        
         self.dropout_layer = nn.Dropout(p=dropout_rate)
-        self.batch_norm1 = nn.BatchNorm1d(max_len) 
+        self.batch_norm1 = nn.BatchNorm1d(args.max_len) 
         self.lin1 = ConditionalLinear(data_dim, feature_dim, n_steps)
         self.lin2 = ConditionalLinear(feature_dim, feature_dim, n_steps)
         self.lin3 = ConditionalLinear(feature_dim, feature_dim, n_steps)
@@ -72,6 +70,7 @@ class ConditionalGuidedModel(nn.Module):
                         x = self.dropout_layer(x)
                     x = self.batch_norm1(x)            
             x = x[:, -1, :] # only the last one in the sequence 
+            
         # add one dimension for later concatanation
         y_t = y_t.unsqueeze(1) 
         # add one dimension for later concatanation
@@ -99,3 +98,39 @@ class ConditionalGuidedModel(nn.Module):
         return self.lin4(eps_pred)
 
 
+class ConditionalGuidedModelFNN(nn.Module):
+    def __init__(self, config, args):
+        super(ConditionalGuidedModelFNN, self).__init__()
+        n_steps = config.diffusion.timesteps + 1
+        self.cat_x = config.model.cat_x
+        self.window_cat_x =  config.model.window_cat_x
+        self.cat_y_pred = config.model.cat_y_pred
+        data_dim = 1
+        feature_dim = config.model.feature_dim
+        if self.cat_x:
+            data_dim += (args.x_dim * config.model.window_cat_x)
+        if self.cat_y_pred:
+            data_dim += 1
+        self.lin1 = ConditionalLinear(data_dim, feature_dim, n_steps)
+        self.lin2 = ConditionalLinear(feature_dim, feature_dim, n_steps)
+        self.lin3 = ConditionalLinear(feature_dim, feature_dim, n_steps)
+        self.lin4 = nn.Linear(feature_dim, 1)
+
+    def forward(self, x, y_t, y_0_hat, t):
+        # define proper concatanation based on the config file
+        if self.cat_x:
+            # only the last window_cat_x events in the sequence
+            x[:, -self.window_cat_x:, :]
+            if self.cat_y_pred:
+                eps_pred = torch.cat((y_t, y_0_hat, x), dim=1)
+            else:
+                eps_pred = torch.cat((y_t, x), dim=1)
+        else:
+            if self.cat_y_pred:
+                eps_pred = torch.cat((y_t, y_0_hat), dim=1)
+            else:
+                eps_pred = y_t
+        eps_pred = F.softplus(self.lin1(eps_pred, t))
+        eps_pred = F.softplus(self.lin2(eps_pred, t))
+        eps_pred = F.softplus(self.lin3(eps_pred, t))
+        return self.lin4(eps_pred)
