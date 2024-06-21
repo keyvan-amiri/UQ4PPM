@@ -41,11 +41,15 @@ def main():
         # get ground truth as well as mean and std for predictions
         pred_mean = df['Prediction'].values 
         y = df['GroundTruth'].values
-        # TODO: add CARD model the first condition!
         if (prefix=='DA_A' or prefix=='CDA_A'):
             pred_std = df['Total_Uncertainty'].values 
-        else:
+        elif prefix=='CARD':
+            pred_std = df['Aleatoric_Uncertainty'].values
+        elif (prefix=='DA' or prefix=='CDA'):
             pred_std = df['Epistemic_Uncertainty'].values
+        else:
+            raise NotImplementedError(
+                'Uncertainty quantification {} not understood.'.format(prefix))
         # Plot ordered prediction intervals
         uct.viz.plot_intervals_ordered(pred_mean, pred_std, y)
         plt.gcf().set_size_inches(10, 10)
@@ -80,9 +84,15 @@ def main():
         if (prefix=='DA_A' or prefix=='CDA_A'):
             corr, p_value = spearmanr(df['Absolute_error'],
                                       df['Total_Uncertainty'])
-        else:
+        elif (prefix=='DA' or prefix=='CDA'):
             corr, p_value = spearmanr(df['Absolute_error'],
                                       df['Epistemic_Uncertainty'])
+        elif prefix=='CARD':
+            corr, p_value = spearmanr(df['Absolute_error'],
+                                      df['Aleatoric_Uncertainty'])
+        else:
+            raise NotImplementedError(
+                'Uncertainty quantification {} not understood.'.format(prefix))                
         with open(new_file_path, 'a') as file:
             file.write(f"Spearman's rank correlation coefficient: {corr}\n")
             file.write(f"P-value: {p_value}\n")        
