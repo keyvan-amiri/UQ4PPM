@@ -743,10 +743,10 @@ class Diffusion(object):
                                 dataset_object.return_mean_target_arrtibute()
                             max_target_value = \
                                 dataset_object.return_max_target_arrtibute()
-                            normalized_mean_target_value = (
+                            normalized_mean_target_value = float(
                                 mean_target_value/max_target_value)
                             y_T_mean = torch.full(
-                                (y_batch.shape[0]),
+                                (y_batch.shape[0],),
                                 normalized_mean_target_value).to(y_batch.device)                            
                         elif config.diffusion.noise_prior_approach == 'median': 
                             # apply median instead of f_phi(x) as prior mean
@@ -754,10 +754,10 @@ class Diffusion(object):
                                 dataset_object.return_median_target_arrtibute()
                             max_target_value = \
                                 dataset_object.return_max_target_arrtibute()
-                            normalized_median_target_value = (
+                            normalized_median_target_value = float(
                                 median_target_value/max_target_value)
                             y_T_mean = torch.full(
-                                (y_batch.shape[0]),
+                                (y_batch.shape[0],),
                                 normalized_median_target_value).to(y_batch.device)                     
                     # create a random tensor with N(0,1) dim: y_batch
                     e = torch.randn_like(y_batch).to(y_batch.device)
@@ -1039,19 +1039,19 @@ class Diffusion(object):
                 # apply mean instead of f_phi(x) as prior mean
                 mean_target_value = dataset_object.return_mean_target_arrtibute()
                 max_target_value = dataset_object.return_max_target_arrtibute()
-                normalized_mean_target_value = (
+                normalized_mean_target_value = float(
                     mean_target_value/max_target_value)
                 y_T_mean_check = torch.full(
-                    (y_check.shape[0]), normalized_mean_target_value).to(
+                    (y_check.shape[0],), normalized_mean_target_value).to(
                         self.device)            
             elif config.diffusion.noise_prior_approach == "median":
                 # apply median instead of f_phi(x) as prior mean
                 median_target_value = dataset_object.return_median_target_arrtibute()                
                 max_target_value = dataset_object.return_max_target_arrtibute()
-                normalized_median_target_value = (
+                normalized_median_target_value = float(
                     median_target_value/max_target_value)                     
                 y_T_mean_check = torch.full(
-                    (y_check.shape[0]), normalized_median_target_value).to(
+                    (y_check.shape[0],), normalized_median_target_value).to(
                         self.device)
                         
         with torch.no_grad():
@@ -1169,13 +1169,15 @@ class Diffusion(object):
                     elif config.diffusion.noise_prior_approach == "mean": 
                         # apply mean instead of f_phi(x) as prior mean
                         y_T_mean_tile = torch.full(
-                            (y_0_hat_tile.shape[0]),
-                            normalized_mean_target_value).to(self.device)
+                            (y_0_hat_tile.shape[0],),
+                            float(normalized_mean_target_value)).to(self.device)
                     elif config.diffusion.noise_prior_approach == "median":
-                        # apply median instead of f_phi(x) as prior mean                        
-                        y_T_mean_tile = torch.full_like(
-                            y_0_hat_tile, normalized_median_target_value).to(
-                                self.device)                            
+                        # apply median instead of f_phi(x) as prior mean
+                        y_T_mean_tile = torch.full(
+                            (y_0_hat_tile.shape[0],),
+                            float(normalized_median_target_value)).to(
+                                self.device)                        
+                        #y_T_mean_tile = torch.full_like(y_0_hat_tile, normalized_median_target_value).to(self.device)                            
                 x_tile = (x_batch.repeat(
                     config.testing.n_z_samples, 1, 1).transpose(0, 1)).to(
                         self.device).flatten(0, 1).view(
