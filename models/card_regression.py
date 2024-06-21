@@ -195,17 +195,15 @@ class Diffusion(object):
 
     def nonlinear_guidance_model_train_loop_per_epoch(self, train_batch_loader,
                                                       aux_optimizer, epoch):
-        if self.config.model.typel == 'dalstm':
+        if self.config.model.type == 'dalstm':
             for batch in train_batch_loader:
                 x_batch = batch[0].to(self.device)
                 y_batch = batch[1].to(self.device)
-                aux_loss = self.nonlinear_guidance_model_train_step(x_batch,
-                                                                    y_batch,
-                                                                    aux_optimizer)
+                aux_loss = self.nonlinear_guidance_model_train_step(
+                    x_batch, y_batch, aux_optimizer)
         else:
             #TODO: implementation for ProcessTransformer and PGTNet
             print('Currently only DALSTM model is supported.')
-            pass
         if epoch % self.config.diffusion.nonlinear_guidance.logging_interval == 0:
             logging.info(f"epoch: {epoch}, non-linear guidance model \
                          pre-training loss: {aux_loss}")
@@ -728,7 +726,7 @@ class Diffusion(object):
                     
                     #TODO: add necessary code for PGTNET, PT, ...
                     # it depends on how x,y are saved in data batches!
-                    if config.model.type == 'DALSTM':
+                    if config.model.type == 'dalstm':
                         x_batch = xy_0[0].to(self.device)
                         y_batch = xy_0[1].to(self.device)                        
                         
@@ -853,7 +851,7 @@ class Diffusion(object):
                         step == 1):
                         # plot Prediction and ground truth
                         with torch.no_grad():
-                            if config.diffusion.noise_architecture == 'LSTM':
+                            if config.model.type == 'dalstm':
                                 #TODO: check if possible move squeeze operations to the model!
                                 y_p_seq = p_sample_loop(
                                     model, x_batch, y_batch, y_T_mean,
@@ -1414,7 +1412,6 @@ class Diffusion(object):
                     y_mae = np.mean(y_ae_by_batch_list[current_t])
                     y_mae_all_steps_list.append(y_mae)                
                 # compute QICE
-                #^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
                 all_gen_y = gen_y_by_batch_list[current_t]
                 (y_true_ratio_by_bin,
                  qice_coverage_ratio,
@@ -1422,16 +1419,10 @@ class Diffusion(object):
                      config=config, dataset_object=dataset_object,
                      all_true_y=all_true_y, all_generated_y=all_gen_y,
                      verbose=False)
-                print('this part is reached')
-                #^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
                 y_qice_all_steps_list.append(qice_coverage_ratio)
                 # compute PICP
-                #^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
                 coverage, _, _ = self.compute_PICP(
                     config=config, y_true=y_true, all_gen_y=all_gen_y)
-                
-                print('this part is reached')
-                #^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
                 y_picp_all_steps_list.append(coverage)
                 # compute NLL
                 y_nll = np.mean(nll_by_batch_list[current_t])

@@ -108,10 +108,14 @@ class ConditionalGuidedModelFNN(nn.Module):
         self.lin4 = nn.Linear(feature_dim, 1)
 
     def forward(self, x, y_t, y_0_hat, t):
+        
+        y_t = y_t.view(-1,1)
+        y_0_hat = y_0_hat.view(-1,1)
+        # only the last window_cat_x events in the sequence
+        x = x[:, -self.window_cat_x:, :]
+        x = x.view(x.shape[0],-1)   
         # define proper concatanation based on the config file
         if self.cat_x:
-            # only the last window_cat_x events in the sequence
-            x[:, -self.window_cat_x:, :]
             if self.cat_y_pred:
                 eps_pred = torch.cat((y_t, y_0_hat, x), dim=1)
             else:
