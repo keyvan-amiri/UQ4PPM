@@ -31,9 +31,6 @@ def main_card(arg_set=None):
     logging.info('Writing log file to {}'.format(arg_set.log_path))
     logging.info('Exp instance id = {}'.format(os.getpid()))
     logging.info('Exp comment = {}'.format(arg_set.comment))
-    if arg_set.loss != 'card_conditional':
-        # by defualt loss argument is set to card_conditional
-        raise NotImplementedError('Invalid loss option')
     try:
         runner = Diffusion(arg_set, config, device=config.device)
         start_time = time.time()
@@ -126,32 +123,28 @@ def main():
                         help='Whether to only pre-train the guidance model f_phi')
     """
     CARD model arguments:
-        --noise_prior: to apply a noise prior instead of pre-trained model
-        in this case noise_prior_approach in configuration file can be used
-        to apply zero, mean, or median.
         --loss_guidance: loss function for guidance model that predicts y_0_hat.
         If L2 all CARD, results are reorted in RMSE otherwise it will be
-        reported in MAE.     
+        reported in MAE.  
+        --noise_prior: if explicitly added in the command line:
+            a noise prior is applied instead of pre-trained guidance model.
+            noise_prior_approach (zero, mean, or median) is specified in config.
+        --no_cat_f_phi: if explicitly added in the command line:
+            new_config.model.cat_y_pred is set to False. This means that f_phi
+            (point estimate) is not concatanated in noise estimation network.
+        --timesteps: number of timesteps can be set using command line.
+        If not spcified, it should be included in the configuration file.
     """
+    parser.add_argument('--loss_guidance', type=str, default='L2',
+                        help='Which loss to use for guidance model: L1/L2')
     parser.add_argument('--noise_prior', action='store_true', 
                         help='Whether to apply a noise prior distribution at \
                             timestep T')
-    parser.add_argument('--loss_guidance', type=str, default='L2',
-                        help='Which loss to use for guidance model: L1/L2')
-    # if the following is not specified explicitly: f_phi is used in concatanation
     parser.add_argument('--no_cat_f_phi', action='store_true',
                         help='Whether to not concatenate f_phi as part of \
                             eps_theta input')  
-    #TODO: important! check how much is important the following args (seems not importat)
-    parser.add_argument('--num_sample', type=int, default=1,
-                        help='number of samples used in forward and reverse') 
     parser.add_argument('--timesteps', type=int, default=None,
                             help='number of steps involved')
-    parser.add_argument('--eta', type=float, default=0.0, 
-                        help='eta used to control the variances of sigma')
-    # loss option for CARD model
-    parser.add_argument('--loss', type=str, default='card_conditional',
-                        help='Which loss to use')
     
     """
     Execution control arguments:

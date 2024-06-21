@@ -365,8 +365,6 @@ def parse_config(args=None):
         if not args.resume_training:
             if not args.timesteps is None:
                 new_config.diffusion.timesteps = args.timesteps
-            if args.num_sample > 1:
-                new_config.diffusion.num_sample = args.num_sample
             if os.path.exists(args.log_path):
                 overwrite = False
                 if args.ni:
