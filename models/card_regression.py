@@ -1105,7 +1105,7 @@ class Diffusion(object):
         instance_results = {'GroundTruth': [],
                             'Deterministic_Prediction':[],
                             'Prediction': [],
-                            'Total_Uncertainty': [], 
+                            'Aleatoric_Uncertainty': [], 
                             'Prefix_length':[],
                             'Absolute_error': []}   
                        
@@ -1274,7 +1274,7 @@ class Diffusion(object):
                     # 2) prediction std = predicted uncertainty
                     std_Predictions = np.std(gen_y_unnormalized, axis=1)
                     std_Predictions = np.squeeze(std_Predictions)
-                    instance_results['Total_Uncertainty'].extend(
+                    instance_results['Aleatoric_Uncertainty'].extend(
                         std_Predictions) 
                     # get relevant prefix length                    
                     relevant_prefix_length = test_length_list[
@@ -1367,9 +1367,9 @@ class Diffusion(object):
             # save an instance-level dataframe for further analysis
             instance_level_df = pd.DataFrame(instance_results)
             instance_level_df[[
-                'Prediction','Total_Uncertainty','GroundTruth',
+                'Prediction','Aleatoric_Uncertainty','GroundTruth',
                 'Deterministic_Prediction', 'Absolute_error']
-                ] = instance_level_df[['Prediction', 'Total_Uncertainty',
+                ] = instance_level_df[['Prediction', 'Aleatoric_Uncertainty',
                                        'GroundTruth', 'Deterministic_Prediction',
                                        'Absolute_error' ]].astype(float)
             instance_level_df[['Prefix_length']] = instance_level_df[['Prefix_length']].astype(int)
@@ -1379,12 +1379,13 @@ class Diffusion(object):
                 self.args.log_path, 'instance_level_Predictions.csv'),
                 index=False) 
             # create another copy alongside csv results of other methods
-            if self.args.n_splits == 1:
+            only_seed = int(self.args.seed[0])
+            if self.args.n_splits == 1:           
                 csv_name = 'CARD_holdout_seed_{}_inference_result_.csv'.format(
-                    self.args.seed)
+                    only_seed)
             else:
                 csv_name = 'CARD_holdout_fold{}_seed_{}_inference_result_.csv'.format(
-                    self.args.split, self.args.seed)   
+                    self.args.split, only_seed)   
             instance_level_df.to_csv(
                 os.path.join(self.args.instance_path, csv_name), index=False)       
 
