@@ -16,7 +16,7 @@ python main.py --dataset HelpDesk --model dalstm --UQ DA_A --split_mode holdout 
 python main.py --dataset HelpDesk --model dalstm --UQ CDA_A --split_mode holdout --seed 42 --device 0
 python evaluation.py --dataset HelpDesk --model dalstm
 
-
+python preprocess.py --datasets env_permit
 
 
 Which options are available for training and evaluation configuration?

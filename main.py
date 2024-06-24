@@ -1,6 +1,7 @@
 """
 To prepare this script we used the following source codes:
     https://github.com/XzwHan/CARD
+    https://github.com/rampasek/GraphGPS
 We adjusted the source codes to efficiently integrate them into our framework.
 """
 
@@ -197,8 +198,12 @@ def main():
     
     # A separate execution route for CARD model    
     if args.UQ == 'CARD':
-        # set scientific number prints to False
+        
+        # set important torch settings
         torch.set_printoptions(sci_mode=False)
+        torch.backends.cuda.matmul.allow_tf32 = True 
+        torch.backends.cudnn.allow_tf32 = True  
+        
         # set a path for instance-level predictions
         instance_path = os.path.join(root_path, 'results', args.dataset,
                                      args.model)

@@ -107,7 +107,7 @@ class PGTNet_convertor_case_centric ():
          train_log, val_log, self.test_log, self.train_val_log,
          self.max_time_norm, self.sorted_start_dates,
          self.sorted_end_dates) = self.log_split()
-        # get global cariables
+        # get global variables
         (self.node_class_dict, self.max_case_df, self.max_active_cases,
          self.min_num_list, self.avg_num_list, self.max_num_list,
          self.event_min_num_list, self.event_avg_num_list,
@@ -142,7 +142,8 @@ class PGTNet_convertor_case_centric ():
         # Save the training, validation, and test datasets
         dataset_parts = [self.data_train, self.data_val, self.data_test] 
         for address_counter in range(len(self.save_addresses)):
-            save_address = osp.join(self.dataset_raw, self.save_addresses[address_counter])
+            save_address = osp.join(self.dataset_raw,
+                                    self.save_addresses[address_counter])
             save_flie = open(save_address, "wb")
             pickle.dump(dataset_parts[address_counter], save_flie)
             save_flie.close() 
