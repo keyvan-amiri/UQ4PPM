@@ -422,7 +422,7 @@ def main():
                                 'NLL std': float(np.std(y_nll_all_splits_list))
                                 }              
                 args_dict = {'task': config.data.dataset,
-                             'loss': args.loss,
+                             'loss': args.loss_guidance,
                              'guidance': config.model.type,
                              'n_timesteps': n_timesteps,
                              'split_num': args.n_splits

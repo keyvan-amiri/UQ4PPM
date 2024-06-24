@@ -1,15 +1,72 @@
 """
 To prepare this script we used uncertainty tool-box which can be find in:
     https://uncertainty-toolbox.github.io/about/
+For QICE metric we used the source code from:
+    https://github.com/XzwHan/CARD
 """
 import argparse
 import os
 import pandas as pd
+import numpy as np
 import uncertainty_toolbox as uct
 import matplotlib.pyplot as plt
 from scipy.stats import spearmanr
 from utils.evaluation_utils import get_csv_files
 
+
+def evaluate_coverage(y_true=None, pred_mean=None, pred_std=None,
+                      low_percentile=2.5, high_percentile=97.5,
+                      num_samples= 50, n_bins=10):
+    """
+    Arguments:
+        y_true: a numpy array representing ground truth for remaining time.
+        pred_mean: a numpy array representing mean of predictions.
+        pred_std: a numpy array representing standard deviation of predictions
+        low_percentile, high_percentile: ranges for low and high percetiles,
+        for instance 2.5 , 97.5 is equivalent to confidence interval of 95%.
+        num_samples: number of samples to generate for predictions.
+        n_bins (int): Number of quantile bins.        
+    """  
+    # Generate prediction samples
+    pred_samples = np.random.normal(loc=pred_mean[:, np.newaxis],
+                                    scale=pred_std[:, np.newaxis],
+                                    size=(pred_mean.shape[0], num_samples))
+    # Compute the prediction intervals
+    CI_lower = np.percentile(pred_samples, low_percentile, axis=1)
+    CI_upper = np.percentile(pred_samples, high_percentile, axis=1)
+    
+    # Compute the Prediction Interval Coverage Probability (PICP)
+    y_in_range = (y_true >= CI_lower) & (y_true <= CI_upper)
+    PICP = y_in_range.mean()
+    
+    # Compute the Mean Prediction Interval Width (MPIW)
+    interval_widths = CI_upper - CI_lower
+    MPIW = interval_widths.mean()
+    
+    # Compute Quantile Interval Coverage Error (QICE)
+    # 1) Create a list of quantiles based on the number of bins
+    quantile_list = np.arange(n_bins + 1) * (100 / n_bins)    
+    # 2) Compute predicted quantiles
+    y_pred_quantiles = np.percentile(pred_samples, q=quantile_list, axis=1)    
+    # 3) Determine which quantile each true value falls into
+    y_true = y_true.T
+    quantile_membership_array = (y_true - y_pred_quantiles > 0).astype(int)
+    y_true_quantile_membership = quantile_membership_array.sum(axis=0)    
+    # 4) Count the number of true values in each quantile bin
+    y_true_quantile_bin_count = np.array([
+        (y_true_quantile_membership == v).sum() for v in np.arange(n_bins + 2)])
+    y_true_below_0 = y_true_quantile_bin_count[0]
+    y_true_above_100 = y_true_quantile_bin_count[-1]    
+    y_true_quantile_bin_count[1] += y_true_quantile_bin_count[0]
+    y_true_quantile_bin_count[-2] += y_true_quantile_bin_count[-1]
+    y_true_quantile_bin_count_ = y_true_quantile_bin_count[1:-1]    
+    # 5) Compute true y coverage ratio for each gen y quantile interval
+    y_true_ratio_by_bin = y_true_quantile_bin_count_ / len(y_true)
+    # Sum of quantile coverage ratios shall be 1!
+    assert np.abs(np.sum(y_true_ratio_by_bin) - 1) < 1e-10     
+    QICE = np.absolute(np.ones(n_bins) / n_bins - y_true_ratio_by_bin).mean()
+    
+    return PICP, MPIW, QICE, y_true_below_0, y_true_above_100
 
 def main():   
     
@@ -38,9 +95,10 @@ def main():
         # read csv file, and find the uncertainty quantification method used
         df = pd.read_csv(csv_files[i])
         prefix = uncertainty_methods[i]
+        
         # get ground truth as well as mean and std for predictions
         pred_mean = df['Prediction'].values 
-        y = df['GroundTruth'].values
+        y_true = df['GroundTruth'].values
         if (prefix=='DA_A' or prefix=='CDA_A'):
             pred_std = df['Total_Uncertainty'].values 
         elif prefix=='CARD':
@@ -50,36 +108,41 @@ def main():
         else:
             raise NotImplementedError(
                 'Uncertainty quantification {} not understood.'.format(prefix))
+            
         # Plot ordered prediction intervals
-        uct.viz.plot_intervals_ordered(pred_mean, pred_std, y)
+        uct.viz.plot_intervals_ordered(pred_mean, pred_std, y_true)
         plt.gcf().set_size_inches(10, 10)
         # define name of the plot to be saved
         new_file_name = base_name + 'ordered_prediction_intervals' + '.pdf'
         new_file_path = os.path.join(target_path, new_file_name)
         plt.savefig(new_file_path, format='pdf')
         plt.clf()  
+        
         # Plot average calibration
-        uct.viz.plot_calibration(pred_mean, pred_std, y)
+        uct.viz.plot_calibration(pred_mean, pred_std, y_true)
         plt.gcf().set_size_inches(10, 10)
         new_file_name = base_name + 'miscalibrated_area' + '.pdf'
         new_file_path = os.path.join(target_path, new_file_name)
         plt.savefig(new_file_path, format='pdf')
         plt.clf()
+        
         # Plot adversarial group calibration
-        uct.viz.plot_adversarial_group_calibration(pred_mean, pred_std, y)
+        uct.viz.plot_adversarial_group_calibration(pred_mean, pred_std, y_true)
         plt.gcf().set_size_inches(10, 6)
         new_file_name = base_name + 'adversarial_group_calibration' + '.pdf'
         new_file_path = os.path.join(target_path, new_file_name)
         plt.savefig(new_file_path, format='pdf')
         plt.clf()
+        
         # Get all uncertainty quantification metrics
-        uq_metrics = uct.metrics.get_all_metrics(pred_mean, pred_std, y)
+        uq_metrics = uct.metrics.get_all_metrics(pred_mean, pred_std, y_true)
         new_file_name = base_name + 'uq_metrics' + '.txt'
         new_file_path = os.path.join(source_path, new_file_name)
         with open(new_file_path, 'w') as file:
             # Iterate over the dictionary items and write them to the file
             for key, value in uq_metrics.items():
-                file.write(f"{key}: {value}\n")  
+                file.write(f"{key}: {value}\n")
+                
         # Get Spearman's rank correlation coefficient 
         if (prefix=='DA_A' or prefix=='CDA_A'):
             corr, p_value = spearmanr(df['Absolute_error'],
@@ -94,8 +157,27 @@ def main():
             raise NotImplementedError(
                 'Uncertainty quantification {} not understood.'.format(prefix))                
         with open(new_file_path, 'a') as file:
-            file.write(f"Spearman's rank correlation coefficient: {corr}\n")
-            file.write(f"P-value: {p_value}\n")        
+            file.write(f"Spearman's rank correlation coefficient: {corr}\t \t")
+            file.write(f"P-value: {p_value}\n")  
+        
+        # get PICP for all uncertainty quantfaction approaches
+        picp, mpiw, qice, y_b_0, y_a_100 = evaluate_coverage(
+            y_true=y_true, pred_mean=pred_mean, pred_std=pred_std,
+            low_percentile=2.5, high_percentile=97.5, num_samples= 50,
+            n_bins=10)
+        with open(new_file_path, 'a') as file:
+            file.write(f"Prediction Interval Coverage Probability (PICP): {picp}\n")
+            file.write(f"Mean Prediction Interval Width (MPIW): {mpiw}\n")
+            file.write(f"Quantile Interval Coverage Error (QICE): {qice}\n")
+            file.write(
+                f"We have {y_b_0} true remaining times smaller than min of "
+                f"generated remaining time predictions.\n")
+            file.write(
+                f"We have {y_a_100} true remaining times greater than max of "
+                f"generated remaining time predictions.\n")                    
  
 if __name__ == '__main__':
     main()
+    
+    
+    

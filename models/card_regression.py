@@ -758,7 +758,8 @@ class Diffusion(object):
                                 median_target_value/max_target_value)
                             y_T_mean = torch.full(
                                 (y_batch.shape[0],),
-                                normalized_median_target_value).to(y_batch.device)                     
+                                normalized_median_target_value).to(y_batch.device)  
+                            
                     # create a random tensor with N(0,1) dim: y_batch
                     e = torch.randn_like(y_batch).to(y_batch.device)
                     #print(y_batch.size())
