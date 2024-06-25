@@ -12,18 +12,11 @@ from torch_geometric.graphgym.config import cfg
 from torch_geometric.graphgym.loader import load_pyg
 from torch_geometric.graphgym.register import register_loader
 from graphgps.loader.dataset.GTeventlogHandler import (
-    EVENTBPIC12, EVENTBPIC12W, EVENTBPIC12CW, EVENTBPIC12A, EVENTBPIC12O,
-    EVENTBPIC12C, EVENTBPIC13I, EVENTBPIC13C, EVENTBPIC20D, EVENTBPIC20I,
-    EVENTHelpDesk, EVENTSepsis, EVENTEnvPermit, EVENTHospital, EVENTTrafficfines,
-    EVENTBPIC15M1, EVENTBPIC15M2, EVENTBPIC15M3, EVENTBPIC15M4, EVENTBPIC15M5)
-from graphgps.loader.dataset.GTeventlogHandler import (
-    EVENTBPIC13CABLATION, EVENTBPIC15M1ABLATION, EVENTBPIC15M2ABLATION,
-    EVENTBPIC15M3ABLATION, EVENTBPIC15M4ABLATION, EVENTBPIC15M5ABLATION,
-    EVENTBPIC12ABLATION, EVENTBPIC12AABLATION, EVENTBPIC12CABLATION,
-    EVENTBPIC12CWABLATION, EVENTBPIC12OABLATION, EVENTBPIC12WABLATION,
-    EVENTBPIC13IABLATION, EVENTBPIC20DABLATION, EVENTBPIC20IABLATION,
-    EVENTEnvPermitABLATION, EVENTHelpDeskABLATION, EVENTHospitalABLATION,
-    EVENTSepsisABLATION, EVENTTrafficfinesABLATION) 
+    PGTNet_HelpDesk, PGTNet_BPIC15M1, PGTNet_BPIC15M2, PGTNet_BPIC15M3,
+    PGTNet_BPIC15M4, PGTNet_BPIC15M5, PGTNet_BPIC12, PGTNet_BPIC12A,
+    PGTNet_BPIC12C, PGTNet_BPIC12CW, PGTNet_BPIC12O, PGTNet_BPIC12W,
+    PGTNet_BPIC13C, PGTNet_BPIC13I, PGTNet_BPIC20D, PGTNet_BPIC20I,
+    PGTNet_env_permit, PGTNet_Hospital, PGTNet_Sepsis, PGTNet_Trafficfines)
 from graphgps.loader.split_generator import (prepare_splits,
                                              set_dataset_splits)
 from graphgps.transform.posenc_stats import compute_posenc_stats
@@ -103,90 +96,46 @@ def load_dataset_master(format, name, dataset_dir):
         dataset_dir = osp.join(dataset_dir, pyg_dataset_id)
         
         # which dataset is at hand!
-        # TODO: check whether it is possible to come with a more generic approach for event logs!
-        if pyg_dataset_id == 'EVENTHelpDesk':
-            dataset = preformat_EVENTHelpDesk(dataset_dir)            
-        elif pyg_dataset_id == 'EVENTBPIC12':
-            dataset = preformat_EVENTBPIC12(dataset_dir)            
-        elif pyg_dataset_id == 'EVENTBPIC12W':
-            dataset = preformat_EVENTBPIC12W(dataset_dir)        
-        elif pyg_dataset_id == 'EVENTBPIC12CW':
-            dataset = preformat_EVENTBPIC12CW(dataset_dir)            
-        elif pyg_dataset_id == 'EVENTBPIC12A':
-            dataset = preformat_EVENTBPIC12A(dataset_dir)        
-        elif pyg_dataset_id == 'EVENTBPIC12O':
-            dataset = preformat_EVENTBPIC12O(dataset_dir)        
-        elif pyg_dataset_id == 'EVENTBPIC12C':
-            dataset = preformat_EVENTBPIC12C(dataset_dir)            
-        elif pyg_dataset_id == 'EVENTBPIC13I':
-            dataset = preformat_EVENTBPIC13I(dataset_dir)            
-        elif pyg_dataset_id == 'EVENTBPIC13C':
-            dataset = preformat_EVENTBPIC13C(dataset_dir)            
-        elif pyg_dataset_id == 'EVENTSepsis':
-            dataset = preformat_EVENTSepsis(dataset_dir)        
-        elif pyg_dataset_id == 'EVENTEnvPermit':
-            dataset = preformat_EVENTEnvPermit(dataset_dir)        
-        elif pyg_dataset_id == 'EVENTHospital':
-            dataset = preformat_EVENTHospital(dataset_dir)        
-        elif pyg_dataset_id == 'EVENTBPIC20D':
-            dataset = preformat_EVENTBPIC20D(dataset_dir)        
-        elif pyg_dataset_id == 'EVENTBPIC20I':
-            dataset = preformat_EVENTBPIC20I(dataset_dir)      
-        elif pyg_dataset_id == 'EVENTTrafficfines':
-            dataset = preformat_EVENTTrafficfines(dataset_dir)         
-        elif pyg_dataset_id == 'EVENTBPIC15M1':
-            dataset = preformat_EVENTBPIC15M1(dataset_dir)             
-        elif pyg_dataset_id == 'EVENTBPIC15M2':
-            dataset = preformat_EVENTBPIC15M2(dataset_dir)         
-        elif pyg_dataset_id == 'EVENTBPIC15M3':
-            dataset = preformat_EVENTBPIC15M3(dataset_dir)         
-        elif pyg_dataset_id == 'EVENTBPIC15M4':
-            dataset = preformat_EVENTBPIC15M4(dataset_dir)             
-        elif pyg_dataset_id == 'EVENTBPIC15M5':
-            dataset = preformat_EVENTBPIC15M5(dataset_dir)
-        
-        #extra conditions for ablation study:
-        elif pyg_dataset_id == 'EVENTBPIC13CABLATION':
-            dataset = preformat_EVENTBPIC13CABLATION(dataset_dir)
-        elif pyg_dataset_id == 'EVENTBPIC15M1ABLATION':
-            dataset = preformat_EVENTBPIC15M1ABLATION(dataset_dir)  
-        elif pyg_dataset_id == 'EVENTBPIC15M2ABLATION':
-            dataset = preformat_EVENTBPIC15M2ABLATION(dataset_dir)  
-        elif pyg_dataset_id == 'EVENTBPIC15M3ABLATION':
-            dataset = preformat_EVENTBPIC15M3ABLATION(dataset_dir)  
-        elif pyg_dataset_id == 'EVENTBPIC15M4ABLATION':
-            dataset = preformat_EVENTBPIC15M4ABLATION(dataset_dir)  
-        elif pyg_dataset_id == 'EVENTBPIC15M5ABLATION':
-            dataset = preformat_EVENTBPIC15M5ABLATION(dataset_dir)  
-        elif pyg_dataset_id == 'EVENTBPIC12ABLATION':
-            dataset = preformat_EVENTBPIC12ABLATION(dataset_dir)  
-        elif pyg_dataset_id == 'EVENTBPIC12AABLATION':
-            dataset = preformat_EVENTBPIC12AABLATION(dataset_dir)  
-        elif pyg_dataset_id == 'EVENTBPIC12CABLATION':
-            dataset = preformat_EVENTBPIC12CABLATION(dataset_dir)  
-        elif pyg_dataset_id == 'EVENTBPIC12CWABLATION':
-            dataset = preformat_EVENTBPIC12CWABLATION(dataset_dir)  
-        elif pyg_dataset_id == 'EVENTBPIC12OABLATION':
-            dataset = preformat_EVENTBPIC12OABLATION(dataset_dir)  
-        elif pyg_dataset_id == 'EVENTBPIC12WABLATION':
-            dataset = preformat_EVENTBPIC12WABLATION(dataset_dir)  
-        elif pyg_dataset_id == 'EVENTBPIC13IABLATION':
-            dataset = preformat_EVENTBPIC13IABLATION(dataset_dir)  
-        elif pyg_dataset_id == 'EVENTBPIC20DABLATION':
-            dataset = preformat_EVENTBPIC20DABLATION(dataset_dir)  
-        elif pyg_dataset_id == 'EVENTBPIC20IABLATION':
-            dataset = preformat_EVENTBPIC20IABLATION(dataset_dir)  
-        elif pyg_dataset_id == 'EVENTEnvPermitABLATION':
-            dataset = preformat_EVENTEnvPermitABLATION(dataset_dir) 
-        elif pyg_dataset_id == 'EVENTHelpDeskABLATION':
-            dataset = preformat_EVENTHelpDeskABLATION(dataset_dir) 
-        elif pyg_dataset_id == 'EVENTHospitalABLATION':
-            dataset = preformat_EVENTHospitalABLATION(dataset_dir) 
-        elif pyg_dataset_id == 'EVENTSepsisABLATION':
-            dataset = preformat_EVENTSepsisABLATION(dataset_dir) 
-        elif pyg_dataset_id == 'EVENTTrafficfinesABLATION':
-            dataset = preformat_EVENTTrafficfinesABLATION(dataset_dir) 
- 
+        if pyg_dataset_id == 'PGTNet_HelpDesk':
+            dataset = preformat_pgtnet_dataset(PGTNet_HelpDesk, dataset_dir)
+        elif pyg_dataset_id == 'PGTNet_BPIC12':
+            dataset = preformat_pgtnet_dataset(PGTNet_BPIC12, dataset_dir)     
+        elif pyg_dataset_id == 'PGTNet_BPIC12W':
+            dataset = preformat_pgtnet_dataset(PGTNet_BPIC12W, dataset_dir)         
+        elif pyg_dataset_id == 'PGTNet_BPIC12CW':
+            dataset = preformat_pgtnet_dataset(PGTNet_BPIC12CW, dataset_dir)             
+        elif pyg_dataset_id == 'PGTNet_BPIC12A':
+            dataset = preformat_pgtnet_dataset(PGTNet_BPIC12A, dataset_dir)         
+        elif pyg_dataset_id == 'PGTNet_BPIC12O':
+            dataset = preformat_pgtnet_dataset(PGTNet_BPIC12O, dataset_dir)         
+        elif pyg_dataset_id == 'PGTNet_BPIC12C':
+            dataset = preformat_pgtnet_dataset(PGTNet_BPIC12C, dataset_dir)     
+        elif pyg_dataset_id == 'PGTNet_BPIC13I':
+            dataset = preformat_pgtnet_dataset(PGTNet_BPIC13I, dataset_dir)             
+        elif pyg_dataset_id == 'PGTNet_BPIC13C':
+            dataset = preformat_pgtnet_dataset(PGTNet_BPIC13C, dataset_dir)             
+        elif pyg_dataset_id == 'PGTNet_Sepsis':
+            dataset = preformat_pgtnet_dataset(PGTNet_Sepsis, dataset_dir)         
+        elif pyg_dataset_id == 'PGTNet_env_permit':
+            dataset = preformat_pgtnet_dataset(PGTNet_env_permit, dataset_dir)         
+        elif pyg_dataset_id == 'PGTNet_Hospital':
+            dataset = preformat_pgtnet_dataset(PGTNet_Hospital, dataset_dir)            
+        elif pyg_dataset_id == 'PGTNet_BPIC20D':
+            dataset = preformat_pgtnet_dataset(PGTNet_BPIC20D, dataset_dir)         
+        elif pyg_dataset_id == 'PGTNet_BPIC20I':
+            dataset = preformat_pgtnet_dataset(PGTNet_BPIC20I, dataset_dir)       
+        elif pyg_dataset_id == 'PGTNet_Trafficfines':
+            dataset = preformat_pgtnet_dataset(PGTNet_Trafficfines, dataset_dir)          
+        elif pyg_dataset_id == 'PGTNet_BPIC15M1':
+            dataset = preformat_pgtnet_dataset(PGTNet_BPIC15M1, dataset_dir)              
+        elif pyg_dataset_id == 'PGTNet_BPIC15M2':
+            dataset = preformat_pgtnet_dataset(PGTNet_BPIC15M2, dataset_dir)          
+        elif pyg_dataset_id == 'PGTNet_BPIC15M3':
+            dataset = preformat_pgtnet_dataset(PGTNet_BPIC15M3, dataset_dir)          
+        elif pyg_dataset_id == 'PGTNet_BPIC15M4':
+            dataset = preformat_pgtnet_dataset(PGTNet_BPIC15M4, dataset_dir)             
+        elif pyg_dataset_id == 'PGTNet_BPIC15M5':
+            dataset = preformat_pgtnet_dataset(PGTNet_BPIC15M5, dataset_dir)  
         else:
             raise ValueError(f"Unexpected PyG Dataset identifier: {format}")
 
@@ -269,390 +218,20 @@ def compute_indegree_histogram(dataset):
     return deg.numpy().tolist()[:max_degree + 1]
 
 
-# TODO: check whether it is possible to come with a more generic approach for event logs!
-def preformat_EVENTHelpDesk(dataset_dir):
-    """Load and preformat EVENTHelpDesk datasets.
+def preformat_pgtnet_dataset(dataset_class, dataset_dir):
+    """Load and preformat datasets.
     Args:
+        dataset_class: the class of the dataset to load
         dataset_dir: path where to store the cached dataset
     Returns:
         PyG dataset object
     """
     dataset = join_dataset_splits(
-        [EVENTHelpDesk(root=dataset_dir, split=split)
+        [dataset_class(root=dataset_dir, split=split)
          for split in ['train', 'val', 'test']]
     )
     return dataset
 
-def preformat_EVENTBPIC12(dataset_dir):
-    """Load and preformat EVENTBPIC12 datasets.
-    Args:
-        dataset_dir: path where to store the cached dataset
-    Returns:
-        PyG dataset object
-    """
-    dataset = join_dataset_splits(
-        [EVENTBPIC12(root=dataset_dir, split=split)
-         for split in ['train', 'val', 'test']]
-    )
-    return dataset
-
-def preformat_EVENTBPIC12W(dataset_dir):
-    """Load and preformat EVENTBPIC12W datasets.
-    Args:
-        dataset_dir: path where to store the cached dataset
-    Returns:
-        PyG dataset object
-    """
-    dataset = join_dataset_splits(
-        [EVENTBPIC12W(root=dataset_dir, split=split)
-         for split in ['train', 'val', 'test']]
-    )
-    return dataset
-
-def preformat_EVENTBPIC12CW(dataset_dir):
-    """Load and preformat EVENTBPIC12CW datasets.
-    Args:
-        dataset_dir: path where to store the cached dataset
-    Returns:
-        PyG dataset object
-    """
-    dataset = join_dataset_splits(
-        [EVENTBPIC12CW(root=dataset_dir, split=split)
-         for split in ['train', 'val', 'test']]
-    )
-    return dataset
-
-def preformat_EVENTBPIC12A(dataset_dir):
-    """Load and preformat EVENTBPIC12A datasets.
-    Args:
-        dataset_dir: path where to store the cached dataset
-    Returns:
-        PyG dataset object
-    """
-    dataset = join_dataset_splits(
-        [EVENTBPIC12A(root=dataset_dir, split=split)
-         for split in ['train', 'val', 'test']]
-    )
-    return dataset
-
-def preformat_EVENTBPIC12O(dataset_dir):
-    """Load and preformat EVENTBPIC12O datasets.
-    Args:
-        dataset_dir: path where to store the cached dataset
-    Returns:
-        PyG dataset object
-    """
-    dataset = join_dataset_splits(
-        [EVENTBPIC12O(root=dataset_dir, split=split)
-         for split in ['train', 'val', 'test']]
-    )
-    return dataset
-
-def preformat_EVENTBPIC12C(dataset_dir):
-    """Load and preformat EVENTBPIC12C datasets.
-    Args:
-        dataset_dir: path where to store the cached dataset
-    Returns:
-        PyG dataset object
-    """
-    dataset = join_dataset_splits(
-        [EVENTBPIC12C(root=dataset_dir, split=split)
-         for split in ['train', 'val', 'test']]
-    )
-    return dataset
-
-
-def preformat_EVENTBPIC13I(dataset_dir):
-    """Load and preformat EVENTBPIC13I datasets.
-    Args:
-        dataset_dir: path where to store the cached dataset
-    Returns:
-        PyG dataset object
-    """
-    dataset = join_dataset_splits(
-        [EVENTBPIC13I(root=dataset_dir, split=split)
-         for split in ['train', 'val', 'test']]
-    )
-    return dataset
-
-def preformat_EVENTBPIC13C(dataset_dir):
-    """Load and preformat EVENTBPIC13C datasets.
-    Args:
-        dataset_dir: path where to store the cached dataset
-    Returns:
-        PyG dataset object
-    """
-    dataset = join_dataset_splits(
-        [EVENTBPIC13C(root=dataset_dir, split=split)
-         for split in ['train', 'val', 'test']]
-    )
-    return dataset
-
-def preformat_EVENTSepsis(dataset_dir):
-    """Load and preformat EVENTSepsis datasets.
-    Args:
-        dataset_dir: path where to store the cached dataset
-    Returns:
-        PyG dataset object
-    """
-    dataset = join_dataset_splits(
-        [EVENTSepsis(root=dataset_dir, split=split)
-         for split in ['train', 'val', 'test']]
-    )
-    return dataset
-
-def preformat_EVENTEnvPermit(dataset_dir):
-    """Load and preformat EVENTEnvPermit datasets.
-    Args:
-        dataset_dir: path where to store the cached dataset
-    Returns:
-        PyG dataset object
-    """
-    dataset = join_dataset_splits(
-        [EVENTEnvPermit(root=dataset_dir, split=split)
-         for split in ['train', 'val', 'test']]
-    )
-    return dataset
-
-def preformat_EVENTHospital(dataset_dir):
-    """Load and preformat EVENTHospital datasets.
-    Args:
-        dataset_dir: path where to store the cached dataset
-    Returns:
-        PyG dataset object
-    """
-    dataset = join_dataset_splits(
-        [EVENTHospital(root=dataset_dir, split=split)
-         for split in ['train', 'val', 'test']]
-    )
-    return dataset
-
-def preformat_EVENTBPIC20D(dataset_dir):
-    """Load and preformat EVENTBPIC20D datasets.
-    Args:
-        dataset_dir: path where to store the cached dataset
-    Returns:
-        PyG dataset object
-    """
-    dataset = join_dataset_splits(
-        [EVENTBPIC20D(root=dataset_dir, split=split)
-         for split in ['train', 'val', 'test']]
-    )
-    return dataset
-
-def preformat_EVENTBPIC20I(dataset_dir):
-    """Load and preformat EVENTBPIC20I datasets.
-    Args:
-        dataset_dir: path where to store the cached dataset
-    Returns:
-        PyG dataset object
-    """
-    dataset = join_dataset_splits(
-        [EVENTBPIC20I(root=dataset_dir, split=split)
-         for split in ['train', 'val', 'test']]
-    )
-    return dataset
-
-def preformat_EVENTTrafficfines(dataset_dir):
-    """Load and preformat EVENTTrafficfines datasets.
-    Args:
-        dataset_dir: path where to store the cached dataset
-    Returns:
-        PyG dataset object
-    """
-    dataset = join_dataset_splits(
-        [EVENTTrafficfines(root=dataset_dir, split=split)
-         for split in ['train', 'val', 'test']]
-    )
-    return dataset
-
-def preformat_EVENTBPIC15M1(dataset_dir):
-    """Load and preformat EVENTBPIC15M1 datasets.
-    Args:
-        dataset_dir: path where to store the cached dataset
-    Returns:
-        PyG dataset object
-    """
-    dataset = join_dataset_splits(
-        [EVENTBPIC15M1(root=dataset_dir, split=split)
-         for split in ['train', 'val', 'test']]
-    )
-    return dataset
-
-def preformat_EVENTBPIC15M2(dataset_dir):
-    """Load and preformat EVENTBPIC15M2 datasets.
-    Args:
-        dataset_dir: path where to store the cached dataset
-    Returns:
-        PyG dataset object
-    """
-    dataset = join_dataset_splits(
-        [EVENTBPIC15M2(root=dataset_dir, split=split)
-         for split in ['train', 'val', 'test']]
-    )
-    return dataset
-
-def preformat_EVENTBPIC15M3(dataset_dir):
-    """Load and preformat EVENTBPIC15M3 datasets.
-    Args:
-        dataset_dir: path where to store the cached dataset
-    Returns:
-        PyG dataset object
-    """
-    dataset = join_dataset_splits(
-        [EVENTBPIC15M3(root=dataset_dir, split=split)
-         for split in ['train', 'val', 'test']]
-    )
-    return dataset
-
-def preformat_EVENTBPIC15M4(dataset_dir):
-    """Load and preformat EVENTBPIC15M4 datasets.
-    Args:
-        dataset_dir: path where to store the cached dataset
-    Returns:
-        PyG dataset object
-    """
-    dataset = join_dataset_splits(
-        [EVENTBPIC15M4(root=dataset_dir, split=split)
-         for split in ['train', 'val', 'test']]
-    )
-    return dataset
-
-def preformat_EVENTBPIC15M5(dataset_dir):
-    """Load and preformat EVENTBPIC15M5 datasets.
-    Args:
-        dataset_dir: path where to store the cached dataset
-    Returns:
-        PyG dataset object
-    """
-    dataset = join_dataset_splits(
-        [EVENTBPIC15M5(root=dataset_dir, split=split)
-         for split in ['train', 'val', 'test']]
-    )
-    return dataset
-
-#extra functions for ablation study:
-def preformat_EVENTBPIC13CABLATION(dataset_dir):
-    dataset = join_dataset_splits(
-        [EVENTBPIC13CABLATION(root=dataset_dir, split=split)
-         for split in ['train', 'val', 'test']]
-    )
-    return dataset
-def preformat_EVENTBPIC15M1ABLATION(dataset_dir):
-    dataset = join_dataset_splits(
-        [EVENTBPIC15M1ABLATION(root=dataset_dir, split=split)
-         for split in ['train', 'val', 'test']]
-    )
-    return dataset
-def preformat_EVENTBPIC15M2ABLATION(dataset_dir):
-    dataset = join_dataset_splits(
-        [EVENTBPIC15M2ABLATION(root=dataset_dir, split=split)
-         for split in ['train', 'val', 'test']]
-    )
-    return dataset
-def preformat_EVENTBPIC15M3ABLATION(dataset_dir):
-    dataset = join_dataset_splits(
-        [EVENTBPIC15M3ABLATION(root=dataset_dir, split=split)
-         for split in ['train', 'val', 'test']]
-    )
-    return dataset
-def preformat_EVENTBPIC15M4ABLATION(dataset_dir):
-    dataset = join_dataset_splits(
-        [EVENTBPIC15M4ABLATION(root=dataset_dir, split=split)
-         for split in ['train', 'val', 'test']]
-    )
-    return dataset
-def preformat_EVENTBPIC15M5ABLATION(dataset_dir):
-    dataset = join_dataset_splits(
-        [EVENTBPIC15M5ABLATION(root=dataset_dir, split=split)
-         for split in ['train', 'val', 'test']]
-    )
-    return dataset
-def preformat_EVENTBPIC12ABLATION(dataset_dir):
-    dataset = join_dataset_splits(
-        [EVENTBPIC12ABLATION(root=dataset_dir, split=split)
-         for split in ['train', 'val', 'test']]
-    )
-    return dataset
-def preformat_EVENTBPIC12AABLATION(dataset_dir):
-    dataset = join_dataset_splits(
-        [EVENTBPIC12AABLATION(root=dataset_dir, split=split)
-         for split in ['train', 'val', 'test']]
-    )
-    return dataset
-def preformat_EVENTBPIC12CABLATION(dataset_dir):
-    dataset = join_dataset_splits(
-        [EVENTBPIC12CABLATION(root=dataset_dir, split=split)
-         for split in ['train', 'val', 'test']]
-    )
-    return dataset
-def preformat_EVENTBPIC12CWABLATION(dataset_dir):
-    dataset = join_dataset_splits(
-        [EVENTBPIC12CWABLATION(root=dataset_dir, split=split)
-         for split in ['train', 'val', 'test']]
-    )
-    return dataset
-def preformat_EVENTBPIC12OABLATION(dataset_dir):
-    dataset = join_dataset_splits(
-        [EVENTBPIC12OABLATION(root=dataset_dir, split=split)
-         for split in ['train', 'val', 'test']]
-    )
-    return dataset
-def preformat_EVENTBPIC12WABLATION(dataset_dir):
-    dataset = join_dataset_splits(
-        [EVENTBPIC12WABLATION(root=dataset_dir, split=split)
-         for split in ['train', 'val', 'test']]
-    )
-    return dataset
-
-def preformat_EVENTBPIC13IABLATION(dataset_dir):
-    dataset = join_dataset_splits(
-        [EVENTBPIC13IABLATION(root=dataset_dir, split=split)
-         for split in ['train', 'val', 'test']]
-    )
-    return dataset
-def preformat_EVENTBPIC20DABLATION(dataset_dir):
-    dataset = join_dataset_splits(
-        [EVENTBPIC20DABLATION(root=dataset_dir, split=split)
-         for split in ['train', 'val', 'test']]
-    )
-    return dataset
-def preformat_EVENTBPIC20IABLATION(dataset_dir):
-    dataset = join_dataset_splits(
-        [EVENTBPIC20IABLATION(root=dataset_dir, split=split)
-         for split in ['train', 'val', 'test']]
-    )
-    return dataset
-def preformat_EVENTEnvPermitABLATION(dataset_dir):
-    dataset = join_dataset_splits(
-        [EVENTEnvPermitABLATION(root=dataset_dir, split=split)
-         for split in ['train', 'val', 'test']]
-    )
-    return dataset
-def preformat_EVENTHelpDeskABLATION(dataset_dir):
-    dataset = join_dataset_splits(
-        [EVENTHelpDeskABLATION(root=dataset_dir, split=split)
-         for split in ['train', 'val', 'test']]
-    )
-    return dataset
-def preformat_EVENTHospitalABLATION(dataset_dir):
-    dataset = join_dataset_splits(
-        [EVENTHospitalABLATION(root=dataset_dir, split=split)
-         for split in ['train', 'val', 'test']]
-    )
-    return dataset
-def preformat_EVENTSepsisABLATION(dataset_dir):
-    dataset = join_dataset_splits(
-        [EVENTSepsisABLATION(root=dataset_dir, split=split)
-         for split in ['train', 'val', 'test']]
-    )
-    return dataset
-def preformat_EVENTTrafficfinesABLATION(dataset_dir):
-    dataset = join_dataset_splits(
-        [EVENTTrafficfinesABLATION(root=dataset_dir, split=split)
-         for split in ['train', 'val', 'test']]
-    )
-    return dataset
 
 
 def join_dataset_splits(datasets):
