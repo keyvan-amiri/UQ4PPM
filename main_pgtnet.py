@@ -59,12 +59,11 @@ def new_scheduler_config(cfg):
 def custom_set_out_dir(cfg, cfg_fname, name_tag):
     """Set custom main output directory path to cfg.
     Include the config filename and name_tag in the new :obj:`cfg.out_dir`.
-
     Args:
         cfg (CfgNode): Configuration node
         cfg_fname (string): Filename for the yaml format configuration file
-        name_tag (string): Additional name tag to identify this execution of the
-            configuration file, specified in :obj:`cfg.name_tag`
+        name_tag (string): Additional name tag to identify this execution of
+        the configuration file, specified in :obj:`cfg.name_tag`
     """
     run_name = os.path.splitext(os.path.basename(cfg_fname))[0]
     run_name += f"-{name_tag}" if name_tag else ""
