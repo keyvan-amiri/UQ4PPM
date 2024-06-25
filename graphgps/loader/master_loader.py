@@ -3,6 +3,7 @@ To prepare this script we used the following source codes:
     https://github.com/rampasek/GraphGPS
 We adjusted the source codes to efficiently integrate them into our framework.
 """
+
 import logging
 import os.path as osp
 import time
@@ -51,7 +52,8 @@ def log_loaded_dataset(dataset, format, name):
             logging.info("num classes: (appears to be a regression task)")
         else:
             logging.info(f"  num classes: {dataset.num_classes}")
-    elif hasattr(dataset.data, 'train_edge_label') or hasattr(dataset.data, 'edge_label'):
+    elif hasattr(dataset.data, 'train_edge_label') or hasattr(dataset.data,
+                                                              'edge_label'):
         # Edge/link prediction task.
         if hasattr(dataset.data, 'train_edge_label'):
             labels = dataset.data.train_edge_label  # Transductive link task

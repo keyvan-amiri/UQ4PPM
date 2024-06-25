@@ -8,13 +8,16 @@ import datetime
 import os
 import torch
 import logging
-import graphgps
+import graphgps # noqa, register custom modules
+import graphgps.config.dataset_config
+import argparse
 from graphgps.agg_runs import agg_runs
 from graphgps.optimizer.extra_optimizers import ExtendedSchedulerConfig
 from torch_geometric.graphgym.cmd_args import parse_args
 from torch_geometric.graphgym.config import (cfg, dump_cfg,
                                              set_cfg, load_cfg,
                                              makedirs_rm_exist)
+#from torch_geometric.graphgym.config import (cfg, dump_cfg, set_cfg, load_cfg, makedirs_rm_exist)
 from torch_geometric.graphgym.loader import create_loader
 from torch_geometric.graphgym.logger import set_printing
 from torch_geometric.graphgym.optim import create_optimizer, \
@@ -32,7 +35,7 @@ from graphgps.logger import create_logger
 # Achtung: the following imports are added to the original implementation of graphGPS framework
 import pandas as pd 
 import numpy as np 
-from PGTNet.PGTNetutils import mean_cycle_norm_factor_provider, eventlog_name_provider 
+from utils.PGTNetutils import mean_cycle_norm_factor_provider, eventlog_name_provider 
 
 
 torch.backends.cuda.matmul.allow_tf32 = True  # Default False in PyTorch 1.12+
@@ -121,10 +124,18 @@ def run_loop_settings():
 
 
 if __name__ == '__main__':
+    #parser = argparse.ArgumentParser(description='PGTNet arguments')
+    #parser.add_argument('--cfg', help='configuration file address')
+    #args = parser.parse_args() 
+    #root_path = os.getcwd()
+    #cfg = os.path.join(root_path, args.cfg)    
     # Load cmd line args
     args = parse_args()
+    args.cfg_file = os.path.abspath(args.cfg_file)
     # Load config file
+    print(args.cfg_file)
     set_cfg(cfg)
+    #print(cfg)
     load_cfg(cfg, args)
     custom_set_out_dir(cfg, args.cfg_file, cfg.name_tag)
     dump_cfg(cfg)
