@@ -71,7 +71,6 @@ class BasePGTNetDataset(InMemoryDataset):
             pbar = tqdm(total=len(indices))
             pbar.set_description(f'Processing {split} dataset')
             
-            # TODO: update additional target attributes
             data_list = []
             for idx in indices:
                 graph = graphs[idx]
@@ -79,12 +78,16 @@ class BasePGTNetDataset(InMemoryDataset):
                 edge_attr = graph.edge_attr
                 edge_index = graph.edge_index
                 y = graph.y
+                rem_time = graph.rem_time
+                next_time = graph.next_time
+                next_act = graph.next_act                
                 cid = graph.cid
                 pl = graph.pl
 
                 data = Data(x=x, edge_index=edge_index, edge_attr=edge_attr,
-                            y=y, cid=cid, pl=pl)
-                
+                            y=y, rem_time=rem_time, next_time=next_time,
+                            next_act=next_act, cid=cid, pl=pl)
+
                 if self.pre_filter is not None and not self.pre_filter(data):
                     continue
 
