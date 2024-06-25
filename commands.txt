@@ -17,7 +17,7 @@ python main.py --dataset HelpDesk --model dalstm --UQ CDA_A --split_mode holdout
 python evaluation.py --dataset HelpDesk --model dalstm
 
 python preprocess.py --datasets env_permit
-python main_pgtnet.py --cfg cfg/pgtnet_env_permit_GPS+SNMLP+RWSE.yaml seed 42
+python deterministic_pgtnet.py --cfg cfg/pgtnet_env_permit_GPS+SNMLP+RWSE.yaml seed 42
 
 
 

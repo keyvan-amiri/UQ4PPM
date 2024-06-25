@@ -8,16 +8,14 @@ import datetime
 import os
 import torch
 import logging
+import re
 import graphgps # noqa, register custom modules
-import graphgps.config.dataset_config
-import argparse
 from graphgps.agg_runs import agg_runs
 from graphgps.optimizer.extra_optimizers import ExtendedSchedulerConfig
 from torch_geometric.graphgym.cmd_args import parse_args
 from torch_geometric.graphgym.config import (cfg, dump_cfg,
                                              set_cfg, load_cfg,
                                              makedirs_rm_exist)
-#from torch_geometric.graphgym.config import (cfg, dump_cfg, set_cfg, load_cfg, makedirs_rm_exist)
 from torch_geometric.graphgym.loader import create_loader
 from torch_geometric.graphgym.logger import set_printing
 from torch_geometric.graphgym.optim import create_optimizer, \
@@ -28,7 +26,6 @@ from torch_geometric.graphgym.utils.comp_budget import params_count
 from torch_geometric.graphgym.utils.device import auto_select_device
 from torch_geometric.graphgym.register import train_dict
 from torch_geometric import seed_everything
-
 from graphgps.finetuning import load_pretrained_model_cfg, \
     init_model_from_pretrained
 from graphgps.logger import create_logger
@@ -41,7 +38,17 @@ from utils.PGTNetutils import mean_cycle_norm_factor_provider, eventlog_name_pro
 torch.backends.cuda.matmul.allow_tf32 = True  # Default False in PyTorch 1.12+
 torch.backends.cudnn.allow_tf32 = True  # Default True
 
-
+def extract_dataset_name(string):
+    # Define the regex pattern to match the dataset name
+    pattern = r'pgtnet_(.*?)_GPS'    
+    # Search for the pattern in the string
+    match = re.search(pattern, string)    
+    # If a match is found, extract the dataset name
+    if match:
+        return match.group(1)
+    else:
+        return None
+    
 def new_optimizer_config(cfg):
     return OptimizerConfig(optimizer=cfg.optim.optimizer,
                            base_lr=cfg.optim.base_lr,
@@ -70,7 +77,8 @@ def custom_set_out_dir(cfg, cfg_fname, name_tag):
     """
     run_name = os.path.splitext(os.path.basename(cfg_fname))[0]
     run_name += f"-{name_tag}" if name_tag else ""
-    cfg.out_dir = os.path.join(cfg.out_dir, run_name)
+    dataset_name = extract_dataset_name(run_name)
+    cfg.out_dir = os.path.join(cfg.out_dir, dataset_name, 'pgtnet', run_name)
 
 
 def custom_set_run_dir(cfg, run_id):
@@ -124,16 +132,10 @@ def run_loop_settings():
 
 
 if __name__ == '__main__':
-    #parser = argparse.ArgumentParser(description='PGTNet arguments')
-    #parser.add_argument('--cfg', help='configuration file address')
-    #args = parser.parse_args() 
-    #root_path = os.getcwd()
-    #cfg = os.path.join(root_path, args.cfg)    
     # Load cmd line args
     args = parse_args()
     args.cfg_file = os.path.abspath(args.cfg_file)
     # Load config file
-    print(args.cfg_file)
     set_cfg(cfg)
     #print(cfg)
     load_cfg(cfg, args)
