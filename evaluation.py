@@ -101,7 +101,7 @@ def main():
         y_true = df['GroundTruth'].values
         if (prefix=='DA_A' or prefix=='CDA_A'):
             pred_std = df['Total_Uncertainty'].values 
-        elif prefix=='CARD':
+        elif (prefix=='CARD' or prefix=='mve'):
             pred_std = df['Aleatoric_Uncertainty'].values
         elif (prefix=='DA' or prefix=='CDA'):
             pred_std = df['Epistemic_Uncertainty'].values
@@ -159,7 +159,7 @@ def main():
         elif (prefix=='DA' or prefix=='CDA'):
             corr, p_value = spearmanr(df['Absolute_error'],
                                       df['Epistemic_Uncertainty'])
-        elif prefix=='CARD':
+        elif (prefix=='CARD' or prefix=='mve'):
             corr, p_value = spearmanr(df['Absolute_error'],
                                       df['Aleatoric_Uncertainty'])
         else:

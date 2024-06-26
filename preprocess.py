@@ -1,7 +1,7 @@
 import warnings
 import argparse
 from utils.utils import str2bool
-from utils.PGTNet_convertor import PGTNet_convertor_case_centric
+#from utils.PGTNet_convertor import PGTNet_convertor_case_centric
 from utils.DALSTM_processing import DALSTM_preprocessing
 
 def main():    
@@ -36,6 +36,7 @@ def main():
         else:
             DALSTM_preprocessing(dataset_name=dataset, seed=args.seed)
             
+        """
         # create graph dataset representation of the event log for PGTNet
         # if normalization is included in command line arguments:
         if args.normalization_pgtnet:                   
@@ -43,6 +44,7 @@ def main():
         else:           
             PGTNet_convertor_case_centric(
                 dataset_name=dataset, normalization=args.normalization_pgtnet)
+        """
     
 if __name__ == '__main__':
     main()
