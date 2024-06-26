@@ -5,7 +5,7 @@ import os
 import pickle
 from utils.utils import set_random_seed, set_optimizer, train_model, test_model
 from loss.loss_handler import set_loss
-from models.dalstm import DALSTMModel
+from models.dalstm import DALSTMModel, DALSTMModelMve
 from models.stochastic_dalstm import StochasticDALSTM
 
 # A general class for training and evaluation of DALSTM model
@@ -100,6 +100,20 @@ class DALSTM_train_evaluate ():
                                  hs=self.heteroscedastic,
                                  Bayes=self.Bayes,
                                  device=self.device).to(self.device) 
+        if self.uq_method == 'mve':
+            # define the model for mean variance estimation (MVE) approach
+            self.model = DALSTMModelMve(input_size=self.input_size,
+                                     hidden_size=self.hidden_size,
+                                     n_layers=self.n_layers,
+                                     max_len=self.max_len,
+                                     dropout=self.dropout,
+                                     p_fix=self.dropout_prob).to(self.device)
+            # use heteroscedastic loss funciton for MVE approach
+            self.criterion = set_loss(
+                loss_func=cfg.get('train').get('loss_function'),
+                heteroscedastic=True)  
+            self.heteroscedastic = False 
+            self.num_mcmc = None
         else:
             #TODO: define UQ method models here or add them to previous one
             pass

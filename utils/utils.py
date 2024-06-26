@@ -117,6 +117,9 @@ def train_model(model=None, uq_method=None, heteroscedastic=None,
                     loss = criterion(targets, mean, log_var) + regularization
                 else:
                     loss = criterion(mean, targets) + regularization
+            elif uq_method == 'mve':
+                mean, log_var = model(inputs)
+                loss = criterion(targets, mean, log_var)                
             # Backward pass and optimization
             loss.backward()
             if clip_grad_norm: # if True: clips gradient at specified value
@@ -139,7 +142,10 @@ def train_model(model=None, uq_method=None, heteroscedastic=None,
                         valid_loss = criterion(targets, mean,
                                                log_var) + regularization
                     else:
-                        valid_loss = criterion(mean, targets) + regularization                   
+                        valid_loss = criterion(mean, targets) + regularization
+                elif uq_method == 'mve':
+                    mean, log_var = model(inputs)
+                    valid_loss = criterion(targets, mean, log_var)                    
                 total_valid_loss += valid_loss.item()                    
             average_valid_loss = total_valid_loss / len(val_loader)                          
         # print the results       
@@ -212,7 +218,11 @@ def test_model(model=None, uq_method=None, heteroscedastic=None,
         all_results = {'GroundTruth': [], 'Prediction': [],
                        'Epistemic_Uncertainty': [], 'Aleatoric_Uncertainty': [],
                        'Total_Uncertainty': [], 'Prefix_length': [],
-                       'Absolute_error': [], 'Absolute_percentage_error': []}    
+                       'Absolute_error': [], 'Absolute_percentage_error': []} 
+    elif uq_method == 'mve':
+        all_results = {'GroundTruth': [], 'Prediction': [],
+                       'Aleatoric_Uncertainty': [], 'Prefix_length': [],
+                       'Absolute_error': [], 'Absolute_percentage_error': []}
     absolute_error = 0
     absolute_percentage_error = 0
     length_idx = 0 
@@ -254,6 +264,12 @@ def test_model(model=None, uq_method=None, heteroscedastic=None,
                     if normalization:
                         aleatoric_std = y_scaler * aleatoric_std
                     total_std = epistemic_std + aleatoric_std
+            elif uq_method == 'mve':
+                _y_pred, log_var = model(inputs)
+                aleatoric_std = torch.sqrt(torch.exp(log_var))
+                # normalize aleatoric uncertainty if necessary
+                if normalization:
+                    aleatoric_std = y_scaler * aleatoric_std                    
             
             # convert tragets, outputs in case of normalization
             if normalization:
@@ -289,7 +305,11 @@ def test_model(model=None, uq_method=None, heteroscedastic=None,
                     all_results['Aleatoric_Uncertainty'].extend(
                         aleatoric_std.tolist())
                     all_results['Total_Uncertainty'].extend(
-                        total_std.tolist())            
+                        total_std.tolist()) 
+            elif uq_method == 'mve':
+                aleatoric_std = aleatoric_std.detach().cpu().numpy()
+                all_results['Aleatoric_Uncertainty'].extend(
+                    aleatoric_std.tolist())                
         num_test_batches = len(test_loader)    
         absolute_error /= num_test_batches    
         absolute_percentage_error /= num_test_batches
