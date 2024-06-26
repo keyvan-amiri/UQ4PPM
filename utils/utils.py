@@ -457,6 +457,7 @@ def parse_config(args=None):
     return new_config, logger
 
 # optimize disk usage: remove unnecessary data inputs
+# TODO: this method should be changed data_root is removed from configurations!
 def delete_preprocessd_tensors (config):
     _DATA_DIRECTORY_PATH = os.path.join(config.data.data_root,
                                         config.data.dir, "data")      

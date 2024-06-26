@@ -5,6 +5,16 @@ This python script is adapted from the origninal script:
     Huangjie Zheng, and Mingyuan Zhou.
 """
 
+#TODO: use this code to access pre-trained checkpoint
+"""
+        # PGTNet: get the address of the checkpoint for guidance model
+        if args.model == 'pgtnet':           
+            only_seed = args.seed[0]
+            checkpoint_path = os.path.join(args.instance_path, only_seed, 'ckpt',
+                                         '0.ckpt')
+"""
+
+
 import os
 import logging
 import time
@@ -97,9 +107,12 @@ class Diffusion(object):
                 dropout=config.diffusion.nonlinear_guidance.dropout,
                 p_fix=config.diffusion.nonlinear_guidance.dropout_rate).to(
                     self.device)                          
+        if config.model.type == 'pgtnet':
+            #TODO: add model similar to dalstm
+            pass
         else:
             #TODO: implementation for ProcessTransformer and PGTNet
-            print('Currently only DALSTM model is supported.')
+            print('Currently only DALSTM and PGTNet models are supported.')
             pass
 
     ##########################################################################
@@ -124,10 +137,14 @@ class Diffusion(object):
         else:
             y_mae_list = []
         if self.config.model.target_norm:
-            max_target_value = dataset_object.return_max_target_arrtibute()           
+            max_target_value = dataset_object.return_max_target_arrtibute() 
+    
         for batch in dataset_loader:
+            
+            # TODO: The folloing is only applicable for dalstm, implement for pgtnet
             x_batch = batch[0].to(self.device)
             y_batch = batch[1].to(self.device)
+            
             y_batch_pred_mean = self.compute_guiding_Prediction(
                 x_batch).cpu().detach().numpy()
             y_batch = y_batch.cpu().detach().numpy()

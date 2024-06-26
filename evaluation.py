@@ -109,31 +109,40 @@ def main():
             raise NotImplementedError(
                 'Uncertainty quantification {} not understood.'.format(prefix))
             
-        # Plot ordered prediction intervals
-        uct.viz.plot_intervals_ordered(pred_mean, pred_std, y_true)
-        plt.gcf().set_size_inches(10, 10)
-        # define name of the plot to be saved
-        new_file_name = base_name + 'ordered_prediction_intervals' + '.pdf'
-        new_file_path = os.path.join(target_path, new_file_name)
-        plt.savefig(new_file_path, format='pdf')
-        plt.clf()  
-        
         # Plot average calibration
-        uct.viz.plot_calibration(pred_mean, pred_std, y_true)
-        plt.gcf().set_size_inches(10, 10)
-        new_file_name = base_name + 'miscalibrated_area' + '.pdf'
-        new_file_path = os.path.join(target_path, new_file_name)
-        plt.savefig(new_file_path, format='pdf')
-        plt.clf()
-        
+        try:
+            uct.viz.plot_calibration(pred_mean, pred_std, y_true)
+            plt.gcf().set_size_inches(10, 10)
+            new_file_name = base_name + 'miscalibrated_area' + '.pdf'
+            new_file_path = os.path.join(target_path, new_file_name)
+            plt.savefig(new_file_path, format='pdf')
+            plt.clf()
+        except:
+            print('Plotting the average calibration is not possible', prefix)
+            
         # Plot adversarial group calibration
-        uct.viz.plot_adversarial_group_calibration(pred_mean, pred_std, y_true)
-        plt.gcf().set_size_inches(10, 6)
-        new_file_name = base_name + 'adversarial_group_calibration' + '.pdf'
-        new_file_path = os.path.join(target_path, new_file_name)
-        plt.savefig(new_file_path, format='pdf')
-        plt.clf()
-        
+        try:
+            uct.viz.plot_adversarial_group_calibration(pred_mean, pred_std, y_true)
+            plt.gcf().set_size_inches(10, 6)
+            new_file_name = base_name + 'adversarial_group_calibration' + '.pdf'
+            new_file_path = os.path.join(target_path, new_file_name)
+            plt.savefig(new_file_path, format='pdf')
+            plt.clf()
+        except:
+            print('Plotting the adversarial group calibration is not possible', prefix)
+            
+        # Plot ordered prediction intervals
+        try:
+            uct.viz.plot_intervals_ordered(pred_mean, pred_std, y_true)
+            plt.gcf().set_size_inches(10, 10)
+            # define name of the plot to be saved
+            new_file_name = base_name + 'ordered_prediction_intervals' + '.pdf'
+            new_file_path = os.path.join(target_path, new_file_name)
+            plt.savefig(new_file_path, format='pdf')
+            plt.clf()
+        except:
+            print('Plotting the ordered prediction intervals is not possible', prefix)
+                       
         # Get all uncertainty quantification metrics
         uq_metrics = uct.metrics.get_all_metrics(pred_mean, pred_std, y_true)
         new_file_name = base_name + 'uq_metrics' + '.txt'
@@ -174,8 +183,8 @@ def main():
                 f"generated remaining time predictions.\n")
             file.write(
                 f"We have {y_a_100} true remaining times greater than max of "
-                f"generated remaining time predictions.\n")                    
- 
+                f"generated remaining time predictions.\n")         
+
 if __name__ == '__main__':
     main()
     

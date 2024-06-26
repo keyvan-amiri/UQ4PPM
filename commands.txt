@@ -6,7 +6,7 @@ tmux attach-session -t uq4ppm
 
 
 bash bash_scripts/run_ppm_HelpDesk.sh
-
+bash bash_scripts/run_ppm_HelpDesk2.sh
 
 python preprocess.py --datasets HelpDesk
 python main.py --dataset HelpDesk --model dalstm --UQ deterministic --split_mode holdout --seed 42 --device 0

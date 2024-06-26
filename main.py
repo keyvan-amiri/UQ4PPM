@@ -201,18 +201,20 @@ def main():
         
         # set important torch settings
         torch.set_printoptions(sci_mode=False)
-        torch.backends.cuda.matmul.allow_tf32 = True 
-        torch.backends.cudnn.allow_tf32 = True  
+        if args.model == 'pgtnet':
+            torch.backends.cuda.matmul.allow_tf32 = True 
+            torch.backends.cudnn.allow_tf32 = True            
         
         # set a path for instance-level predictions
         instance_path = os.path.join(root_path, 'results', args.dataset,
                                      args.model)
-        args.instance_path = instance_path
+        args.instance_path = instance_path           
         # set a path for saving running related data.
         exp_path = os.path.join(instance_path, 'card')
         args.exp = exp_path       
         # set the log folder- for documentation purpose
-        args.doc =  args.model + '_' + args.dataset + '_card'                              
+        args.doc =  args.model + '_' + args.dataset + '_card' 
+                             
         # set the configuration file based on train/test task        
         if args.test:
             # in test: configuration file is the one created during training
@@ -222,6 +224,7 @@ def main():
             config_path = os.path.join(root_path, 'cfg',
                                 args.model+'_'+args.dataset+'_card'+'.yml')
         args.config = config_path
+        
         # load dimensions of the model and add them to args
         if args.model == 'dalstm':
             dalstm_class = 'DALSTM_' + args.dataset
@@ -232,7 +235,10 @@ def main():
             max_len_path = os.path.join(root_path, 'datasets', dalstm_class,
                                     'DALSTM_max_len_HelpDesk.pkl')
             with open(max_len_path, 'rb') as file:
-                args.max_len = pickle.load(file)   
+                args.max_len = pickle.load(file) 
+        # TODO: get all necessary sizes for pgtnet model
+        if args.model == 'pgtnet':
+            pass
 
         temp_config = parse_temp_config(args.doc)
         
