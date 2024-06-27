@@ -1,6 +1,6 @@
 data:
     dataset: "ppm" # In our setting is always ppm
-    dir: "HelpDesk"
+    dir: "BPIC20I"
     n_splits: 1
     num_workers: 0
 

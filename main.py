@@ -228,12 +228,12 @@ def main():
         # load dimensions of the model and add them to args
         if args.model == 'dalstm':
             dalstm_class = 'DALSTM_' + args.dataset
-            x_dim_path = os.path.join(root_path, 'datasets', dalstm_class,
-                                    'DALSTM_input_size_HelpDesk.pkl')
+            x_dim_path = os.path.join(root_path, 'datasets', dalstm_class, 
+                                      f'DALSTM_input_size_{args.dataset}.pkl')            
             with open(x_dim_path, 'rb') as file:
                 args.x_dim = pickle.load(file)            
             max_len_path = os.path.join(root_path, 'datasets', dalstm_class,
-                                    'DALSTM_max_len_HelpDesk.pkl')
+                                    f'DALSTM_max_len_{args.dataset}.pkl')
             with open(max_len_path, 'rb') as file:
                 args.max_len = pickle.load(file) 
         # TODO: get all necessary sizes for pgtnet model

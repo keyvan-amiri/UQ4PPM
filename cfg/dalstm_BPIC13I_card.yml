@@ -1,6 +1,6 @@
 data:
     dataset: "ppm" # In our setting is always ppm
-    dir: "HelpDesk"
+    dir: "BPIC13I"
     n_splits: 1
     num_workers: 0
 
@@ -78,4 +78,4 @@ optim:
 aux_optim:
     optimizer: NAdam
     lr: 0.001 
-    eps: 1e-7 
+    eps: 1e-7  
