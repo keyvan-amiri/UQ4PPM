@@ -5,13 +5,13 @@ model:
     n_layers: 2
     hidden_size: 150 
     dropout: True
-    dropout_prob: 0.2
+    dropout_prob: 0.1
 uncertainty:
   dropout_approximation:
     concrete_dropout: True
     weight_regularizer: 0.1
     dropout_regularizer: 0.1
-    num_stochastic_forward_path: 10
+    num_stochastic_forward_path: 50
   laplace:
     empirical_bayes: True # whether to estimate the prior precision and observation noise using empirical Bayes after training or not
     subset_of_weights: last_layer # all or last_layer or subnetwork (default: last_layer seems to be the only option)
@@ -25,9 +25,9 @@ uncertainty:
     prior_precision: 1.0 #prior precision to use for computing the covariance matrix
 train:
   loss_function: mae   
-  max_epochs: 2
+  max_epochs: 100
   batch_size: 64
-  early_stop.patience: 20
+  early_stop.patience: 50
   early_stop.min_delta: 0
 optimizer:
   type: NAdam

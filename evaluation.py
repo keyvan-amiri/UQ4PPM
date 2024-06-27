@@ -11,7 +11,7 @@ import numpy as np
 import uncertainty_toolbox as uct
 import matplotlib.pyplot as plt
 from scipy.stats import spearmanr
-from utils.evaluation_utils import get_csv_files
+from utils.eval_cal_utils import get_csv_files
 
 
 def evaluate_coverage(y_true=None, pred_mean=None, pred_std=None,
@@ -75,7 +75,7 @@ def main():
         description='Uncertainy quantification evaluation')
     parser.add_argument('--dataset', default='HelpDesk',
                         help='Datasets that is used for predictions')
-    parser.add_argument('--model', default='pgtnet',
+    parser.add_argument('--model', default='dalstm',
                         help='Type of the predictive model')
     args = parser.parse_args()
     

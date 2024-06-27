@@ -3,9 +3,9 @@ metric_best: mae
 metric_agg: argmin
 wandb:
   use: False
-  project: ENVPERMIT
+  project: PGTNet_env_permit
 dataset:
-  format: PyG-EVENTEnvPermit
+  format: PyG-PGTNet_env_permit
   name: ENVPERMITcycletimeprediction
   task: graph
   task_type: regression
@@ -73,6 +73,6 @@ optim:
   optimizer: adamW
   weight_decay: 1e-2
   base_lr: 0.0005
-  max_epoch: 100
+  max_epoch: 20 #100
   scheduler: cosine_with_warmup
   num_warmup_epochs: 10

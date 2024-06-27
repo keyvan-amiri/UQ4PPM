@@ -8,3 +8,23 @@ HelpDesk:
   event_numerical: [] 
   case_categorical: ['responsible_section', 'support_section', 'product'] 
   case_numerical: []
+BPIC12:
+  event_categorical: ['org:resource'] 
+  event_numerical: []  
+  case_categorical: [] 
+  case_numerical: ['AMOUNT_REQ']
+BPIC20I:  
+  event_categorical: ['org:resource', 'org:role'] 
+  event_numerical: []  
+  case_categorical: ['Permit TaskNumber', 'Permit OrganizationalEntity', 'Permit BudgetNumber', 'Permit ActivityNumber'] 
+  case_numerical: ['Amount', 'RequestedAmount', 'Permit RequestedBudget','AdjustedAmount', 'OriginalAmount'] 
+BPIC13I:
+  event_categorical: ['org:role', 'organization involved', 'organization country', 'resource country', 'impact', "org:group", "product", "org:resource"]
+  event_numerical: []  
+  case_categorical: [] 
+  case_numerical: []
+Sepsis:
+  event_categorical: ['InfectionSuspected', 'org:group', 'DiagnosticBlood', 'DisfuncOrg', 'SIRSCritTachypnea', 'Hypotensie', 'SIRSCritHeartRate', 'Infusion', 'DiagnosticArtAstrup', 'DiagnosticIC', 'DiagnosticSputum', 'DiagnosticLiquor', 'DiagnosticOther', 'SIRSCriteria2OrMore', 'DiagnosticXthorax', 'SIRSCritTemperature', 'DiagnosticUrinaryCulture', 'SIRSCritLeucos', 'Oligurie', 'DiagnosticLacticAcid', 'Diagnose', 'Hypoxie', 'DiagnosticUrinarySediment', 'DiagnosticECG'] 
+  event_numerical: ['Age', 'Leucocytes', 'CRP', 'LacticAcid']  
+  case_categorical: [] 
+  case_numerical: []

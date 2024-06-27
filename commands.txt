@@ -5,7 +5,7 @@ conda activate card
 tmux attach-session -t uq4ppm
 
 
-bash bash_scripts/run_ppm_HelpDesk.sh
+bash bash_scripts/run_ppm_HelpDesk3.sh
 bash bash_scripts/run_ppm_HelpDesk2.sh
 
 python preprocess.py --datasets HelpDesk
@@ -14,7 +14,8 @@ python main.py --dataset HelpDesk --model dalstm --UQ DA --split_mode holdout --
 python main.py --dataset HelpDesk --model dalstm --UQ CDA --split_mode holdout --seed 42 --device 0
 python main.py --dataset HelpDesk --model dalstm --UQ DA_A --split_mode holdout --seed 42 --device 0
 python main.py --dataset HelpDesk --model dalstm --UQ CDA_A --split_mode holdout --seed 42 --device 0
-python evaluation.py --dataset HelpDesk --model dalstm
+python evaluation.py --dataset Sepsis --model dalstm
+python recalibration.py --dataset HelpDesk --model dalstm
 
 python preprocess.py --datasets env_permit
 python deterministic_pgtnet.py --cfg cfg/pgtnet_env_permit_GPS+SNMLP+RWSE.yaml seed 42

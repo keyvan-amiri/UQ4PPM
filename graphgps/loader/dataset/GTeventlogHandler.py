@@ -109,7 +109,7 @@ class BasePGTNetDataset(InMemoryDataset):
 class PGTNet_HelpDesk(BasePGTNetDataset):
     def __init__(self, root, split='train', transform=None, pre_transform=None,
                  pre_filter=None):
-        super().__init__(root, helpdesk_url, 'EVENTBPIC15M1', 'helpdesk_graph_raw',
+        super().__init__(root, helpdesk_url, 'PGTNet_HelpDesk', 'helpdesk_graph_raw',
                          split, transform, pre_transform, pre_filter)            
 
 class PGTNet_BPIC15M1(BasePGTNetDataset):
