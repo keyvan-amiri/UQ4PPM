@@ -192,17 +192,20 @@ def test_model(model=None, uq_method=None, heteroscedastic=None,
                test_original_lengths=None, y_scaler=None, 
                processed_data_path=None, report_path=None,
                data_split=None, fold=None, seed=None, device=None,
-               normalization=False):
-    print('Now: start inference- Holdout data split:')
+               normalization=False): 
+    
     start=datetime.now()
     if data_split=='holdout':
+        print(f'Now: start inference- data split: {data_split}.')
         checkpoint_path = os.path.join(processed_data_path,
                                        '{}_{}_seed_{}_best_model.pt'.format(
                                            uq_method, data_split, seed)) 
     else:
+        print(f'Now: start inference- data split: {data_split} ,  fold: {fold}.')
         checkpoint_path = os.path.join(
             processed_data_path, '{}_{}_fold{}_seed_{}_best_model.pt'.format(
-                uq_method, data_split, fold, seed))        
+                uq_method, data_split, fold, seed)) 
+        
     checkpoint = torch.load(checkpoint_path)
     model.load_state_dict(checkpoint['model_state_dict'])
     # define the columns in csv file for the results

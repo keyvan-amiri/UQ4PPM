@@ -220,7 +220,8 @@ class DALSTM_train_evaluate ():
                                y_scaler=self.max_train_val,
                                processed_data_path= self.result_path,
                                report_path=self.report_path,
-                               data_split = 'holdout',
+                               data_split='cv',
+                               fold = split_key+1,
                                seed=self.seed,
                                device=self.device,
                                normalization=self.normalization)   
@@ -324,5 +325,4 @@ class DALSTM_train_evaluate ():
                                  shuffle=False)
         with open(self.test_lengths_path, 'rb') as f:
             test_lengths =  pickle.load(f)
-        return (train_loader, val_loader, test_loader, test_lengths)
-    
+        return (train_loader, val_loader, test_loader, test_lengths) 
