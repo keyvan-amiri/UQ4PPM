@@ -2,21 +2,22 @@ import glob
 import re
 import os
 import pickle
+import pandas as pd
+from datetime import datetime
 import torch
 from torch.utils.data import TensorDataset, DataLoader
 from models.dalstm import DALSTMModelMve
 from models.stochastic_dalstm import StochasticDALSTM
 from loss.loss_handler import set_loss
 
+
 # A mothod to retrieve all results for a combination of dataset-model
 def get_csv_files(folder_path):
     # Get all csv files in the folder
     all_csv_files = glob.glob(os.path.join(folder_path, '*.csv'))    
     # Filter out files containing 'deterministic' in their names
-    filtered_csvs = [f for f in all_csv_files if 
+    filtered_csv_files = [f for f in all_csv_files if 
                           'deterministic' not in os.path.basename(f).lower()]
-    filtered_csv_files = [f for f in filtered_csvs if 
-                          'validation_calibrated' not in os.path.basename(f).lower()]
     # Collect name of uncertainty quantification approaches
     prefixes = []
     pattern = re.compile(r'(.*?)(_holdout_|_cv_)')
@@ -199,3 +200,102 @@ def get_model_and_loss(args=None, cfg=None, input_size=None, max_len=None,
                                      device=device).to(device)
             
     return (model, criterion, heteroscedastic, num_mcmc, normalization)
+
+def inference_on_validation(args=None, model=None, checkpoint_path=None,
+                            calibration_loader=None, heteroscedastic=None,
+                            num_mc_samples=None, normalization=False, 
+                            y_scaler=None, device=None, report_path=None,
+                            recalibration_path=None):
+        
+    print('Now: start inference on validation set:')
+    start=datetime.now()
+    
+    # setstructure of instance-level results
+    if (args.UQ == 'DA' or args.UQ == 'CDA'):
+        res_dict = {'GroundTruth': [], 'Prediction': [],
+                    'Epistemic_Uncertainty': []}
+    elif (args.UQ == 'DA_A' or args.UQ == 'CDA_A'):
+        res_dict = {'GroundTruth': [], 'Prediction': [], 
+                    'Epistemic_Uncertainty': [], 'Aleatoric_Uncertainty': [],
+                    'Total_Uncertainty': []} 
+    elif args.UQ == 'mve':
+        res_dict = {'GroundTruth': [], 'Prediction': [],
+                    'Aleatoric_Uncertainty': []}
+    
+    # load the checkpoint  
+    checkpoint = torch.load(checkpoint_path)
+    model.load_state_dict(checkpoint['model_state_dict'])
+    
+    # get instance-level results on validation set
+    model.eval()
+    with torch.no_grad():
+        for index, calibration_batch in enumerate(calibration_loader):
+            # get batch data
+            inputs = calibration_batch[0].to(device)
+            _y_truth = calibration_batch[1].to(device)  
+            # get model outputs, and uncertainties
+            if (args.UQ == 'DA' or args.UQ == 'CDA' or args.UQ == 'DA_A' or
+                args.UQ == 'CDA_A'):
+                means_list, logvar_list =[], []
+                # conduct Monte Carlo sampling
+                for i in range (num_mc_samples): 
+                    mean, log_var,_ = model(inputs, stop_dropout=False)
+                    means_list.append(mean)
+                    logvar_list.append(log_var)
+                # Aggregate the results for all samples
+                # Compute point estimation and uncertainty
+                stacked_means = torch.stack(means_list, dim=0)
+                # predited value is the average for all samples
+                _y_pred = torch.mean(stacked_means, dim=0)
+                # epistemic uncertainty obtained from std for all samples
+                epistemic_std = torch.std(stacked_means, dim=0).to(device)
+                # normalize epistemic uncertainty if necessary
+                if normalization:
+                    epistemic_std = y_scaler * epistemic_std
+                # now obtain aleatoric uncertainty
+                if heteroscedastic:
+                    stacked_log_var = torch.stack(logvar_list, dim=0)
+                    stacked_var = torch.exp(stacked_log_var)
+                    mean_var = torch.mean(stacked_var, dim=0)
+                    aleatoric_std = torch.sqrt(mean_var).to(device)
+                    # normalize aleatoric uncertainty if necessary
+                    if normalization:
+                        aleatoric_std = y_scaler * aleatoric_std
+                    total_std = epistemic_std + aleatoric_std
+            elif args.UQ == 'mve':
+                _y_pred, log_var = model(inputs)
+                aleatoric_std = torch.sqrt(torch.exp(log_var))
+                # normalize aleatoric uncertainty if necessary
+                if normalization:
+                    aleatoric_std = y_scaler * aleatoric_std            
+            # convert tragets, outputs in case of normalization
+            if normalization:
+                _y_truth = y_scaler * _y_truth
+                _y_pred = y_scaler * _y_pred
+            # Detach predictions and ground truths (np arrays)
+            _y_truth = _y_truth.detach().cpu().numpy()
+            _y_pred = _y_pred.detach().cpu().numpy()
+            # collect inference result in all_result dict.
+            res_dict['GroundTruth'].extend(_y_truth.tolist())
+            res_dict['Prediction'].extend(_y_pred.tolist())
+            if (args.UQ == 'DA' or args.UQ == 'CDA' or args.UQ == 'DA_A' or 
+                args.UQ == 'CDA_A'):
+                epistemic_std = epistemic_std.detach().cpu().numpy()
+                res_dict['Epistemic_Uncertainty'].extend(epistemic_std.tolist()) 
+                if heteroscedastic:
+                    aleatoric_std = aleatoric_std.detach().cpu().numpy()
+                    total_std = total_std.detach().cpu().numpy()
+                    res_dict['Aleatoric_Uncertainty'].extend(aleatoric_std.tolist())
+                    res_dict['Total_Uncertainty'].extend(total_std.tolist()) 
+            elif args.UQ == 'mve':
+                aleatoric_std = aleatoric_std.detach().cpu().numpy()
+                res_dict['Aleatoric_Uncertainty'].extend(aleatoric_std.tolist())
+    validation_df = pd.DataFrame(res_dict)
+    val_csv_name = add_suffix_to_csv(args.csv_file, added_suffix='validation_')
+    val_csv_path = os.path.join(recalibration_path, val_csv_name)
+    validation_df.to_csv(val_csv_path, index=False)
+    inference_val_time = (datetime.now()-start).total_seconds()
+    with open(report_path, 'w') as file:
+        file.write('Inference on validation set took  {} seconds. \n'.format(
+            inference_val_time))    
+    return validation_df

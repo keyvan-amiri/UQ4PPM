@@ -1,161 +1,313 @@
+"""
+To prepare this script we used uncertainty tool-box which can be find in:
+    https://uncertainty-toolbox.github.io/about/
+"""
+
 import argparse
 import os
 import yaml
-import pickle
 import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
 from datetime import datetime
 import torch
-from torch.utils.data import TensorDataset, DataLoader
 import uncertainty_toolbox as uct
-from utils.eval_cal_utils import get_csv_files
 from utils.eval_cal_utils import (extract_info_from_cfg, replace_suffix,
                                   get_validation_data_and_model_size,
                                   get_model_and_loss, get_uq_method,
-                                  add_suffix_to_csv)
+                                  add_suffix_to_csv, inference_on_validation)
+from evaluation import evaluate_coverage
+
+def calculate_picp(df):
+    in_interval = np.logical_and(df['GroundTruth'] >= df['confidence_lower'],
+                                 df['GroundTruth'] <= df['confidence_upper'])
+    picp = np.mean(in_interval)
+    return picp
+
+def calculate_mpiw(df):
+    interval_widths = df['confidence_upper'] - df['confidence_lower']
+    mpiw = np.mean(interval_widths)
+    return mpiw
 
 
-def calibration_on_validation(args=None, model=None, checkpoint_path=None,
-                              calibration_loader=None, heteroscedastic=None,
-                              num_mc_samples=None, normalization=False, 
-                              y_scaler=None, device=None, result_path=None):
-        
+def recalibration_evaluation (args=None, calibrated_test_def=None,
+                              recal_model=None, recalibration_plot_path=None):
+    
+    # get name of the calibrated csv file witouht extension
+    recal_name = add_suffix_to_csv(args.csv_file, added_suffix='recalibrated_')
+    base_recal_name = os.path.splitext(recal_name)[0]   
+    # get prediction mean and ground truth
+    pred_mean = calibrated_test_def['Prediction'].values
+    y_true = calibrated_test_def['GroundTruth'].values
+    # get prediction standard deviation before recalibration
+    if (args.UQ=='DA_A' or args.UQ=='CDA_A'):
+        pred_std = calibrated_test_def['Total_Uncertainty'].values 
+    elif (args.UQ=='CARD' or args.UQ=='mve'):
+        pred_std = calibrated_test_def['Aleatoric_Uncertainty'].values
+    elif (args.UQ=='DA' or args.UQ=='CDA'):
+        pred_std = calibrated_test_def['Epistemic_Uncertainty'].values
+         
+    # Non-Gaussian calibration: expected proportions and observed proportions
+    exp_props, obs_props = uct.metrics_calibration.get_proportion_lists_vectorized(
+        pred_mean, pred_std, y_true, recal_model=recal_model) 
+    
+    # Create average calibration plot for recalibrated predictions
+    uct.viz.plot_calibration(pred_mean, pred_std, y_true, exp_props=exp_props,
+                             obs_props=obs_props)
+    plt.gcf().set_size_inches(10, 10)
+    new_file_name = base_recal_name + 'miscalibrated_area_isotonic_regression' + '.pdf'
+    new_file_path = os.path.join(recalibration_plot_path, new_file_name)
+    plt.savefig(new_file_path, format='pdf')
+    plt.clf()
+    
+    # sort the calibrated predictions based on absolute error
+    sorted_df = calibrated_test_def.sort_values(by='Absolute_error')
+    sorted_pred_mean = sorted_df['Prediction'].values
+    sorted_errors = sorted_df['Absolute_error'].values
+    if (args.UQ=='DA_A' or args.UQ=='CDA_A'):
+        sorted_pred_std = sorted_df['Total_Uncertainty'].values 
+    elif (args.UQ=='CARD' or args.UQ=='mve'):
+        sorted_pred_std = sorted_df['Aleatoric_Uncertainty'].values
+    elif (args.UQ=='DA' or args.UQ=='CDA'):
+        sorted_pred_std = sorted_df['Epistemic_Uncertainty'].values
+    # now compare confidence intervals before and after calibration
+    orig_bounds = uct.metrics_calibration.get_prediction_interval(
+        sorted_pred_mean, sorted_pred_std, 0.95, None)    
+    recal_bounds = uct.metrics_calibration.get_prediction_interval(
+        sorted_pred_mean, sorted_pred_std, 0.95, recal_model)    
+    plt.fill_between(sorted_errors, orig_bounds.lower, orig_bounds.upper,
+                     alpha=0.6, label='Before Calibration')
+    plt.fill_between(sorted_errors, recal_bounds.lower, recal_bounds.upper,
+                     alpha=0.4, label='Recalibrated')
+    plt.xlabel('Sorted Absolute Errors') 
+    plt.ylabel('Confidence Intervals (95%)')    
+    plt.legend()
+    plt.gcf().set_size_inches(10, 10)
+    plt.title('95% Centered Prediction Interval')
+    new_file_name = base_recal_name + 'confidence_intervals_isotonic_regression' + '.pdf'
+    new_file_path = os.path.join(recalibration_plot_path, new_file_name)
+    plt.savefig(new_file_path, format='pdf')
+    plt.clf()
+    
+    # Compute PICP and MPIW for isotonic regression calibration
+    picp = calculate_picp(calibrated_test_def)
+    mpiw = calculate_mpiw(calibrated_test_def)
+    new_file_name = base_recal_name + 'pcip_mpiw_isotonic_regression' + '.txt'
+    new_file_path = os.path.join(recalibration_plot_path, new_file_name)
+    with open(new_file_path, 'w') as file:
+        file.write(f"Prediction Interval Coverage Probability (PICP): {picp}\n")
+        file.write(f"Mean Prediction Interval Width (MPIW): {mpiw}\n")   
+    
+    # Now average calibration for Gaussian calibrations
+    pred_std_miscal = calibrated_test_def['calibrated_std_miscal']
+    uct.viz.plot_calibration(pred_mean, pred_std_miscal, y_true)
+    plt.gcf().set_size_inches(10, 10)
+    new_file_name = base_recal_name + 'miscalibrated_area_std_miscal' + '.pdf'
+    new_file_path = os.path.join(recalibration_plot_path, new_file_name)
+    plt.savefig(new_file_path, format='pdf')
+    plt.clf()
+    pred_std_rms_cal = calibrated_test_def['calibrated_std_rms_cal']
+    uct.viz.plot_calibration(pred_mean, pred_std_rms_cal, y_true)
+    plt.gcf().set_size_inches(10, 10)
+    new_file_name = base_recal_name + 'miscalibrated_area_std_rms_cal' + '.pdf'
+    new_file_path = os.path.join(recalibration_plot_path, new_file_name)
+    plt.savefig(new_file_path, format='pdf')
+    plt.clf()
+    pred_std_ma_cal = calibrated_test_def['calibrated_std_ma_cal']
+    uct.viz.plot_calibration(pred_mean, pred_std_ma_cal, y_true)
+    plt.gcf().set_size_inches(10, 10)
+    new_file_name = base_recal_name + 'miscalibrated_area_std_ma_cal' + '.pdf'
+    new_file_path = os.path.join(recalibration_plot_path, new_file_name)
+    plt.savefig(new_file_path, format='pdf')
+    plt.clf()
+    
+    # Plot adversarial group calibration for Gaussian calibrations
+    uct.viz.plot_adversarial_group_calibration(pred_mean, pred_std_miscal, y_true)
+    plt.gcf().set_size_inches(10, 6)
+    new_file_name = base_recal_name + 'adversarial_group_calibration_std_miscal' + '.pdf'
+    new_file_path = os.path.join(recalibration_plot_path, new_file_name)
+    plt.savefig(new_file_path, format='pdf')
+    plt.clf()
+    uct.viz.plot_adversarial_group_calibration(pred_mean, pred_std_rms_cal, y_true)
+    plt.gcf().set_size_inches(10, 6)
+    new_file_name = base_recal_name + 'adversarial_group_calibration_std_rms_cal' + '.pdf'
+    new_file_path = os.path.join(recalibration_plot_path, new_file_name)
+    plt.savefig(new_file_path, format='pdf')
+    plt.clf()
+    uct.viz.plot_adversarial_group_calibration(pred_mean, pred_std_ma_cal, y_true)
+    plt.gcf().set_size_inches(10, 6)
+    new_file_name = base_recal_name + 'adversarial_group_calibration_std_ma_cal' + '.pdf'
+    new_file_path = os.path.join(recalibration_plot_path, new_file_name)
+    plt.savefig(new_file_path, format='pdf')
+    plt.clf()
+    
+    # Plot ordered prediction intervals for Gaussian calibrations
+    uct.viz.plot_intervals_ordered(pred_mean, pred_std_miscal, y_true)
+    plt.gcf().set_size_inches(10, 10)
+    # define name of the plot to be saved
+    new_file_name = base_recal_name + 'ordered_prediction_intervals_std_miscal' + '.pdf'
+    new_file_path = os.path.join(recalibration_plot_path, new_file_name)
+    plt.savefig(new_file_path, format='pdf')
+    plt.clf()
+    uct.viz.plot_intervals_ordered(pred_mean, pred_std_rms_cal, y_true)
+    plt.gcf().set_size_inches(10, 10)
+    # define name of the plot to be saved
+    new_file_name = base_recal_name + 'ordered_prediction_intervals_std_rms_cal' + '.pdf'
+    new_file_path = os.path.join(recalibration_plot_path, new_file_name)
+    plt.savefig(new_file_path, format='pdf')
+    plt.clf()
+    uct.viz.plot_intervals_ordered(pred_mean, pred_std_ma_cal, y_true)
+    plt.gcf().set_size_inches(10, 10)
+    # define name of the plot to be saved
+    new_file_name = base_recal_name + 'ordered_prediction_intervals_std_ma_cal' + '.pdf'
+    new_file_path = os.path.join(recalibration_plot_path, new_file_name)
+    plt.savefig(new_file_path, format='pdf')
+    plt.clf()
+    
+    # Get all uncertainty quantification metrics for std_miscal
+    uq_metrics = uct.metrics.get_all_metrics(pred_mean, pred_std_miscal, y_true)
+    new_file_name = base_recal_name + 'uq_metrics_std_miscal' + '.txt'
+    new_file_path = os.path.join(recalibration_plot_path, new_file_name)
+    with open(new_file_path, 'w') as file:
+        # Iterate over the dictionary items and write them to the file
+        for key, value in uq_metrics.items():
+            file.write(f"{key}: {value}\n")
+    # get PICP for all uncertainty quantfaction approaches
+    picp, mpiw, qice, y_b_0, y_a_100 = evaluate_coverage(
+        y_true=y_true, pred_mean=pred_mean, pred_std=pred_std_miscal,
+        low_percentile=2.5, high_percentile=97.5, num_samples= 50,
+        n_bins=10)
+    with open(new_file_path, 'a') as file:
+        file.write(f"Prediction Interval Coverage Probability (PICP): {picp}\n")
+        file.write(f"Mean Prediction Interval Width (MPIW): {mpiw}\n")
+        file.write(f"Quantile Interval Coverage Error (QICE): {qice}\n")
+        file.write(
+            f"We have {y_b_0} true remaining times smaller than min of "
+            f"generated remaining time predictions.\n")
+        file.write(
+            f"We have {y_a_100} true remaining times greater than max of "
+            f"generated remaining time predictions.\n") 
+
+    # Get all uncertainty quantification metrics for std_rms_cal
+    uq_metrics = uct.metrics.get_all_metrics(pred_mean, pred_std_rms_cal, y_true)
+    new_file_name = base_recal_name + 'uq_metrics_std_rms_cal' + '.txt'
+    new_file_path = os.path.join(recalibration_plot_path, new_file_name)
+    with open(new_file_path, 'w') as file:
+        # Iterate over the dictionary items and write them to the file
+        for key, value in uq_metrics.items():
+            file.write(f"{key}: {value}\n")
+    # get PICP for all uncertainty quantfaction approaches
+    picp, mpiw, qice, y_b_0, y_a_100 = evaluate_coverage(
+        y_true=y_true, pred_mean=pred_mean, pred_std=pred_std_rms_cal,
+        low_percentile=2.5, high_percentile=97.5, num_samples= 50,
+        n_bins=10)
+    with open(new_file_path, 'a') as file:
+        file.write(f"Prediction Interval Coverage Probability (PICP): {picp}\n")
+        file.write(f"Mean Prediction Interval Width (MPIW): {mpiw}\n")
+        file.write(f"Quantile Interval Coverage Error (QICE): {qice}\n")
+        file.write(
+            f"We have {y_b_0} true remaining times smaller than min of "
+            f"generated remaining time predictions.\n")
+        file.write(
+            f"We have {y_a_100} true remaining times greater than max of "
+            f"generated remaining time predictions.\n") 
+
+    # Get all uncertainty quantification metrics for std_ma_cal
+    uq_metrics = uct.metrics.get_all_metrics(pred_mean, pred_std_ma_cal, y_true)
+    new_file_name = base_recal_name + 'uq_metrics_std_ma_cal' + '.txt'
+    new_file_path = os.path.join(recalibration_plot_path, new_file_name)
+    with open(new_file_path, 'w') as file:
+        # Iterate over the dictionary items and write them to the file
+        for key, value in uq_metrics.items():
+            file.write(f"{key}: {value}\n")
+    # get PICP for all uncertainty quantfaction approaches
+    picp, mpiw, qice, y_b_0, y_a_100 = evaluate_coverage(
+        y_true=y_true, pred_mean=pred_mean, pred_std=pred_std_ma_cal,
+        low_percentile=2.5, high_percentile=97.5, num_samples= 50,
+        n_bins=10)
+    with open(new_file_path, 'a') as file:
+        file.write(f"Prediction Interval Coverage Probability (PICP): {picp}\n")
+        file.write(f"Mean Prediction Interval Width (MPIW): {mpiw}\n")
+        file.write(f"Quantile Interval Coverage Error (QICE): {qice}\n")
+        file.write(
+            f"We have {y_b_0} true remaining times smaller than min of "
+            f"generated remaining time predictions.\n")
+        file.write(
+            f"We have {y_a_100} true remaining times greater than max of "
+            f"generated remaining time predictions.\n")    
+
+
+def recalibration_on_test(args=None, calibration_df=None, test_df=None,
+                          confidence_level=0.95, report_path=None,
+                          recalibration_path=None):
+    """
+    recalibration is done based on two approaches:
+    1) Isotonic regression remaps quantiles of the original distribution. The
+    recalibrated distribution is unikely to be Gaussian. But, it still can
+    provide confidence intervals (confidence_level).
+    2) Scaling factor for the standard deviation is computed based on three
+    different metrics: constrains the recalibrated distribution to be Gaussian.
+    """
     print('Now: start recalibration:')
     start=datetime.now()
+    # get prediction means, standard deviations, and ground truths for val set
+    (pred_mean, pred_std, y_true
+     ) = get_mean_std_truth(df=calibration_df, uq_method=args.UQ)
     
-    # setstructure of instance-level results
-    if (args.UQ == 'DA' or args.UQ == 'CDA'):
-        res_dict = {'GroundTruth': [], 'Prediction': [],
-                    'Epistemic_Uncertainty': []}
-    elif (args.UQ == 'DA_A' or args.UQ == 'CDA_A'):
-        res_dict = {'GroundTruth': [], 'Prediction': [], 
-                    'Epistemic_Uncertainty': [], 'Aleatoric_Uncertainty': [],
-                    'Total_Uncertainty': []} 
-    elif args.UQ == 'mve':
-        res_dict = {'GroundTruth': [], 'Prediction': [],
-                    'Aleatoric_Uncertainty': []}
+    # Gaussian calibration on validation set
+    # Compute scaling factor for the standard deviation
+    miscal_std_scaling = uct.recalibration.optimize_recalibration_ratio(
+      pred_mean, pred_std, y_true, criterion="miscal")
+    rms_cal_std_scaling = uct.recalibration.optimize_recalibration_ratio(
+      pred_mean, pred_std, y_true, criterion="rms_cal")
+    ma_cal_std_scaling = uct.recalibration.optimize_recalibration_ratio(
+      pred_mean, pred_std, y_true, criterion="ma_cal")
+    # get prediction means, standard deviations, and ground truths for test set
+    (test_pred_mean, test_pred_std, test_y_true
+     ) = get_mean_std_truth(df=test_df, uq_method=args.UQ)
+    # Apply the scaling factors to get recalibrated standard deviations
+    miscal_test_pred_std = miscal_std_scaling * test_pred_std
+    rms_cal_test_pred_std = rms_cal_std_scaling * test_pred_std
+    ma_cal_test_pred_std = ma_cal_std_scaling * test_pred_std
+    test_df['calibrated_std_miscal'] = miscal_test_pred_std 
+    test_df['calibrated_std_rms_cal'] = rms_cal_test_pred_std
+    test_df['calibrated_std_ma_cal'] = ma_cal_test_pred_std
     
-    # load the checkpoint  
-    checkpoint = torch.load(checkpoint_path)
-    model.load_state_dict(checkpoint['model_state_dict'])
-    
-    # get instance-level results on validation set
-    model.eval()
-    with torch.no_grad():
-        for index, calibration_batch in enumerate(calibration_loader):
-            # get batch data
-            inputs = calibration_batch[0].to(device)
-            _y_truth = calibration_batch[1].to(device)  
-            # get model outputs, and uncertainties
-            if (args.UQ == 'DA' or args.UQ == 'CDA' or args.UQ == 'DA_A' or
-                args.UQ == 'CDA_A'):
-                means_list, logvar_list =[], []
-                # conduct Monte Carlo sampling
-                for i in range (num_mc_samples): 
-                    mean, log_var,_ = model(inputs, stop_dropout=False)
-                    means_list.append(mean)
-                    logvar_list.append(log_var)
-                # Aggregate the results for all samples
-                # Compute point estimation and uncertainty
-                stacked_means = torch.stack(means_list, dim=0)
-                # predited value is the average for all samples
-                _y_pred = torch.mean(stacked_means, dim=0)
-                # epistemic uncertainty obtained from std for all samples
-                epistemic_std = torch.std(stacked_means, dim=0).to(device)
-                # normalize epistemic uncertainty if necessary
-                if normalization:
-                    epistemic_std = y_scaler * epistemic_std
-                # now obtain aleatoric uncertainty
-                if heteroscedastic:
-                    stacked_log_var = torch.stack(logvar_list, dim=0)
-                    stacked_var = torch.exp(stacked_log_var)
-                    mean_var = torch.mean(stacked_var, dim=0)
-                    aleatoric_std = torch.sqrt(mean_var).to(device)
-                    # normalize aleatoric uncertainty if necessary
-                    if normalization:
-                        aleatoric_std = y_scaler * aleatoric_std
-                    total_std = epistemic_std + aleatoric_std
-            elif args.UQ == 'mve':
-                _y_pred, log_var = model(inputs)
-                aleatoric_std = torch.sqrt(torch.exp(log_var))
-                # normalize aleatoric uncertainty if necessary
-                if normalization:
-                    aleatoric_std = y_scaler * aleatoric_std            
-            # convert tragets, outputs in case of normalization
-            if normalization:
-                _y_truth = y_scaler * _y_truth
-                _y_pred = y_scaler * _y_pred
-            # Detach predictions and ground truths (np arrays)
-            _y_truth = _y_truth.detach().cpu().numpy()
-            _y_pred = _y_pred.detach().cpu().numpy()
-            # collect inference result in all_result dict.
-            res_dict['GroundTruth'].extend(_y_truth.tolist())
-            res_dict['Prediction'].extend(_y_pred.tolist())
-            if (args.UQ == 'DA' or args.UQ == 'CDA' or args.UQ == 'DA_A' or 
-                args.UQ == 'CDA_A'):
-                epistemic_std = epistemic_std.detach().cpu().numpy()
-                res_dict['Epistemic_Uncertainty'].extend(epistemic_std.tolist()) 
-                if heteroscedastic:
-                    aleatoric_std = aleatoric_std.detach().cpu().numpy()
-                    total_std = total_std.detach().cpu().numpy()
-                    res_dict['Aleatoric_Uncertainty'].extend(aleatoric_std.tolist())
-                    res_dict['Total_Uncertainty'].extend(total_std.tolist()) 
-            elif args.UQ == 'mve':
-                aleatoric_std = aleatoric_std.detach().cpu().numpy()
-                res_dict['Aleatoric_Uncertainty'].extend(aleatoric_std.tolist())
-    calibration_df = pd.DataFrame(res_dict)
-    
-    pred_mean, pred_std, y_true = get_mean_std_truth(
-        calibration_df=calibration_df, uq_method=args.UQ)
-    if args.method == 'std_ratio':
-        recalibrator = uct.recalibration.get_std_recalibrator(
-            pred_mean, pred_std, y_true, criterion=args.criterion)
-        # Apply the recalibrator to get recalibrated standard deviations
-        recalibrated_std = recalibrator(pred_std)
-        calibration_df['calibrated_std'] = recalibrated_std 
-    else:
-        # TODO: implement any other recalibration approach
-        pass
+    # Gaussian calibration on validation set
+    # Get the expected proportions and observed proportions on calibration set
+    exp_props, obs_props = uct.metrics_calibration.get_proportion_lists_vectorized(
+        pred_mean, pred_std, y_true)
+    # Train a recalibration model.
+    recal_model = uct.recalibration.iso_recal(exp_props, obs_props) 
+    # Get prediction intervals
+    recal_bounds = uct.metrics_calibration.get_prediction_interval(
+        test_pred_mean, test_pred_std, confidence_level, recal_model)
+    test_df['confidence_lower'] = recal_bounds.lower
+    test_df['confidence_upper'] = recal_bounds.upper
+    recal_name = add_suffix_to_csv(args.csv_file, added_suffix='recalibrated_')
+    recalibrated_test_path = os.path.join(recalibration_path, recal_name)
+    test_df.to_csv(recalibrated_test_path, index=False)
     calibration_time = (datetime.now()-start).total_seconds()
-    new_csv_name = add_suffix_to_csv(args.csv_file,
-                                     added_suffix='validation_calibrated_')
-    new_csv_path = os.path.join(result_path, new_csv_name)
-    calibration_df.to_csv(new_csv_path, index=False)
-
-
-def get_mean_std_truth (calibration_df=None, uq_method=None):
-    pred_mean = calibration_df['Prediction'].values 
-    y_true = calibration_df['GroundTruth'].values
+    with open(report_path, 'a') as file:
+        file.write('Calibration took  {} seconds. \n'.format(calibration_time))
+        
+    return (test_df, recal_model)
+    
+    
+def get_mean_std_truth (df=None, uq_method=None):
+    pred_mean = df['Prediction'].values 
+    y_true = df['GroundTruth'].values
     if (uq_method=='DA_A' or uq_method=='CDA_A'):
-        pred_std = calibration_df['Total_Uncertainty'].values 
+        pred_std = df['Total_Uncertainty'].values 
     elif (uq_method=='CARD' or uq_method=='mve'):
-        pred_std = calibration_df['Aleatoric_Uncertainty'].values
+        pred_std = df['Aleatoric_Uncertainty'].values
     elif (uq_method=='DA' or uq_method=='CDA'):
-        pred_std = calibration_df['Epistemic_Uncertainty'].values
+        pred_std = df['Epistemic_Uncertainty'].values
     else:
         raise NotImplementedError(
             'Uncertainty quantification {} not understood.'.format(uq_method))
-    return pred_mean, pred_std, y_true
+    return (pred_mean, pred_std, y_true)
 
-def get_std_ratio (calibration_df=None, uq_method=None):
-    # Calculate the ratio that is used for recalibration
-    if (uq_method=='DA_A' or uq_method=='CDA_A'): 
-        calibration_df['std_ratio'] = (calibration_df['calibrated_std'] / 
-                                        calibration_df['Total_Uncertainty'])
-    elif (uq_method=='CARD' or uq_method=='mve'):
-        calibration_df['std_ratio'] = (calibration_df['calibrated_std'] / 
-                                        calibration_df['Aleatoric_Uncertainty'])
-    elif (uq_method=='DA' or uq_method=='CDA'):
-        calibration_df['std_ratio'] = (calibration_df['calibrated_std'] / 
-                                        calibration_df['Epistemic_Uncertainty'])
-    else:
-        raise NotImplementedError(
-            'Uncertainty quantification {} not understood.'.format(uq_method)) 
-    calibration_df['rounded_std_ratio'] = calibration_df['std_ratio'].round(4)
-    # Check if the ratio is consistent
-    if calibration_df['rounded_std_ratio'].nunique() != 1:
-        raise ValueError('The multiplier is not consistent across all rows.')
-    else:
-        return calibration_df['std_ratio'].iloc[0]
 
 
 def main():   
@@ -166,60 +318,48 @@ def main():
     parser.add_argument('--device', type=int, default=0, help='GPU device id')
     parser.add_argument('--csv_file', help='results to be recalibrated')
     parser.add_argument('--cfg_file', help='configuration used for training')
-    parser.add_argument('--method', default='std_ratio',
-                        help='recalibration criterion to be used')
-    parser.add_argument('--criterion', default='miscal',
-                        help='recalibration criterion to be used')
     args = parser.parse_args()
-    
-    # Ensure criterion is one of the allowed values
-    allowed_criteria = {'ma_cal', 'rms_cal', 'miscal'}
-    assert args.criterion in allowed_criteria  
+
     # Define the device
     device_name = f'cuda:{args.device}' if torch.cuda.is_available() else 'cpu'
     device = torch.device(device_name)
     # Define path for cfg and csv files
     root_path = os.getcwd()
-    cfg_path = os.path.join(root_path, 'cfg', args.cfg_file)
-    
+    cfg_path = os.path.join(root_path, 'cfg', args.cfg_file)    
     # Get model, dataset, and uq_method based on configuration file name
     args.model, args.dataset, args.UQ = extract_info_from_cfg(args.cfg_file)    
     result_path = os.path.join(root_path, 'results', args.dataset, args.model)
+    plot_path = os.path.join(root_path, 'plots', args.dataset, args.model)
+    # path to inference results on test set
+    csv_path = os.path.join(result_path, args.csv_file)
+    # create recalibration folder in result folder
+    recalibration_path = os.path.join(result_path, 'recalibration')
+    recalibration_plot_path = os.path.join(plot_path, 'recalibration')
+    if not os.path.exists(recalibration_path):
+        os.makedirs(recalibration_path)
+    if not os.path.exists(recalibration_plot_path):
+        os.makedirs(recalibration_plot_path)
+    # define a path for report .txt to add recalibration time
+    report_path = os.path.join(recalibration_path, 'recalibration_report.txt')
+    # define a path for inference on validation (calibration set)
+    val_inference_name = add_suffix_to_csv(args.csv_file, added_suffix='validation_')    
+    val_inference_path = os.path.join(recalibration_path, val_inference_name)    
 
+    # a separate execution path for CARD model
     if args.UQ != 'CARD':
         args.UQ = get_uq_method(args.csv_file)
         # load cfg file used for training
         with open(cfg_path, 'r') as f:
-            cfg = yaml.safe_load(f) 
-        # define path for report .txt to add recalibration time
-        report_name = replace_suffix(args.csv_file, 'inference_result_.csv',
-                                     'report_.txt')
-        report_path = os.path.join(root_path, 'results', args.dataset,
-                                   args.model, report_name)
-        # define name of the check point (best model)
-        checkpoint_name = replace_suffix(args.csv_file, 'inference_result_.csv',
-                                         'best_model.pt')
-        checkpoint_path = os.path.join(result_path, checkpoint_name)
-        
-    else:
-        # TODO: access the relevant configuration file
-        # TODO: access the model checkpoint
-        # TODO: handle report .txt for time!
-        pass
-           
-    # check whether calibration is already done on validation set or not
-    new_csv_name = add_suffix_to_csv(args.csv_file,
-                                     added_suffix='validation_calibrated_')
-    csv_path = os.path.join(result_path, args.csv_file)
-    new_csv_path = os.path.join(result_path, new_csv_name)
-    # if not execute calibration on validation set.
-    if os.path.exists(new_csv_path):
-        print('Calibration is already done on validation set.')
-    else:
-        # Separate execution path for CARD approach   
-        if args.UQ == 'CARD':
-            pass
+            cfg = yaml.safe_load(f)
+        # check whether inference is already done on validation set or not
+        if os.path.exists(val_inference_path):
+            print('Inference is already done on validation set.')
+            calibration_df = pd.read_csv(val_inference_path)
         else:
+            # define name of the check point (best model)
+            checkpoint_name = replace_suffix(
+                args.csv_file, 'inference_result_.csv', 'best_model.pt')
+            checkpoint_path = os.path.join(result_path, checkpoint_name)
             # Get calibration loader, model dimensions, normalization ratios
             (calibration_loader, input_size, max_len, max_train_val,
              mean_train_val, median_train_val
@@ -229,40 +369,35 @@ def main():
             (model, criterion, heteroscedastic, num_mcmc, normalization
              ) = get_model_and_loss(args=args, cfg=cfg, input_size=input_size,
                                     max_len=max_len, device=device)
-            # execute calibration on validation set
-            calibration_on_validation(
+            # execute inference on validation set
+            calibration_df = inference_on_validation(
                 args=args, model=model, checkpoint_path=checkpoint_path,
                 calibration_loader=calibration_loader,
                 heteroscedastic=heteroscedastic, num_mc_samples=num_mcmc,
                 normalization=normalization, y_scaler=mean_train_val,
-                device=device, result_path=result_path)
-    
-    # load calibrated validation results, and un-calibrated test results
-    test_df = pd.read_csv(csv_path)
-    val_df = pd.read_csv(new_csv_path)
-    if args.method == 'std_ratio':
-        std_ratio = get_std_ratio (calibration_df=val_df, uq_method=args.UQ)
-        if (args.UQ=='DA_A' or args.UQ=='CDA_A'):
-            test_df['Total_Uncertainty'] = (test_df['Total_Uncertainty'] 
-                                            * std_ratio)
-        elif (args.UQ=='CARD' or args.UQ=='mve'):
-            test_df['Aleatoric_Uncertainty'] = (test_df['Aleatoric_Uncertainty']
-                                                * std_ratio)
-        elif (args.UQ=='DA' or args.UQ=='CDA'):
-            test_df['Epistemic_Uncertainty'] = (test_df['Epistemic_Uncertainty']
-                                                * std_ratio)
-        else:
-            raise NotImplementedError(
-                'Uncertainty quantification {} not understood.'.format(args.UQ))
-        recalibrated_name = add_suffix_to_csv(args.csv_file, 
-                                              added_suffix='recalibrated_')
-        recalibrated_path = os.path.join(result_path, recalibrated_name)
-        test_df.to_csv(recalibrated_path, index=False)
+                device=device, report_path=report_path,
+                recalibration_path=recalibration_path)
+        # load uncalibrated test dataframe
+        test_df = pd.read_csv(csv_path)
+        # get recalibrated predicitons
+        (recalibrated_test_df, calibration_model) = recalibration_on_test(
+            args=args, calibration_df=calibration_df, test_df=test_df,
+            confidence_level=0.95, report_path=report_path, 
+            recalibration_path=recalibration_path)
+        recalibration_evaluation (
+            args=args, calibrated_test_def=recalibrated_test_df,
+            recal_model=calibration_model,
+            recalibration_plot_path=recalibration_plot_path)      
+
+        
     else:
-        #TODO: implement other calibration techniques
+        # TODO: access the relevant configuration file
+        # TODO: access the model checkpoint
+        # TODO: handle report .txt for time!
         pass
+           
 
         
 if __name__ == '__main__':
-    main()              
+    main()
     
