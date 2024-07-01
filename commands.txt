@@ -15,8 +15,11 @@ python main.py --dataset HelpDesk --model dalstm --UQ DA --split_mode holdout --
 python main.py --dataset HelpDesk --model dalstm --UQ CDA --split_mode holdout --seed 42 --device 0
 python main.py --dataset HelpDesk --model dalstm --UQ DA_A --split_mode holdout --seed 42 --device 0
 python main.py --dataset HelpDesk --model dalstm --UQ CDA_A --split_mode holdout --seed 42 --device 0
+
 python evaluation.py --dataset Sepsis --model dalstm
-python recalibration.py --dataset Sepsis --model dalstm
+
+python recalibration.py --csv_file CDA_A_holdout_seed_42_inference_result_.csv --cfg_file dalstm_HelpDesk.yaml --device 0
+python recalibration.py --csv_file CARD_holdout_seed_42_inference_result_.csv --cfg_file dalstm_HelpDesk_card.yml --device 0
 
 python preprocess.py --datasets env_permit
 python deterministic_pgtnet.py --cfg cfg/pgtnet_env_permit_GPS+SNMLP+RWSE.yaml seed 42

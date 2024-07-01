@@ -103,6 +103,7 @@ def calibration_on_validation(args=None, model=None, checkpoint_path=None,
                 aleatoric_std = aleatoric_std.detach().cpu().numpy()
                 res_dict['Aleatoric_Uncertainty'].extend(aleatoric_std.tolist())
     calibration_df = pd.DataFrame(res_dict)
+    
     pred_mean, pred_std, y_true = get_mean_std_truth(
         calibration_df=calibration_df, uq_method=args.UQ)
     if args.method == 'std_ratio':
@@ -135,6 +136,28 @@ def get_mean_std_truth (calibration_df=None, uq_method=None):
             'Uncertainty quantification {} not understood.'.format(uq_method))
     return pred_mean, pred_std, y_true
 
+def get_std_ratio (calibration_df=None, uq_method=None):
+    # Calculate the ratio that is used for recalibration
+    if (uq_method=='DA_A' or uq_method=='CDA_A'): 
+        calibration_df['std_ratio'] = (calibration_df['calibrated_std'] / 
+                                        calibration_df['Total_Uncertainty'])
+    elif (uq_method=='CARD' or uq_method=='mve'):
+        calibration_df['std_ratio'] = (calibration_df['calibrated_std'] / 
+                                        calibration_df['Aleatoric_Uncertainty'])
+    elif (uq_method=='DA' or uq_method=='CDA'):
+        calibration_df['std_ratio'] = (calibration_df['calibrated_std'] / 
+                                        calibration_df['Epistemic_Uncertainty'])
+    else:
+        raise NotImplementedError(
+            'Uncertainty quantification {} not understood.'.format(uq_method)) 
+    calibration_df['rounded_std_ratio'] = calibration_df['std_ratio'].round(4)
+    # Check if the ratio is consistent
+    if calibration_df['rounded_std_ratio'].nunique() != 1:
+        raise ValueError('The multiplier is not consistent across all rows.')
+    else:
+        return calibration_df['std_ratio'].iloc[0]
+
+
 def main():   
     
     # Parse arguments 
@@ -162,7 +185,7 @@ def main():
     # Get model, dataset, and uq_method based on configuration file name
     args.model, args.dataset, args.UQ = extract_info_from_cfg(args.cfg_file)    
     result_path = os.path.join(root_path, 'results', args.dataset, args.model)
-    csv_path = os.path.join(result_path, args.csv_file)
+
     if args.UQ != 'CARD':
         args.UQ = get_uq_method(args.csv_file)
         # load cfg file used for training
@@ -184,10 +207,15 @@ def main():
         # TODO: handle report .txt for time!
         pass
            
-    # TODO: adjust when it is done in the past
-    calibration_history = False
-    
-    if not calibration_history:
+    # check whether calibration is already done on validation set or not
+    new_csv_name = add_suffix_to_csv(args.csv_file,
+                                     added_suffix='validation_calibrated_')
+    csv_path = os.path.join(result_path, args.csv_file)
+    new_csv_path = os.path.join(result_path, new_csv_name)
+    # if not execute calibration on validation set.
+    if os.path.exists(new_csv_path):
+        print('Calibration is already done on validation set.')
+    else:
         # Separate execution path for CARD approach   
         if args.UQ == 'CARD':
             pass
@@ -208,33 +236,33 @@ def main():
                 heteroscedastic=heteroscedastic, num_mc_samples=num_mcmc,
                 normalization=normalization, y_scaler=mean_train_val,
                 device=device, result_path=result_path)
-
-            
-        
-            
- 
-                
-
-
     
-    """
-   
-    # get a dataframe containint test results to be recalibrated    
-    test_df_path = os.path.join(root_path, 'results', args.csv_file)
-    test_df = pd.read_csv(test_df_path)
-    
-        if (prefix=='DA_A' or prefix=='CDA_A'):
-            pred_std = df['Total_Uncertainty'] = recalibrated_std
-        elif (prefix=='CARD' or prefix=='mve'):
-            pred_std = df['Aleatoric_Uncertainty'] = recalibrated_std
-        elif (prefix=='DA' or prefix=='CDA'):
-            pred_std = df['Epistemic_Uncertainty'] = recalibrated_std  
-        
-        new_csv_path = os.path.join(model_path, base_name + 'recalibrated_.csv')
-        df.to_csv(new_csv_path, index=False)
-        """
+    # load calibrated validation results, and un-calibrated test results
+    test_df = pd.read_csv(csv_path)
+    val_df = pd.read_csv(new_csv_path)
+    if args.method == 'std_ratio':
+        std_ratio = get_std_ratio (calibration_df=val_df, uq_method=args.UQ)
+        if (args.UQ=='DA_A' or args.UQ=='CDA_A'):
+            test_df['Total_Uncertainty'] = (test_df['Total_Uncertainty'] 
+                                            * std_ratio)
+        elif (args.UQ=='CARD' or args.UQ=='mve'):
+            test_df['Aleatoric_Uncertainty'] = (test_df['Aleatoric_Uncertainty']
+                                                * std_ratio)
+        elif (args.UQ=='DA' or args.UQ=='CDA'):
+            test_df['Epistemic_Uncertainty'] = (test_df['Epistemic_Uncertainty']
+                                                * std_ratio)
+        else:
+            raise NotImplementedError(
+                'Uncertainty quantification {} not understood.'.format(args.UQ))
+        recalibrated_name = add_suffix_to_csv(args.csv_file, 
+                                              added_suffix='recalibrated_')
+        recalibrated_path = os.path.join(result_path, recalibrated_name)
+        test_df.to_csv(recalibrated_path, index=False)
+    else:
+        #TODO: implement other calibration techniques
+        pass
+
         
 if __name__ == '__main__':
-    main()        
-        
+    main()              
     
