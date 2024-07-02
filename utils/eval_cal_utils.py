@@ -1,4 +1,3 @@
-import glob
 import re
 import os
 import pickle
@@ -14,24 +13,6 @@ from models.stochastic_dalstm import StochasticDALSTM
 from loss.loss_handler import set_loss
 from evaluation import evaluate_coverage
 
-
-
-# A mothod to retrieve all results for a combination of dataset-model
-def get_csv_files(folder_path):
-    # Get all csv files in the folder
-    all_csv_files = glob.glob(os.path.join(folder_path, '*.csv'))    
-    # Filter out files containing 'deterministic' in their names
-    filtered_csv_files = [f for f in all_csv_files if 
-                          'deterministic' not in os.path.basename(f).lower()]
-    # Collect name of uncertainty quantification approaches
-    prefixes = []
-    pattern = re.compile(r'(.*?)(_holdout_|_cv_)')
-    for file_path in filtered_csv_files:
-        file_name = os.path.basename(file_path)
-        match = pattern.match(file_name)
-        if match:
-            prefixes.append(match.group(1))   
-    return filtered_csv_files, prefixes
 
 
 def extract_info_from_cfg(cfg_file):
@@ -365,17 +346,87 @@ def recalibration_evaluation (args=None, calibrated_test_def=None,
     orig_bounds = uct.metrics_calibration.get_prediction_interval(
         sorted_pred_mean, sorted_pred_std, 0.95, None)    
     recal_bounds = uct.metrics_calibration.get_prediction_interval(
-        sorted_pred_mean, sorted_pred_std, 0.95, recal_model)    
-    plt.fill_between(sorted_errors, orig_bounds.lower, orig_bounds.upper,
-                     color= 'blue', alpha=0.6, label='Before Calibration')
+        sorted_pred_mean, sorted_pred_std, 0.95, recal_model)      
     plt.fill_between(sorted_errors, recal_bounds.lower, recal_bounds.upper,
-                     color= 'orange', alpha=0.4, label='Recalibrated')
+                     color='orange', alpha=0.4, label='Recalibrated',
+                     hatch='//', edgecolor='orange', zorder=1)
+    plt.fill_between(sorted_errors, orig_bounds.lower, orig_bounds.upper,
+                     color='blue', alpha=0.6, label='Before Calibration',
+                     hatch='\\\\', edgecolor='blue', zorder=2)    
     plt.xlabel('Sorted Absolute Errors') 
     plt.ylabel('Confidence Intervals (95%)')    
     plt.legend()
     plt.gcf().set_size_inches(10, 10)
     plt.title('95% Centered Prediction Interval')
-    new_file_name = base_recal_name + 'confidence_intervals_isotonic_regression' + '.pdf'
+    new_file_name = (base_recal_name +
+                     'confidence_intervals_isotonic_regression_error_based' + 
+                     '.pdf')
+    new_file_path = os.path.join(recalibration_plot_path, new_file_name)
+    plt.savefig(new_file_path, format='pdf')
+    plt.clf()
+    
+    # sort the calibrated predictions based on prefix length
+    sorted_df = calibrated_test_def.sort_values(by='Prefix_length')
+    sorted_pred_mean = sorted_df['Prediction'].values
+    sorted_lengths = sorted_df['Prefix_length'].values
+    if (args.UQ=='DA_A' or args.UQ=='CDA_A'):
+        sorted_pred_std = sorted_df['Total_Uncertainty'].values 
+    elif (args.UQ=='CARD' or args.UQ=='mve'):
+        sorted_pred_std = sorted_df['Aleatoric_Uncertainty'].values
+    elif (args.UQ=='DA' or args.UQ=='CDA'):
+        sorted_pred_std = sorted_df['Epistemic_Uncertainty'].values
+    # now compare confidence intervals before and after calibration
+    orig_bounds = uct.metrics_calibration.get_prediction_interval(
+        sorted_pred_mean, sorted_pred_std, 0.95, None)    
+    recal_bounds = uct.metrics_calibration.get_prediction_interval(
+        sorted_pred_mean, sorted_pred_std, 0.95, recal_model)      
+    plt.fill_between(sorted_lengths, recal_bounds.lower, recal_bounds.upper,
+                     color='orange', alpha=0.4, label='Recalibrated',
+                     hatch='//', edgecolor='orange', zorder=1)
+    plt.fill_between(sorted_lengths, orig_bounds.lower, orig_bounds.upper,
+                     color='blue', alpha=0.6, label='Before Calibration',
+                     hatch='\\\\', edgecolor='blue', zorder=2)    
+    plt.xlabel('Sorted Prefix Lengths') 
+    plt.ylabel('Confidence Intervals (95%)')    
+    plt.legend()
+    plt.gcf().set_size_inches(10, 10)
+    plt.title('95% Centered Prediction Interval')
+    new_file_name = (base_recal_name +
+                     'confidence_intervals_isotonic_regression_length_based' + 
+                     '.pdf')
+    new_file_path = os.path.join(recalibration_plot_path, new_file_name)
+    plt.savefig(new_file_path, format='pdf')
+    plt.clf()
+    
+    # sort the calibrated predictions based on ground truth (remaining time)
+    sorted_df = calibrated_test_def.sort_values(by='GroundTruth')
+    sorted_pred_mean = sorted_df['Prediction'].values
+    sorted_rem_time = sorted_df['GroundTruth'].values
+    if (args.UQ=='DA_A' or args.UQ=='CDA_A'):
+        sorted_pred_std = sorted_df['Total_Uncertainty'].values 
+    elif (args.UQ=='CARD' or args.UQ=='mve'):
+        sorted_pred_std = sorted_df['Aleatoric_Uncertainty'].values
+    elif (args.UQ=='DA' or args.UQ=='CDA'):
+        sorted_pred_std = sorted_df['Epistemic_Uncertainty'].values
+    # now compare confidence intervals before and after calibration
+    orig_bounds = uct.metrics_calibration.get_prediction_interval(
+        sorted_pred_mean, sorted_pred_std, 0.95, None)    
+    recal_bounds = uct.metrics_calibration.get_prediction_interval(
+        sorted_pred_mean, sorted_pred_std, 0.95, recal_model)      
+    plt.fill_between(sorted_rem_time, recal_bounds.lower, recal_bounds.upper,
+                     color='orange', alpha=0.4, label='Recalibrated',
+                     hatch='//', edgecolor='orange', zorder=1)
+    plt.fill_between(sorted_rem_time, orig_bounds.lower, orig_bounds.upper,
+                     color='blue', alpha=0.6, label='Before Calibration',
+                     hatch='\\\\', edgecolor='blue', zorder=2)    
+    plt.xlabel('Sorted Remaining Times') 
+    plt.ylabel('Confidence Intervals (95%)')    
+    plt.legend()
+    plt.gcf().set_size_inches(10, 10)
+    plt.title('95% Centered Prediction Interval')
+    new_file_name = (base_recal_name +
+                     'confidence_intervals_isotonic_regression_remainingtime_based' + 
+                     '.pdf')
     new_file_path = os.path.join(recalibration_plot_path, new_file_name)
     plt.savefig(new_file_path, format='pdf')
     plt.clf()
@@ -384,7 +435,7 @@ def recalibration_evaluation (args=None, calibrated_test_def=None,
     picp = calculate_picp(calibrated_test_def)
     mpiw = calculate_mpiw(calibrated_test_def)
     new_file_name = base_recal_name + 'pcip_mpiw_isotonic_regression' + '.txt'
-    new_file_path = os.path.join(recalibration_plot_path, new_file_name)
+    new_file_path = os.path.join(recalibration_result_path, new_file_name)
     with open(new_file_path, 'w') as file:
         file.write(f"Prediction Interval Coverage Probability (PICP): {picp}\n")
         file.write(f"Mean Prediction Interval Width (MPIW): {mpiw}\n")   
@@ -458,7 +509,7 @@ def recalibration_evaluation (args=None, calibrated_test_def=None,
     # Get all uncertainty quantification metrics for std_miscal
     uq_metrics = uct.metrics.get_all_metrics(pred_mean, pred_std_miscal, y_true)
     new_file_name = base_recal_name + 'uq_metrics_std_miscal' + '.txt'
-    new_file_path = os.path.join(recalibration_plot_path, new_file_name)
+    new_file_path = os.path.join(recalibration_result_path, new_file_name)
     with open(new_file_path, 'w') as file:
         # Iterate over the dictionary items and write them to the file
         for key, value in uq_metrics.items():
@@ -482,7 +533,7 @@ def recalibration_evaluation (args=None, calibrated_test_def=None,
     # Get all uncertainty quantification metrics for std_rms_cal
     uq_metrics = uct.metrics.get_all_metrics(pred_mean, pred_std_rms_cal, y_true)
     new_file_name = base_recal_name + 'uq_metrics_std_rms_cal' + '.txt'
-    new_file_path = os.path.join(recalibration_plot_path, new_file_name)
+    new_file_path = os.path.join(recalibration_result_path, new_file_name)
     with open(new_file_path, 'w') as file:
         # Iterate over the dictionary items and write them to the file
         for key, value in uq_metrics.items():
@@ -506,7 +557,7 @@ def recalibration_evaluation (args=None, calibrated_test_def=None,
     # Get all uncertainty quantification metrics for std_ma_cal
     uq_metrics = uct.metrics.get_all_metrics(pred_mean, pred_std_ma_cal, y_true)
     new_file_name = base_recal_name + 'uq_metrics_std_ma_cal' + '.txt'
-    new_file_path = os.path.join(recalibration_plot_path, new_file_name)
+    new_file_path = os.path.join(recalibration_result_path, new_file_name)
     with open(new_file_path, 'w') as file:
         # Iterate over the dictionary items and write them to the file
         for key, value in uq_metrics.items():
