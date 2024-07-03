@@ -4,25 +4,24 @@ conda activate graphgps
 conda activate card
 tmux attach-session -t uq4ppm
 
-bash bash_scripts/run_ppm_HelpDesk.sh
-bash bash_scripts/run_ppm_HelpDesk3.sh
-bash bash_scripts/run_ppm_HelpDesk2.sh
-bash bash_scripts/run_ppm_HelpDesk4.sh
-
+Pre-processing
 python preprocess.py --datasets HelpDesk
-python main.py --dataset HelpDesk --model dalstm --UQ deterministic --split_mode holdout --seed 42 --device 0
-python main.py --dataset HelpDesk --model dalstm --UQ DA --split_mode holdout --seed 42 --device 0
-python main.py --dataset HelpDesk --model dalstm --UQ CDA --split_mode holdout --seed 42 --device 0
-python main.py --dataset HelpDesk --model dalstm --UQ DA_A --split_mode holdout --seed 42 --device 0
-python main.py --dataset HelpDesk --model dalstm --UQ CDA_A --split_mode holdout --seed 42 --device 0
 
-python evaluation.py --dataset Sepsis --model dalstm
+train and test:
+bash bash_scripts/other_models_train_test.sh
+bash bash_scripts/CARD_train_test.sh
 
-python recalibration.py --csv_file CDA_A_holdout_seed_42_inference_result_.csv --cfg_file dalstm_HelpDesk.yaml --device 0
+evaluation:
+bash bash_scripts/evaluation.sh
 
-python recalibration.py --csv_file CARD_holdout_seed_42_inference_result_.csv --cfg_file dalstm_HelpDesk_card.yml --device 0
+recalibration:
+bash bash_scripts/recalibration_HelpDesk.sh
+bash bash_scripts/recalibration_Sepsis.sh
+bash bash_scripts/recalibration_BPIC13I.sh
+bash bash_scripts/recalibration_BPIC12.sh
+bash bash_scripts/recalibration_BPIC20I.sh
 
-python preprocess.py --datasets env_permit
+initial work on PGTNet:
 python deterministic_pgtnet.py --cfg cfg/pgtnet_env_permit_GPS+SNMLP+RWSE.yaml seed 42
 
 
