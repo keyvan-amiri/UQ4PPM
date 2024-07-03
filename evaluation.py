@@ -172,7 +172,7 @@ def main():
             for key, value in uq_metrics.items():
                 file.write(f"{key}: {value}\n")
                 
-        # Get Spearman's rank correlation coefficient 
+        # Get Spearman's rank correlation coefficient (using MAE)
         if (prefix=='DA_A' or prefix=='CDA_A'):
             corr, p_value = spearmanr(df['Absolute_error'],
                                       df['Total_Uncertainty'])
@@ -186,9 +186,52 @@ def main():
             raise NotImplementedError(
                 'Uncertainty quantification {} not understood.'.format(prefix))                
         with open(new_file_path, 'a') as file:
+            file.write("Spearman's rank correlation coefficient uncertainty w.r.t MAE: \n")
             file.write(f"Spearman's rank correlation coefficient: {corr}\t \t")
             file.write(f"P-value: {p_value}\n")  
         
+        # Get Spearman's rank correlation coefficient (using MAPE)
+        if (prefix=='DA_A' or prefix=='CDA_A'):
+            corr, p_value = spearmanr(df['Absolute_percentage_error'],
+                                      df['Total_Uncertainty'])
+        elif (prefix=='DA' or prefix=='CDA'):
+            corr, p_value = spearmanr(df['Absolute_percentage_error'],
+                                      df['Epistemic_Uncertainty'])
+        elif (prefix=='CARD' or prefix=='mve'):
+            corr, p_value = spearmanr(df['Absolute_percentage_error'],
+                                      df['Aleatoric_Uncertainty'])
+        else:
+            raise NotImplementedError(
+                'Uncertainty quantification {} not understood.'.format(prefix))                
+        with open(new_file_path, 'a') as file:
+            file.write("Spearman's rank correlation coefficient uncertainty w.r.t MAPE: \n")
+            file.write(f"Spearman's rank correlation coefficient: {corr}\t \t")
+            file.write(f"P-value: {p_value}\n") 
+            
+        
+        # Get Spearman's rank correlation coefficient (using filtered MAPE)
+        threshold = 0.04
+        # Filter the DataFrame for rows where the value in column 'A' is greater than the threshold
+        filtered_df = df[df['GroundTruth'] > threshold]
+        removal_percentage = (len(df)-len(filtered_df))/len(df)*100
+        if (prefix=='DA_A' or prefix=='CDA_A'):
+            corr, p_value = spearmanr(filtered_df['Absolute_percentage_error'],
+                                      filtered_df['Total_Uncertainty'])
+        elif (prefix=='DA' or prefix=='CDA'):
+            corr, p_value = spearmanr(filtered_df['Absolute_percentage_error'],
+                                      filtered_df['Epistemic_Uncertainty'])
+        elif (prefix=='CARD' or prefix=='mve'):
+            corr, p_value = spearmanr(filtered_df['Absolute_percentage_error'],
+                                      filtered_df['Aleatoric_Uncertainty'])
+        else:
+            raise NotImplementedError(
+                'Uncertainty quantification {} not understood.'.format(prefix))                
+        with open(new_file_path, 'a') as file:
+            file.write(f"For filtered dataframe, {removal_percentage} percent of prefixes are removed. \n")  
+            file.write("Spearman's rank correlation coefficient uncertainty w.r.t filtered MAPE: \n")
+            file.write(f"Spearman's rank correlation coefficient: {corr}\t \t")
+            file.write(f"P-value: {p_value}\n")  
+            
         # get PICP for all uncertainty quantfaction approaches
         picp, mpiw, qice, y_b_0, y_a_100 = evaluate_coverage(
             y_true=y_true, pred_mean=pred_mean, pred_std=pred_std,
