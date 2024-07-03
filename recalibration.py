@@ -5,7 +5,9 @@ To prepare this script we used uncertainty tool-box which can be find in:
 
 import argparse
 import os
+import re
 import yaml
+import pickle
 import pandas as pd
 import numpy as np
 from datetime import datetime
@@ -14,9 +16,11 @@ import uncertainty_toolbox as uct
 from utils.eval_cal_utils import (extract_info_from_cfg, replace_suffix,
                                   get_validation_data_and_model_size,
                                   get_model_and_loss, get_uq_method,
-                                  add_suffix_to_csv, get_mean_std_truth)
+                                  add_suffix_to_csv, get_mean_std_truth,
+                                  prepare_args)
 from utils.eval_cal_utils import inference_on_validation
 from utils.eval_cal_utils import recalibration_evaluation
+from main import main_card
 
 
 
@@ -85,6 +89,28 @@ def main():
     parser.add_argument('--device', type=int, default=0, help='GPU device id')
     parser.add_argument('--csv_file', help='results to be recalibrated')
     parser.add_argument('--cfg_file', help='configuration used for training')
+    # The following arguments are necessary only for CARD model  
+    parser.add_argument('--timesteps', type=int, default=None,
+                        help='number of steps involved')
+    parser.add_argument('--loss_guidance', type=str, default='L2',
+                        help='Which loss to use for guidance model: L1/L2')    
+    parser.add_argument('--noise_prior', action='store_true', 
+                        help='Whether to apply a noise prior distribution at \
+                            timestep T')                            
+    parser.add_argument('--no_cat_f_phi', action='store_true',
+                        help='Whether to not concatenate f_phi as part of \
+                            eps_theta input')                            
+    parser.add_argument('--nll_global_var', action='store_true',
+                        help='Apply global variance for NLL computation')
+    parser.add_argument('--nll_test_var', action='store_true',
+                        help='Apply sample variance of the test set for NLL \
+                            computation')
+    parser.add_argument('--comment', type=str, default='',
+                        help='A string for experiment comment')
+    parser.add_argument('--verbose', type=str, default='info', 
+                        help='Verbose level: info | debug | warning | critical')
+    parser.add_argument('-i', '--image_folder', type=str, default='images',
+                        help='The folder name of samples')                      
     args = parser.parse_args()
 
     # Define the device
@@ -107,7 +133,10 @@ def main():
     if not os.path.exists(recalibration_plot_path):
         os.makedirs(recalibration_plot_path)
     # define a path for report .txt to add recalibration time
-    report_path = os.path.join(recalibration_path, 'recalibration_report.txt')
+    if args.UQ != 'CARD':
+        base_name = os.path.splitext(args.csv_file)[0].removesuffix('inference_result_')       
+        report_name = base_name + 'recalibration_report.txt'
+        report_path = os.path.join(recalibration_path, report_name)        
     # define a path for inference on validation (calibration set)
     val_inference_name = add_suffix_to_csv(args.csv_file, added_suffix='validation_')    
     val_inference_path = os.path.join(recalibration_path, val_inference_name)    
@@ -143,29 +172,42 @@ def main():
                 heteroscedastic=heteroscedastic, num_mc_samples=num_mcmc,
                 normalization=normalization, y_scaler=mean_train_val,
                 device=device, report_path=report_path,
-                recalibration_path=recalibration_path)
-        # load uncalibrated test dataframe
-        test_df = pd.read_csv(csv_path)
-        # get recalibrated predicitons
-        (recalibrated_test_df, calibration_model) = recalibration_on_test(
-            args=args, calibration_df=calibration_df, test_df=test_df,
-            confidence_level=0.95, report_path=report_path, 
-            recalibration_path=recalibration_path)
-        recalibration_evaluation (
-            args=args, calibrated_test_def=recalibrated_test_df,
-            recal_model=calibration_model,
-            recalibration_plot_path=recalibration_plot_path,
-            recalibration_result_path=recalibration_path)      
-
-        
+                recalibration_path=recalibration_path) 
     else:
-        # TODO: access the relevant configuration file
-        # TODO: access the model checkpoint
-        # TODO: handle report .txt for time!
-        pass
-           
+        args = prepare_args(args=args, result_path=result_path,
+                            root_path=root_path) 
+        if os.path.exists(val_inference_path):
+            print('Inference is already done on validation set.')
+            args.log_path2 = os.path.join(args.exp, 'recalibration', args.doc)
+        else:
+            _ = main_card(arg_set= args)          
+        # load calibration dataframe (inference result on validation set
+        # define a path for report .txt to add recalibration time
+        report_path = os.path.join(args.log_path2,'testmetrics.txt')
+        only_seed = int(args.seed[0])
+        if args.n_splits == 1:           
+            csv_name = 'CARD_holdout_seed_{}_inference_result_validation_.csv'.format(
+                only_seed)
+        else:
+            csv_name = 'CARD_holdout_fold{}_seed_{}_inference_result_validation_.csv'.format(
+                args.split, only_seed)
+        calibration_df_path = os.path.join(args.instance_path, 'recalibration',
+                                           csv_name)
+        calibration_df = pd.read_csv(calibration_df_path)
 
-        
+    # load uncalibrated test dataframe
+    test_df = pd.read_csv(csv_path)
+    # get recalibrated predicitons
+    (recalibrated_test_df, calibration_model) = recalibration_on_test(
+        args=args, calibration_df=calibration_df, test_df=test_df,
+        confidence_level=0.95, report_path=report_path,
+        recalibration_path=recalibration_path)
+    recalibration_evaluation (
+        args=args, calibrated_test_def=recalibrated_test_df,
+        recal_model=calibration_model, 
+        recalibration_plot_path=recalibration_plot_path,
+        recalibration_result_path=recalibration_path)   
+
 if __name__ == '__main__':
     main()
     

@@ -25,7 +25,6 @@ from utils.utils import parse_temp_config, parse_config, str2bool
 #from utils.utils import delete_preprocessd_tensors
 
 
-#TODO: understand the role of log_path and use it to control the addresses
 def main_card(arg_set=None):
     config, logger = parse_config(args=arg_set)
 
@@ -37,13 +36,17 @@ def main_card(arg_set=None):
         start_time = time.time()
         procedure = None
         if arg_set.test:
-            if arg_set.loss_guidance == 'L2':
-                (y_rmse_all_steps_list, y_qice_all_steps_list, 
-                 y_picp_all_steps_list, y_nll_all_steps_list) = runner.test()
+            if arg_set.recalibration:
+                procedure = 'Inference_validation'
+                _ = runner.test()
             else:
-                (y_mae_all_steps_list, y_qice_all_steps_list,
-                 y_picp_all_steps_list, y_nll_all_steps_list) = runner.test()
-            procedure = 'Testing'
+                if arg_set.loss_guidance == 'L2':
+                    (y_rmse_all_steps_list, y_qice_all_steps_list, 
+                     y_picp_all_steps_list, y_nll_all_steps_list) = runner.test()
+                else:
+                    (y_mae_all_steps_list, y_qice_all_steps_list,
+                     y_picp_all_steps_list, y_nll_all_steps_list) = runner.test()
+                procedure = 'Testing'
         else:
             runner.train()
             procedure = 'Training'
@@ -57,12 +60,15 @@ def main_card(arg_set=None):
             handler.close()
         # return test metric lists
         if arg_set.test:
-            if arg_set.loss_guidance == 'L2':
-                return (y_rmse_all_steps_list, y_qice_all_steps_list, 
-                        y_picp_all_steps_list, y_nll_all_steps_list, config)
+            if not arg_set.recalibration:
+                if arg_set.loss_guidance == 'L2':
+                    return (y_rmse_all_steps_list, y_qice_all_steps_list, 
+                            y_picp_all_steps_list, y_nll_all_steps_list, config)
+                else:
+                    return (y_mae_all_steps_list, y_qice_all_steps_list,
+                            y_picp_all_steps_list, y_nll_all_steps_list, config)
             else:
-                return (y_mae_all_steps_list, y_qice_all_steps_list, 
-                        y_picp_all_steps_list, y_nll_all_steps_list, config)
+                return None
     except Exception:
         logging.error(traceback.format_exc())
 
@@ -203,7 +209,10 @@ def main():
         torch.set_printoptions(sci_mode=False)
         if args.model == 'pgtnet':
             torch.backends.cuda.matmul.allow_tf32 = True 
-            torch.backends.cudnn.allow_tf32 = True            
+            torch.backends.cudnn.allow_tf32 = True    
+            
+        # set recalibration argument to False
+        args.recalibration = False
         
         # set a path for instance-level predictions
         instance_path = os.path.join(root_path, 'results', args.dataset,

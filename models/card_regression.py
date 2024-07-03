@@ -107,13 +107,12 @@ class Diffusion(object):
                 dropout=config.diffusion.nonlinear_guidance.dropout,
                 p_fix=config.diffusion.nonlinear_guidance.dropout_rate).to(
                     self.device)                          
-        if config.model.type == 'pgtnet':
+        elif config.model.type == 'pgtnet':
             #TODO: add model similar to dalstm
             pass
         else:
             #TODO: implementation for ProcessTransformer and PGTNet
             print('Currently only DALSTM and PGTNet models are supported.')
-            pass
 
     ##########################################################################
     ################# Auxiliary functions for train and test #################
@@ -971,12 +970,18 @@ class Diffusion(object):
         args = self.args
         config = self.config
         log_path = os.path.join(self.args.log_path)
-        dataset_object, dataset = get_dataset(args, config, test_set=True)
+        if args.recalibration:
+            # load validation set for inference and then recalibration
+            dataset_object, dataset = get_dataset(args, config, test_set=True,
+                                                  validation=True)
+            logging.info('Now: start inference on validation set:')
+        else:
+            # load test set for inference
+            dataset_object, dataset = get_dataset(args, config, test_set=True)
+        # either test or validation set for inference is loaded:
         test_loader = data.DataLoader(
-            dataset,
-            batch_size=config.testing.batch_size,
-            num_workers=config.data.num_workers,
-        )
+            dataset, batch_size=config.testing.batch_size, 
+            num_workers=config.data.num_workers,)
         self.dataset_object = dataset_object
         self.mean_target_value = dataset_object.return_mean_target_arrtibute()
         self.max_target_value = dataset_object.return_max_target_arrtibute()
@@ -1038,8 +1043,8 @@ class Diffusion(object):
         ######################################################################
         # sanity check
         ######################################################################
-        logging.info("Sanity check of the checkpoint")
-        dataset_check = dataset_object.return_dataset(split="train")
+        logging.info('Sanity check of the checkpoint')
+        dataset_check = dataset_object.return_dataset(split='train')
         # use the first 50 samples for sanity check
         dataset_check = dataset_check[:50] 
         #TODO: check whether the followings also work for PGTNet, PT, ...
@@ -1120,12 +1125,19 @@ class Diffusion(object):
                                   config.testing.coverage_t))
         
         # define an empty dictionary to collect instance level information
-        instance_results = {'GroundTruth': [],
-                            'Deterministic_Prediction':[],
-                            'Prediction': [],
-                            'Aleatoric_Uncertainty': [], 
-                            'Prefix_length':[],
-                            'Absolute_error': []}   
+        if args.recalibration:
+            # we don't need prefix length and error for recalibration
+            instance_results = {'GroundTruth': [],
+                                'Prediction': [],
+                                'Aleatoric_Uncertainty': []}
+            
+        else:
+            instance_results = {'GroundTruth': [],
+                                'Deterministic_Prediction':[],
+                                'Prediction': [],
+                                'Aleatoric_Uncertainty': [], 
+                                'Prefix_length':[],
+                                'Absolute_error': []}   
                        
         with torch.no_grad():
             #true_x_by_batch_list = []
@@ -1146,8 +1158,10 @@ class Diffusion(object):
             median_target_value = dataset_object.return_median_target_arrtibute() 
             normalized_median_target_value = median_target_value/max_target_value 
             
-            # get all prefix lengths in test set.
-            test_length_list = dataset_object.return_prefix_lengths() 
+            if  not args.recalibration:
+                # get all prefix lengths in test set.
+                test_length_list = dataset_object.return_prefix_lengths() 
+                
             # indicator to access relevant prefix lengths in each batch
             index_indicator = 0 
 
@@ -1284,8 +1298,10 @@ class Diffusion(object):
                     # get deterministic predictions
                     deterministic_Predictions = y_0_hat_batch_unnormalized.cpu(
                         ).detach().numpy()
-                    instance_results['Deterministic_Prediction'].extend(
-                        deterministic_Predictions)
+                    if not args.recalibration:
+                        # we don't need deterministic results for calibration
+                        instance_results['Deterministic_Prediction'].extend(
+                            deterministic_Predictions)
                     # get probabilistic prediction:
                     # 1) prediction mean
                     mean_Predictions = np.mean(gen_y_unnormalized, axis=1)
@@ -1296,17 +1312,19 @@ class Diffusion(object):
                     std_Predictions = np.squeeze(std_Predictions)
                     instance_results['Aleatoric_Uncertainty'].extend(
                         std_Predictions) 
-                    # get relevant prefix length                    
-                    relevant_prefix_length = test_length_list[
-                        index_indicator:int(current_batch_size)+index_indicator]                    
-                    instance_results['Prefix_length'].extend(
-                        relevant_prefix_length)                                   
+                    if not args.recalibration:
+                        # we don't need prefix lengths and errors for recalibration
+                        # get relevant prefix length                    
+                        relevant_prefix_length = test_length_list[
+                            index_indicator:int(current_batch_size)+index_indicator]                    
+                        instance_results['Prefix_length'].extend(
+                            relevant_prefix_length)                    
+                        # get absolute error
+                        absolute_error_values = np.abs(
+                            groundtruth_values - mean_Predictions)
+                        instance_results['Absolute_error'].extend(
+                            absolute_error_values) 
                     index_indicator += int(current_batch_size)
-                    # get absolute error
-                    absolute_error_values = np.abs(groundtruth_values - 
-                                                   mean_Predictions)
-                    instance_results['Absolute_error'].extend(
-                        absolute_error_values)      
                 # b) a particular time step
                 else:
                     """
@@ -1386,28 +1404,62 @@ class Diffusion(object):
             
             # save an instance-level dataframe for further analysis
             instance_level_df = pd.DataFrame(instance_results)
-            instance_level_df[[
-                'Prediction','Aleatoric_Uncertainty','GroundTruth',
-                'Deterministic_Prediction', 'Absolute_error']
-                ] = instance_level_df[['Prediction', 'Aleatoric_Uncertainty',
-                                       'GroundTruth', 'Deterministic_Prediction',
-                                       'Absolute_error' ]].astype(float)
-            instance_level_df[['Prefix_length']] = instance_level_df[['Prefix_length']].astype(int)
-            # TODO: Save the final result in results folder with specified 
-            # UQ method to be used alongside other methods!
-            instance_level_df.to_csv(os.path.join(
-                self.args.log_path, 'instance_level_Predictions.csv'),
-                index=False) 
-            # create another copy alongside csv results of other methods
+            # get seed to set csv file name
             only_seed = int(self.args.seed[0])
-            if self.args.n_splits == 1:           
-                csv_name = 'CARD_holdout_seed_{}_inference_result_.csv'.format(
-                    only_seed)
+            if args.recalibration:
+                # in case of inference on validation set (i.e., recailibration)
+                instance_level_df[
+                    ['Prediction','Aleatoric_Uncertainty','GroundTruth']
+                    ] = instance_level_df[
+                        ['Prediction', 'Aleatoric_Uncertainty', 'GroundTruth']
+                        ].astype(float)
+                instance_level_df.to_csv(os.path.join(
+                    self.args.log_path2, 'instance_level_Predictions.csv'),
+                    index=False)
+                # create another copy alongside the results for other methods
+                if self.args.n_splits == 1:           
+                    csv_name = 'CARD_holdout_seed_{}_inference_result_validation_.csv'.format(
+                        only_seed)
+                else:
+                    csv_name = 'CARD_holdout_fold{}_seed_{}_inference_result_validation_.csv'.format(
+                        self.args.split, only_seed)
+                instance_level_df.to_csv(
+                    os.path.join(self.args.instance_path, 'recalibration',
+                                 csv_name), index=False) 
+                # clear the memory
+                del true_y_by_batch_list
+                if config.testing.plot_gen:
+                    del all_true_x_tile
+                del gen_y_by_batch_list
+                if self.args.loss_guidance == 'L2':
+                    del y_se_by_batch_list
+                else:
+                    del y_ae_by_batch_list
+                gc.collect()
+                return None
             else:
-                csv_name = 'CARD_holdout_fold{}_seed_{}_inference_result_.csv'.format(
-                    self.args.split, only_seed)   
-            instance_level_df.to_csv(
-                os.path.join(self.args.instance_path, csv_name), index=False)       
+                # in case of inference on test set.
+                instance_level_df[[
+                    'Prediction','Aleatoric_Uncertainty','GroundTruth',
+                    'Deterministic_Prediction', 'Absolute_error']
+                    ] = instance_level_df[[
+                        'Prediction', 'Aleatoric_Uncertainty', 'GroundTruth',
+                        'Deterministic_Prediction', 'Absolute_error']].astype(float)
+                instance_level_df[['Prefix_length']] = instance_level_df[
+                    ['Prefix_length']].astype(int)                   
+                instance_level_df.to_csv(os.path.join(
+                    self.args.log_path, 'instance_level_Predictions.csv'),
+                    index=False) 
+                # create another copy alongside csv results of other methods
+                if self.args.n_splits == 1:           
+                    csv_name = 'CARD_holdout_seed_{}_inference_result_.csv'.format(
+                        only_seed)
+                else:
+                    csv_name = 'CARD_holdout_fold{}_seed_{}_inference_result_.csv'.format(
+                        self.args.split, only_seed)
+                instance_level_df.to_csv(
+                    os.path.join(self.args.instance_path, csv_name), index=False)          
+                  
 
         ################## compute metrics on test set ##################
         all_true_y = np.concatenate(true_y_by_batch_list, axis=0)

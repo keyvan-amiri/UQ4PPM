@@ -187,6 +187,7 @@ def get_model_and_loss(args=None, cfg=None, input_size=None, max_len=None,
             
     return (model, criterion, heteroscedastic, num_mcmc, normalization)
 
+# inference for validation for DA,CDA,DA_A, CDA_A, mve approaches
 def inference_on_validation(args=None, model=None, checkpoint_path=None,
                             calibration_loader=None, heteroscedastic=None,
                             num_mc_samples=None, normalization=False, 
@@ -593,3 +594,56 @@ def get_mean_std_truth (df=None, uq_method=None):
             'Uncertainty quantification {} not understood.'.format(uq_method))
     return (pred_mean, pred_std, y_true)
 
+# A method to prepare arguments for recalibration on CARD model
+def prepare_args (args=None, result_path=None, root_path=None):
+    # set remaining arguments for smooth utilization of CARD model
+    torch.set_printoptions(sci_mode=False)
+    if args.model == 'pgtnet':
+        torch.backends.cuda.matmul.allow_tf32 = True 
+        torch.backends.cudnn.allow_tf32 = True 
+    args.test = True
+    args.recalibration = True
+    args.thread = 4
+    args.instance_path = result_path
+    exp_path = os.path.join(result_path, 'card')
+    args.exp = exp_path 
+    args.doc =  args.model + '_' + args.dataset + '_card' 
+    config_path = os.path.join(exp_path, 'logs/')
+    args.config = config_path        
+    pattern = r'_(holdout|cv)(?:_fold(\d+))?_seed_(\d+)_'                  
+    match = re.search(pattern, args.csv_file)
+    if match:
+        # get the data split type
+        args.split_mode = match.group(1)
+        if args.split_mode == 'holdout':
+            args.n_splits = 1
+        else:
+            args.n_splits = 5
+        # get the relevant split number
+        split_value = match.group(2)
+        if split_value is not None:
+            args.split = int(split_value)
+        else:
+            args.split = 0
+        seed_value = match.group(3) 
+        args.seed = [seed_value]
+    # load dimensions of the model and add them to args
+    if args.model == 'dalstm':
+        dalstm_class = 'DALSTM_' + args.dataset
+        x_dim_path = os.path.join(root_path, 'datasets', dalstm_class, 
+                                  f'DALSTM_input_size_{args.dataset}.pkl')            
+        with open(x_dim_path, 'rb') as file:
+            args.x_dim = pickle.load(file)            
+        max_len_path = os.path.join(root_path, 'datasets', dalstm_class,
+                                f'DALSTM_max_len_{args.dataset}.pkl')
+        with open(max_len_path, 'rb') as file:
+            args.max_len = pickle.load(file) 
+    # TODO: get all necessary sizes for pgtnet model
+    if args.model == 'pgtnet':
+        pass
+    original_doc = args.doc
+    original_config = args.config
+    args.doc = original_doc + '/split_' + str(args.split)
+    args.config = original_config + args.doc + '/config.yml'
+    
+    return args

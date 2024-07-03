@@ -369,7 +369,11 @@ def parse_temp_config(task_name=None):
 # update original config file, and return it alongside the logger.
 def parse_config(args=None):    
     # set log path
-    args.log_path = os.path.join(args.exp, "logs", args.doc)
+    args.log_path = os.path.join(args.exp, 'logs', args.doc)
+    # set separate log folder for recalibration results, and reports
+    if args.recalibration:
+        args.log_path2 = os.path.join(args.exp, 'recalibration', args.doc)
+        
     # parse config file
     with open(os.path.join(args.config), "r") as f:
         if args.test:
@@ -378,7 +382,7 @@ def parse_config(args=None):
         else:
             config = yaml.safe_load(f)
             new_config = dict2namespace(config)
-    tb_path = os.path.join(args.exp, "tensorboard", args.doc)
+    tb_path = os.path.join(args.exp, 'tensorboard', args.doc)
 
     if not args.test:
         args.im_path = os.path.join(args.exp, new_config.training.image_folder, args.doc)
@@ -394,7 +398,7 @@ def parse_config(args=None):
                     overwrite = True
                 else:
                     response = input(
-                        "Folder {} already exists. Overwrite? (Y/N)".format(
+                        'Folder {} already exists. Overwrite? (Y/N)'.format(
                             args.log_path))
                     if response.upper() == "Y":
                         overwrite = True
@@ -407,14 +411,14 @@ def parse_config(args=None):
                     if os.path.exists(tb_path):
                         shutil.rmtree(tb_path)
                 else:
-                    print("Folder exists. Program halted.")
+                    print('Folder exists. Program halted.')
                     sys.exit(0)
             else:
                 os.makedirs(args.log_path)
                 if not os.path.exists(args.im_path):
                     os.makedirs(args.im_path)
             #save the updated config the log in result folder
-            with open(os.path.join(args.log_path, "config.yml"), "w") as f:
+            with open(os.path.join(args.log_path, 'config.yml'), 'w') as f:
                 yaml.dump(new_config, f, default_flow_style=False)
 
         new_config.tb_logger = tb.SummaryWriter(log_dir=tb_path)
@@ -437,16 +441,32 @@ def parse_config(args=None):
         logger.setLevel(level)
 
     else:
-        args.im_path = os.path.join(args.exp, new_config.testing.image_folder,
-                                    args.doc)
+        if args.recalibration:
+            # set the image path for inference on validation (i.e., recalibration)
+            args.im_path = os.path.join(
+                args.exp, 'recalibration', new_config.testing.image_folder,
+                args.doc)
+        else:
+            # set the image path for inference on test set.
+            args.im_path = os.path.join(
+                args.exp, new_config.testing.image_folder, args.doc)
+        
         level = getattr(logging, args.verbose.upper(), None)
         if not isinstance(level, int):
             raise ValueError("level {} not supported".format(args.verbose))
 
         handler1 = logging.StreamHandler()
         # saving test metrics to a .txt file
-        handler2 = logging.FileHandler(os.path.join(args.log_path,
-                                                    "testmetrics.txt"))
+        if args.recalibration:
+            txt_path = os.path.join(args.log_path2,'testmetrics.txt')
+            os.makedirs(os.path.dirname(txt_path), exist_ok=True)
+            # set a handler for recalibration
+            open(txt_path, 'w').close()
+            handler2 = logging.FileHandler(txt_path)
+        else:
+            # set a handler for inference on test
+            handler2 = logging.FileHandler(
+                os.path.join(args.log_path, 'testmetrics.txt'))
         formatter = logging.Formatter(
             "%(levelname)s - %(filename)s - %(asctime)s - %(message)s"
         )
