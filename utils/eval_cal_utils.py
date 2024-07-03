@@ -176,14 +176,15 @@ def get_model_and_loss(args=None, cfg=None, input_size=None, max_len=None,
             heteroscedastic = True
             criterion = set_loss(loss_func=cfg.get('train').get('loss_function'),
                                  heteroscedastic=True) 
-            model = StochasticDALSTM(input_size=input_size, hidden_size=hidden_size,
-                                     n_layers=n_layers, max_len=max_len,
-                                     dropout=dropout, concrete=concrete_dropout,
-                                     p_fix=dropout_prob, 
-                                     weight_regularizer=weight_regularizer,
-                                     dropout_regularizer=dropout_regularizer,
-                                     hs=heteroscedastic, Bayes=Bayes, 
-                                     device=device).to(device)
+        model = StochasticDALSTM(input_size=input_size, hidden_size=hidden_size,
+                                 n_layers=n_layers, max_len=max_len,
+                                 dropout=dropout, concrete=concrete_dropout,
+                                 p_fix=dropout_prob, 
+                                 weight_regularizer=weight_regularizer,
+                                 dropout_regularizer=dropout_regularizer,
+                                 hs=heteroscedastic, Bayes=Bayes, 
+                                 device=device).to(device)
+            
             
     return (model, criterion, heteroscedastic, num_mcmc, normalization)
 
