@@ -191,6 +191,9 @@ def main():
             file.write(f"P-value: {p_value}\n")  
         
         # Get Spearman's rank correlation coefficient (using MAPE)
+        if not 'Absolute_percentage_error' in df.columns:
+            df['Absolute_percentage_error'] = (df['Absolute_error']/
+                                               df['GroundTruth'])
         if (prefix=='DA_A' or prefix=='CDA_A'):
             corr, p_value = spearmanr(df['Absolute_percentage_error'],
                                       df['Total_Uncertainty'])
@@ -210,7 +213,7 @@ def main():
             
         
         # Get Spearman's rank correlation coefficient (using filtered MAPE)
-        threshold = 0.04
+        threshold = 0.04 # equals to one hour
         # Filter the DataFrame for rows where the value in column 'A' is greater than the threshold
         filtered_df = df[df['GroundTruth'] > threshold]
         removal_percentage = (len(df)-len(filtered_df))/len(df)*100
