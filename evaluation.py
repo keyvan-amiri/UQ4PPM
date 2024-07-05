@@ -213,9 +213,14 @@ def main():
             
         
         # Get Spearman's rank correlation coefficient (using filtered MAPE)
-        threshold = 0.04 # equals to one hour
-        # Filter the DataFrame for rows where the value in column 'A' is greater than the threshold
-        filtered_df = df[df['GroundTruth'] > threshold]
+        # first conduct the filtering on test dataset
+        filter_ratio = 0.1
+        # get only prefixes of length 2 to estimate cycle time
+        aux_df1 = df[df['Prefix_length'] < 3] 
+        # average remaining time * coefficient == lower bound for remaining time
+        mean_ground = aux_df1['GroundTruth'].mean()
+        lower_bound = mean_ground * filter_ratio
+        filtered_df = df[df['GroundTruth'] > lower_bound]       
         removal_percentage = (len(df)-len(filtered_df))/len(df)*100
         if (prefix=='DA_A' or prefix=='CDA_A'):
             corr, p_value = spearmanr(filtered_df['Absolute_percentage_error'],

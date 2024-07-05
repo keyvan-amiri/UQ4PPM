@@ -371,13 +371,25 @@ class Diffusion(object):
                                         1).cpu().numpy()
         """
         directly modify the dict value by concat np.array instead of append
-        np.array gen_y to list reduces a huge amount of memory consumption
+        np.array gen_y to list reduces a huge amount of memory consumption.
+        However, for recalibration purpose we may still encounter memory
+        problems. To avoid such problems we change the data type for special
+        datasets.
         """
+        #if (self.args.recalibration  and (self.args.dataset == 'BPIC20I')):            
+
         if len(gen_y_by_batch_list[current_t]) == 0:
             gen_y_by_batch_list[current_t] = gen_y
         else:
-            gen_y_by_batch_list[current_t] = np.concatenate(
-                [gen_y_by_batch_list[current_t], gen_y], axis=0)
+            try:
+                gen_y_by_batch_list[current_t] = np.concatenate(
+                    [gen_y_by_batch_list[current_t], gen_y], axis=0)
+            except:
+                # resolve memory problem with changing data type
+                gen_y = gen_y.astype(np.float16)
+                gen_y_by_batch_list[current_t] = np.concatenate(
+                    [gen_y_by_batch_list[current_t], gen_y], axis=0)
+               
         return gen_y
     
     
