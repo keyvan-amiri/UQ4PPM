@@ -171,6 +171,7 @@ def main():
     parser.add_argument('--resume_training', action='store_true',
                         help='Whether to resume training')
     #TODO: important! use the following in large-scale experiments.
+    #TODO: solve the problem of overwriting feedbacks in CARD
     parser.add_argument( '--ni', action='store_true', 
                         help='No interaction. Suitable for Slurm Job launcher')
     
@@ -188,8 +189,7 @@ def main():
                         help='Apply global variance for NLL computation')
     parser.add_argument('--nll_test_var', action='store_true',
                         help='Apply sample variance of the test set for NLL \
-                            computation')
-    
+                            computation')   
     
     # documentation arguments:
     parser.add_argument('--comment', type=str, default='',
@@ -197,10 +197,18 @@ def main():
     parser.add_argument('--verbose', type=str, default='info', 
                             help='Verbose level: info | debug | warning | critical')
     parser.add_argument('-i', '--image_folder', type=str, default='images',
-                        help='The folder name of samples')    
+                        help='The folder name of samples')   
+    
+    ##########################################################################
+    #######################    ensemble arguments    #########################
+    ##########################################################################
+    parser.add_argument('--num_models', type=int, default=5,
+                        help='Number of models that are used for ensembles')
     
     args = parser.parse_args()    
     root_path = os.getcwd()
+    
+    # TODO: a method to raise errors for not implemented UQ-ARCHITECTURE combinations
     
     # A separate execution route for CARD model    
     if args.UQ == 'CARD':
@@ -464,7 +472,8 @@ def main():
             if args.test:
                 args.config = args.config + args.doc + "/config.yml"
             sys.exit(main())
-            
+    
+    # execution path for all methods except CARD
     else:    
         # define device name
         device_name = f'cuda:{args.device}' if torch.cuda.is_available() else 'cpu'
@@ -481,16 +490,16 @@ def main():
         cfg['n_splits'] = args.n_splits
         cfg['device'] = device_name
         cfg['seed'] = args.seed
+        cfg['num_models'] = args.num_models 
+        
         if args.model == 'dalstm':
             DALSTM_train_evaluate(cfg=cfg)
-        elif args.model == 'cnn':
-            pass
-        elif args.model == 'pt':
-            pass
         elif args.model == 'pgtnet':
             pass
         else:
-            print(f'The backebone model {args.model} is not supported') 
+            if (args.model == 'cnn' or args.model == 'pt'):
+                print(f'{args.model} architecture will be added in future.')
+            print(f'The backebone model {args.model} is not supported.') 
     
 if __name__ == '__main__':
     main()

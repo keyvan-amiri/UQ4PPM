@@ -5,7 +5,7 @@ import os
 import pickle
 from utils.utils import set_random_seed, set_optimizer, train_model, test_model
 from loss.loss_handler import set_loss
-from models.dalstm import DALSTMModel, DALSTMModelMve
+from models.dalstm import DALSTMModel, DALSTMModelMve, dalstm_init_weights
 from models.stochastic_dalstm import StochasticDALSTM
 
 # A general class for training and evaluation of DALSTM model
@@ -37,6 +37,8 @@ class DALSTM_train_evaluate ():
         # get the type of data split, and possibly number of splits for CV        
         self.split = cfg.get('split')
         self.n_splits = cfg.get('n_splits') 
+        # get the number of ensembles
+        self.num_models = cfg.get('num_models')
         # Define important size and dimensions
         (self.input_size, self.max_len, self.max_train_val
          ) = self.load_dimensions()
@@ -45,7 +47,12 @@ class DALSTM_train_evaluate ():
         # whether to use drop-out or not
         self.dropout = cfg.get('model').get('lstm').get('dropout')
         # the probabibility that is used for dropout
-        self.dropout_prob = cfg.get('model').get('lstm').get('dropout_prob')        
+        self.dropout_prob = cfg.get('model').get('lstm').get('dropout_prob')  
+        # define training hyperparameters
+        self.max_epochs = cfg.get('train').get('max_epochs')
+        self.early_stop_patience = cfg.get('train').get('early_stop.patience')
+        self.early_stop_min_delta = cfg.get('train').get('early_stop.min_delta') 
+        
         # define the model and loss function (based on the UQ method)
         if self.uq_method == 'deterministic':
             # define the model for deterministic approach (point estimate)
@@ -100,7 +107,7 @@ class DALSTM_train_evaluate ():
                                  hs=self.heteroscedastic,
                                  Bayes=self.Bayes,
                                  device=self.device).to(self.device) 
-        if self.uq_method == 'mve':
+        elif self.uq_method == 'mve':
             # define the model for mean variance estimation (MVE) approach
             self.model = DALSTMModelMve(input_size=self.input_size,
                                      hidden_size=self.hidden_size,
@@ -112,27 +119,93 @@ class DALSTM_train_evaluate ():
             self.criterion = set_loss(
                 loss_func=cfg.get('train').get('loss_function'),
                 heteroscedastic=True)  
+            # we used heteroscedastic loss function, in the following we just
+            # set self.heteroscedastic to False to use same execution path
             self.heteroscedastic = False 
             self.num_mcmc = None
+        # t: Traditional ensemble: multiple models, different initialization.
+        elif (self.uq_method == 'en_t' or self.uq_method == 'en_t_mve'):
+            # empty lists (ensemble of) models, optimizers, schedulers
+            self.models, self.optimizers, self.schedulers = [], [], []      
+            # Original random state (before initializing models)
+            original_rng_state = torch.get_rng_state()
+            for i in range(self.num_models):
+                # Set a unique seed for each model's initialization
+                unique_seed = i + 100  
+                torch.manual_seed(unique_seed)
+                if self.uq_method == 'en_t':
+                    # each of the models in ensemble is a deterministic model
+                    model = DALSTMModel(input_size=self.input_size,
+                                        hidden_size=self.hidden_size,
+                                        n_layers=self.n_layers,
+                                        max_len=self.max_len,
+                                        dropout=self.dropout,
+                                        p_fix=self.dropout_prob).to(self.device)
+                else:
+                    model = DALSTMModelMve(input_size=self.input_size,
+                                           hidden_size=self.hidden_size,
+                                           n_layers=self.n_layers,
+                                           max_len=self.max_len,
+                                           dropout=self.dropout,
+                                           p_fix=self.dropout_prob).to(self.device)                    
+                # Apply weight initialization function
+                model.apply(dalstm_init_weights)
+                self.models.append(model)
+            # Restore the original random state
+            torch.set_rng_state(original_rng_state)
+            # define loss function
+            if self.uq_method == 'en_t':
+                self.criterion = set_loss(
+                    loss_func=cfg.get('train').get('loss_function'))
+            else:
+                self.criterion = set_loss(
+                    loss_func=cfg.get('train').get('loss_function'),
+                    heteroscedastic=True) 
+            # set some attributes to use generic train and test methods
+            self.heteroscedastic = False 
+            self.num_mcmc = None
+                
+        elif (self.uq_method == 'en_b' or self.uq_method == 'en_b_mve' or 
+              self.uq_method == 'en_b_star' or self.uq_method == 'en_b_star_mve'):
+            pass
+        elif (self.uq_method == 'en_s' or self.uq_method == 'en_s_mve'):
+            pass
         else:
             #TODO: define UQ method models here or add them to previous one
             pass
-        total_params = sum(p.numel() for p in self.model.parameters()
-                           if p.requires_grad)
+        
+        if not (self.uq_method == 'en_t' or self.uq_method == 'en_t_mve'):
+            # get number of model parameters
+            total_params = sum(p.numel() for p in self.model.parameters()
+                               if p.requires_grad) 
+            # define optimizer
+            self.optimizer = set_optimizer(
+                self.model, cfg.get('optimizer').get('type'),
+                cfg.get('optimizer').get('base_lr'), 
+                cfg.get('optimizer').get('eps'), 
+                cfg.get('optimizer').get('weight_decay'))
+            # define scheduler
+            self.scheduler = optim.lr_scheduler.ReduceLROnPlateau(
+                self.optimizer, factor=0.5)            
+        else:
+            # get number of parameters for the first model
+            total_params = sum(p.numel() for p in self.models[0].parameters()
+                               if p.requires_grad) 
+            # define list of optimizeers and schedulers
+            for i in range(self.num_models):
+                current_optimizer = set_optimizer(
+                    self.models[i], cfg.get('optimizer').get('type'),
+                    cfg.get('optimizer').get('base_lr'),
+                    cfg.get('optimizer').get('eps'),
+                    cfg.get('optimizer').get('weight_decay'))
+                current_scheduler = optim.lr_scheduler.ReduceLROnPlateau(
+                    self.optimizers[i], factor=0.5)
+                self.optimizers.append(current_optimizer)
+                self.schedulers.append(current_scheduler)
+                
+        # print number of model parameters
         print(f'Total model parameters: {total_params}')
-        # define optimizer
-        self.optimizer = set_optimizer(self.model,
-                                  cfg.get('optimizer').get('type'),
-                                  cfg.get('optimizer').get('base_lr'),
-                                  cfg.get('optimizer').get('eps'),
-                                  cfg.get('optimizer').get('weight_decay'))
-        # define scheduler
-        self.scheduler = optim.lr_scheduler.ReduceLROnPlateau(
-            self.optimizer, factor=0.5)
-        # define other training hyperparameters
-        self.max_epochs = cfg.get('train').get('max_epochs')
-        self.early_stop_patience = cfg.get('train').get('early_stop.patience')
-        self.early_stop_min_delta = cfg.get('train').get('early_stop.min_delta') 
+        
         # execute training and evaluation loop
         for execution_seed in seeds:
             self.seed = int(execution_seed) 
@@ -148,53 +221,10 @@ class DALSTM_train_evaluate ():
                  self.y_train_path, self.y_val_path, self.y_test_path,
                  self.test_lengths_path) = self.holdout_paths() 
                 (self.train_loader, self.val_loader, self.test_loader,
-                 self.test_lengths) = self.load_data()                
-                train_model(model=self.model,
-                            uq_method=self.uq_method,
-                            heteroscedastic=self.heteroscedastic,
-                            train_loader=self.train_loader,
-                            val_loader=self.val_loader,
-                            criterion=self.criterion,
-                            optimizer=self.optimizer,
-                            scheduler=self.scheduler,
-                            device=self.device,
-                            num_epochs=self.max_epochs,
-                            early_patience=self.early_stop_patience,
-                            min_delta=self.early_stop_min_delta, 
-                            processed_data_path=self.result_path,
-                            report_path=self.report_path,
-                            data_split='holdout',
-                            cfg=self.cfg,
-                            seed=self.seed)   
-                test_model(model=self.model,
-                           uq_method=self.uq_method,
-                           heteroscedastic=self.heteroscedastic,
-                           num_mc_samples=self.num_mcmc,              
-                           test_loader=self.test_loader,
-                           test_original_lengths=self.test_lengths,
-                           y_scaler=self.max_train_val,
-                           processed_data_path= self.result_path,
-                           report_path=self.report_path,
-                           data_split = 'holdout',
-                           seed=self.seed,
-                           device=self.device,
-                           normalization=self.normalization)                                  
-            else:
-                for split_key in range(self.n_splits):
-                    # define the report path
-                    self.report_path = os.path.join(
-                        self.result_path,
-                        '{}_{}_fold{}_seed_{}_report_.txt'.format(
-                            self.uq_method, self.split, split_key+1, self.seed))
-                    # load train, validation, and test data loaders
-                    (self.X_train_path, self.X_val_path, self.X_test_path,
-                     self.y_train_path, self.y_val_path, self.y_test_path,
-                     self.test_lengths_path) = self.cv_paths(split_key=split_key)
-                    (self.train_loader, self.val_loader, self.test_loader,
-                     self.test_lengths) = self.load_data()   
-                    self.test_lengths
-                    train_model(model=self.model,
-                                uq_method=self.uq_method,
+                 self.test_lengths) = self.load_data()
+                # if there is only one model to train
+                if not (self.uq_method == 'en_t' or self.uq_method == 'en_t_mve'):                
+                    train_model(model=self.model, uq_method=self.uq_method,
                                 heteroscedastic=self.heteroscedastic,
                                 train_loader=self.train_loader,
                                 val_loader=self.val_loader,
@@ -207,24 +237,144 @@ class DALSTM_train_evaluate ():
                                 min_delta=self.early_stop_min_delta, 
                                 processed_data_path=self.result_path,
                                 report_path=self.report_path,
-                                data_split='cv',
-                                fold = split_key+1,
+                                data_split='holdout',
                                 cfg=self.cfg,
-                                seed=self.seed)
-                    test_model(model=self.model, 
-                               uq_method=self.uq_method,
+                                seed=self.seed)   
+                    test_model(model=self.model, uq_method=self.uq_method,
                                heteroscedastic=self.heteroscedastic,
-                               num_mc_samples=self.num_mcmc,  
+                               num_mc_samples=self.num_mcmc,              
                                test_loader=self.test_loader,
                                test_original_lengths=self.test_lengths,
                                y_scaler=self.max_train_val,
                                processed_data_path= self.result_path,
                                report_path=self.report_path,
-                               data_split='cv',
-                               fold = split_key+1,
+                               data_split = 'holdout',
                                seed=self.seed,
                                device=self.device,
-                               normalization=self.normalization)   
+                               normalization=self.normalization)
+                else:
+                    # if there are ensemble of models to train
+                    for i in range(1, self.num_models+1):
+                        train_model(model=self.models[i-1],
+                                    uq_method=self.uq_method,
+                                    heteroscedastic=self.heteroscedastic,
+                                    train_loader=self.train_loader,
+                                    val_loader=self.val_loader,
+                                    criterion=self.criterion,
+                                    optimizer=self.optimizers[i-1],
+                                    scheduler=self.schedulers[i-1],
+                                    device=self.device,
+                                    num_epochs=self.max_epochs,
+                                    early_patience=self.early_stop_patience,
+                                    min_delta=self.early_stop_min_delta, 
+                                    processed_data_path=self.result_path,
+                                    report_path=self.report_path,
+                                    data_split='holdout',
+                                    cfg=self.cfg,
+                                    seed=self.seed,
+                                    model_idx=i)
+                    test_model(models=self.models,
+                               uq_method=self.uq_method,
+                               heteroscedastic=self.heteroscedastic,
+                               num_mc_samples=self.num_mcmc,              
+                               test_loader=self.test_loader,
+                               test_original_lengths=self.test_lengths,
+                               y_scaler=self.max_train_val,
+                               processed_data_path= self.result_path,
+                               report_path=self.report_path,
+                               data_split = 'holdout',
+                               seed=self.seed,
+                               device=self.device,
+                               normalization=self.normalization,
+                               ensemble_mode=True,
+                               ensemble_size=self.num_models)                                  
+            else:
+                for split_key in range(self.n_splits):
+                    # define the report path
+                    self.report_path = os.path.join(
+                        self.result_path,
+                        '{}_{}_fold{}_seed_{}_report_.txt'.format(
+                            self.uq_method, self.split, split_key+1, self.seed))
+                    # load train, validation, and test data loaders
+                    (self.X_train_path, self.X_val_path, self.X_test_path,
+                     self.y_train_path, self.y_val_path, self.y_test_path,
+                     self.test_lengths_path) = self.cv_paths(split_key=split_key)
+                    (self.train_loader, self.val_loader, self.test_loader,
+                     self.test_lengths) = self.load_data()  
+                    if not (self.uq_method == 'en_t' or
+                            self.uq_method == 'en_t_mve'):
+                        # if there is only one model to train
+                        train_model(model=self.model,
+                                    uq_method=self.uq_method,
+                                    heteroscedastic=self.heteroscedastic,
+                                    train_loader=self.train_loader,
+                                    val_loader=self.val_loader,
+                                    criterion=self.criterion,
+                                    optimizer=self.optimizer,
+                                    scheduler=self.scheduler,
+                                    device=self.device,
+                                    num_epochs=self.max_epochs,
+                                    early_patience=self.early_stop_patience,
+                                    min_delta=self.early_stop_min_delta, 
+                                    processed_data_path=self.result_path,
+                                    report_path=self.report_path,
+                                    data_split='cv',
+                                    fold = split_key+1,
+                                    cfg=self.cfg,
+                                    seed=self.seed)
+                        test_model(model=self.model, 
+                                   uq_method=self.uq_method,
+                                   heteroscedastic=self.heteroscedastic,
+                                   num_mc_samples=self.num_mcmc,  
+                                   test_loader=self.test_loader,
+                                   test_original_lengths=self.test_lengths,
+                                   y_scaler=self.max_train_val,
+                                   processed_data_path= self.result_path,
+                                   report_path=self.report_path,
+                                   data_split='cv',
+                                   fold = split_key+1,
+                                   seed=self.seed,
+                                   device=self.device,
+                                   normalization=self.normalization) 
+                    else:
+                        # if there are ensemble of models to train
+                        for i in range(1, self.num_models+1):
+                            train_model(model=self.models[i-1],
+                                        uq_method=self.uq_method,
+                                        heteroscedastic=self.heteroscedastic,
+                                        train_loader=self.train_loader,
+                                        val_loader=self.val_loader,
+                                        criterion=self.criterion,
+                                        optimizer=self.optimizers[i-1],
+                                        scheduler=self.schedulers[i-1],
+                                        device=self.device,
+                                        num_epochs=self.max_epochs,
+                                        early_patience=self.early_stop_patience,
+                                        min_delta=self.early_stop_min_delta, 
+                                        processed_data_path=self.result_path,
+                                        report_path=self.report_path,
+                                        data_split='cv',
+                                        fold = split_key+1,
+                                        cfg=self.cfg,
+                                        seed=self.seed,
+                                        model_idx=i)
+                        test_model(models=self.models,
+                                   uq_method=self.uq_method,
+                                   heteroscedastic=self.heteroscedastic,
+                                   num_mc_samples=self.num_mcmc,  
+                                   test_loader=self.test_loader,
+                                   test_original_lengths=self.test_lengths,
+                                   y_scaler=self.max_train_val,
+                                   processed_data_path= self.result_path,
+                                   report_path=self.report_path,
+                                   data_split='cv',
+                                   fold = split_key+1,
+                                   seed=self.seed,
+                                   device=self.device,
+                                   normalization=self.normalization,
+                                   ensemble_mode=True,
+                                   ensemble_size=self.num_models)
+                        
                     
     # A method to load important dimensions
     def load_dimensions(self):        

@@ -227,6 +227,7 @@ def inference_on_validation(args=None, model=None, checkpoint_path=None,
                 means_list, logvar_list =[], []
                 # conduct Monte Carlo sampling
                 for i in range (num_mc_samples): 
+                    # TODO: remove stop_dropout since for deterministic version we have a separate model
                     mean, log_var,_ = model(inputs, stop_dropout=False)
                     means_list.append(mean)
                     logvar_list.append(log_var)

@@ -34,7 +34,7 @@ class ConcreteDropout(nn.Module):
 
         self.p_logit = nn.Parameter(torch.FloatTensor([0]))
 
-
+    # TODO: remove stop_dropout since for deterministic version we have a separate model
     def forward(self, x, layer, stop_dropout=False):
         '''
         ARGUMENTS:

@@ -1,5 +1,4 @@
 import torch.nn as nn
-import torch.nn.functional as F
 
 ##############################################################################
 # Backbone Data-aware LSTM model for remaining time prediction
@@ -90,3 +89,29 @@ class DALSTMModelMve(nn.Module):
         logvar = self.linear_logvar(x[:, -1, :]) # log-variance prediction
         
         return mu.squeeze(dim=1), logvar.squeeze(dim=1)
+  
+    
+# Custom weight initialization function for ensembles
+def dalstm_init_weights(m):
+    if isinstance(m, nn.Linear):
+        # Xavier uniform initialization for Linear layers
+        nn.init.xavier_uniform_(m.weight) 
+        # Initialize linear biases to zero
+        if m.bias is not None:
+            nn.init.zeros_(m.bias)
+    elif isinstance(m, nn.LSTM):
+        for name, param in m.named_parameters():
+            if 'weight_ih' in name:
+                # Xavier uniform for input-hidden weights
+                nn.init.xavier_uniform_(param.data)
+            elif 'weight_hh' in name:
+                # Orthogonal for hidden-hidden weights
+                nn.init.orthogonal_(param.data)  
+            elif 'bias' in name:
+                # Initialize LSTM biases to zero
+                nn.init.zeros_(param.data)  
+    elif isinstance(m, nn.BatchNorm1d):
+        # BatchNorm weight should start at 1
+        nn.init.ones_(m.weight) 
+        # BatchNorm bias should start at 0
+        nn.init.zeros_(m.bias)  
