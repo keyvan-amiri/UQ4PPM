@@ -274,7 +274,7 @@ def test_model(model=None, models = None, uq_method=None, heteroscedastic=None,
                        'Absolute_percentage_error': []}
     # UQ methods capturing Epistemic Uncertainty
     elif (uq_method == 'DA' or uq_method == 'CDA' or uq_method == 'en_t' or
-          uq_method =='en_b' or uq_method == 'en_b_star' or uq_method == 'en_s'):
+          uq_method =='en_b'):
         all_results = {'GroundTruth': [], 'Prediction': [],
                        'Epistemic_Uncertainty': [], 'Prefix_length': [],
                        'Absolute_error': [], 'Absolute_percentage_error': []}
@@ -285,8 +285,7 @@ def test_model(model=None, models = None, uq_method=None, heteroscedastic=None,
                        'Absolute_error': [], 'Absolute_percentage_error': []}
     # UQ methods capturing both Epistemic & Aleatoric Uncertainties    
     elif (uq_method == 'DA_A' or uq_method == 'CDA_A' or 
-          uq_method == 'en_t_mve' or uq_method == 'en_b_mve' or 
-          uq_method == 'en_b_star_mve' or uq_method == 'en_s_mve'):
+          uq_method == 'en_t_mve' or uq_method == 'en_b_mve'):
         all_results = {'GroundTruth': [], 'Prediction': [],
                        'Epistemic_Uncertainty': [], 'Aleatoric_Uncertainty': [],
                        'Total_Uncertainty': [], 'Prefix_length': [],

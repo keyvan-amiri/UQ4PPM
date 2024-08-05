@@ -39,6 +39,8 @@ class DALSTM_train_evaluate ():
         self.n_splits = cfg.get('n_splits') 
         # get the number of ensembles
         self.num_models = cfg.get('num_models')
+        # get Bootstrapping_ratio which is used by each ensemble member
+        self.Bootstrapping_ratio = cfg.get('Bootstrapping_ratio')
         # Define important size and dimensions
         (self.input_size, self.max_len, self.max_train_val
          ) = self.load_dimensions()
@@ -165,10 +167,7 @@ class DALSTM_train_evaluate ():
             self.heteroscedastic = False 
             self.num_mcmc = None
                 
-        elif (self.uq_method == 'en_b' or self.uq_method == 'en_b_mve' or 
-              self.uq_method == 'en_b_star' or self.uq_method == 'en_b_star_mve'):
-            pass
-        elif (self.uq_method == 'en_s' or self.uq_method == 'en_s_mve'):
+        elif (self.uq_method == 'en_b' or self.uq_method == 'en_b_mve'):
             pass
         else:
             #TODO: define UQ method models here or add them to previous one
