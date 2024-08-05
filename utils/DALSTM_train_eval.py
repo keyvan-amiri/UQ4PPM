@@ -198,9 +198,9 @@ class DALSTM_train_evaluate ():
                     cfg.get('optimizer').get('base_lr'),
                     cfg.get('optimizer').get('eps'),
                     cfg.get('optimizer').get('weight_decay'))
+                self.optimizers.append(current_optimizer)
                 current_scheduler = optim.lr_scheduler.ReduceLROnPlateau(
                     self.optimizers[i], factor=0.5)
-                self.optimizers.append(current_optimizer)
                 self.schedulers.append(current_scheduler)
                 
         # print number of model parameters

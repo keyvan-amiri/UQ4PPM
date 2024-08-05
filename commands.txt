@@ -9,7 +9,7 @@ python preprocess.py --datasets HelpDesk
 
 train and test:
 bash bash_scripts/other_models_train_test.sh
-bash bash_scripts/CARD_train_test.sh
+bash bash_scripts/CARD_train_test2.sh
 
 evaluation:
 bash bash_scripts/evaluation.sh
