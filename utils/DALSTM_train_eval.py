@@ -518,7 +518,7 @@ class DALSTM_train_evaluate ():
         if self.bootstrapping:
             subset_size = int(X_train.size(0) * self.Bootstrapping_ratio)
             subset_indices = torch.randint(0, X_train.size(0), (subset_size,))
-            print(subset_indices)
+            #print(subset_indices)
             X_sample = X_train[subset_indices]
             y_sample = y_train[subset_indices]
             train_dataset = TensorDataset(X_sample, y_sample)

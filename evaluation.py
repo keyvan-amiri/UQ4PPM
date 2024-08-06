@@ -4,6 +4,7 @@ To prepare this script we used uncertainty tool-box which can be find in:
 For QICE metric we used the source code from:
     https://github.com/XzwHan/CARD
 """
+
 import argparse
 import os
 import glob
@@ -119,11 +120,12 @@ def main():
         # get ground truth as well as mean and std for predictions
         pred_mean = df['Prediction'].values 
         y_true = df['GroundTruth'].values
-        if (prefix=='DA_A' or prefix=='CDA_A'):
+        if (prefix=='DA_A' or prefix=='CDA_A' or prefix=='en_b_mve' or
+            prefix=='en_t_mve'):
             pred_std = df['Total_Uncertainty'].values 
         elif (prefix=='CARD' or prefix=='mve'):
             pred_std = df['Aleatoric_Uncertainty'].values
-        elif (prefix=='DA' or prefix=='CDA'):
+        elif (prefix=='DA' or prefix=='CDA' or prefix=='en_t' or prefix=='en_b'):
             pred_std = df['Epistemic_Uncertainty'].values
         else:
             raise NotImplementedError(
@@ -149,7 +151,8 @@ def main():
             plt.savefig(new_file_path, format='pdf')
             plt.clf()
         except:
-            print('Plotting the adversarial group calibration is not possible', prefix)
+            print('Plotting the adversarial group calibration is not possible',
+                  prefix)
             
         # Plot ordered prediction intervals
         try:
@@ -161,7 +164,8 @@ def main():
             plt.savefig(new_file_path, format='pdf')
             plt.clf()
         except:
-            print('Plotting the ordered prediction intervals is not possible', prefix)
+            print('Plotting the ordered prediction intervals is not possible',
+                  prefix)
                        
         # Get all uncertainty quantification metrics
         uq_metrics = uct.metrics.get_all_metrics(pred_mean, pred_std, y_true)
@@ -173,10 +177,11 @@ def main():
                 file.write(f"{key}: {value}\n")
                 
         # Get Spearman's rank correlation coefficient (using MAE)
-        if (prefix=='DA_A' or prefix=='CDA_A'):
+        if (prefix=='DA_A' or prefix=='CDA_A' or prefix=='en_b_mve' or
+            prefix=='en_t_mve'):
             corr, p_value = spearmanr(df['Absolute_error'],
                                       df['Total_Uncertainty'])
-        elif (prefix=='DA' or prefix=='CDA'):
+        elif (prefix=='DA' or prefix=='CDA' or prefix=='en_t' or prefix=='en_b'):
             corr, p_value = spearmanr(df['Absolute_error'],
                                       df['Epistemic_Uncertainty'])
         elif (prefix=='CARD' or prefix=='mve'):
@@ -194,10 +199,11 @@ def main():
         if not 'Absolute_percentage_error' in df.columns:
             df['Absolute_percentage_error'] = (df['Absolute_error']/
                                                df['GroundTruth'])
-        if (prefix=='DA_A' or prefix=='CDA_A'):
+        if (prefix=='DA_A' or prefix=='CDA_A' or prefix=='en_b_mve' or
+            prefix=='en_t_mve'):
             corr, p_value = spearmanr(df['Absolute_percentage_error'],
                                       df['Total_Uncertainty'])
-        elif (prefix=='DA' or prefix=='CDA'):
+        elif (prefix=='DA' or prefix=='CDA' or prefix=='en_t' or prefix=='en_b'):
             corr, p_value = spearmanr(df['Absolute_percentage_error'],
                                       df['Epistemic_Uncertainty'])
         elif (prefix=='CARD' or prefix=='mve'):
@@ -222,10 +228,11 @@ def main():
         lower_bound = mean_ground * filter_ratio
         filtered_df = df[df['GroundTruth'] > lower_bound]       
         removal_percentage = (len(df)-len(filtered_df))/len(df)*100
-        if (prefix=='DA_A' or prefix=='CDA_A'):
+        if (prefix=='DA_A' or prefix=='CDA_A' or prefix=='en_b_mve' or
+            prefix=='en_t_mve'):
             corr, p_value = spearmanr(filtered_df['Absolute_percentage_error'],
                                       filtered_df['Total_Uncertainty'])
-        elif (prefix=='DA' or prefix=='CDA'):
+        elif (prefix=='DA' or prefix=='CDA' or prefix=='en_t' or prefix=='en_b'):
             corr, p_value = spearmanr(filtered_df['Absolute_percentage_error'],
                                       filtered_df['Epistemic_Uncertainty'])
         elif (prefix=='CARD' or prefix=='mve'):
