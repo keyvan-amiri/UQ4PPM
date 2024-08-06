@@ -77,12 +77,13 @@ def train_model(model=None, uq_method=None, train_loader=None, val_loader=None,
                 clip_grad_norm=None, clip_value=None,
                 processed_data_path=None, report_path =None,
                 data_split='holdout', fold=None, cfg=None, seed=None,
-                model_idx=None):
+                model_idx=None, ensemble_mode=False):
     
     # get current time (as start) to compute training time
     start=datetime.now()
     
-    if not (uq_method == 'en_t' or uq_method == 'en_t_mve'):  
+    # if training is not part of an ensemble
+    if not ensemble_mode:  
         print(f'Training for data split: {data_split} , {fold}.')
         # Write the configurations in the report
         with open(report_path, 'w') as file:
@@ -101,6 +102,7 @@ def train_model(model=None, uq_method=None, train_loader=None, val_loader=None,
                 processed_data_path, '{}_{}_fold{}_seed_{}_best_model.pt'.format(
                     uq_method, data_split, fold, seed))   
     else:
+        # if we are training a member of an ensemble
         print(f'Training for data split: {data_split} , {fold}, \
               model number:{model_idx} in the ensemble')
         # Write the configurations in the report
@@ -142,7 +144,8 @@ def train_model(model=None, uq_method=None, train_loader=None, val_loader=None,
             inputs = batch[0].to(device)
             targets = batch[1].to(device)
             optimizer.zero_grad() # Resets the gradients
-            if (uq_method == 'deterministic' or uq_method == 'en_t'):
+            if (uq_method == 'deterministic' or uq_method == 'en_t' or 
+                uq_method == 'en_b'):
                 outputs = model(inputs)
                 loss = criterion(outputs, targets)
             elif (uq_method == 'DA' or uq_method == 'CDA' or
@@ -152,7 +155,8 @@ def train_model(model=None, uq_method=None, train_loader=None, val_loader=None,
                     loss = criterion(targets, mean, log_var) + regularization
                 else:
                     loss = criterion(mean, targets) + regularization
-            elif (uq_method == 'mve' or uq_method == 'en_t_mve'):                
+            elif (uq_method == 'mve' or uq_method == 'en_t_mve' or
+                  uq_method == 'en_b_mve'):                
                 mean, log_var = model(inputs)
                 loss = criterion(targets, mean, log_var)                
             # Backward pass and optimization
@@ -167,7 +171,8 @@ def train_model(model=None, uq_method=None, train_loader=None, val_loader=None,
             for batch in val_loader:
                 inputs = batch[0].to(device)
                 targets = batch[1].to(device)
-                if (uq_method == 'deterministic' or uq_method == 'en_t'):
+                if (uq_method == 'deterministic' or uq_method == 'en_t' or
+                    uq_method == 'en_b'):
                     outputs = model(inputs)
                     valid_loss = criterion(outputs, targets)
                 elif (uq_method == 'DA' or uq_method == 'CDA' or
@@ -178,7 +183,8 @@ def train_model(model=None, uq_method=None, train_loader=None, val_loader=None,
                                                log_var) + regularization
                     else:
                         valid_loss = criterion(mean, targets) + regularization
-                elif (uq_method == 'mve' or uq_method == 'en_t_mve'):
+                elif (uq_method == 'mve' or uq_method == 'en_t_mve' or
+                      uq_method == 'en_b_mve'):
                     mean, log_var = model(inputs)
                     valid_loss = criterion(targets, mean, log_var)                    
                 total_valid_loss += valid_loss.item()                    
@@ -349,7 +355,7 @@ def test_model(model=None, models = None, uq_method=None, num_mc_samples=None,
                 # normalize aleatoric uncertainty if necessary
                 if normalization:
                     aleatoric_std = y_scaler * aleatoric_std 
-            elif uq_method == 'en_t':
+            elif (uq_method == 'en_t' or uq_method == 'en_b'):
                 # empty list to collect predictions of all members of ensemble
                 prediction_list = []
                 for model_idx in range(1, ensemble_size+1):
@@ -363,7 +369,7 @@ def test_model(model=None, models = None, uq_method=None, num_mc_samples=None,
                 # normalize epistemic uncertainty if necessary
                 if normalization:
                     epistemic_std = y_scaler * epistemic_std
-            elif uq_method == 'en_t_mve':
+            elif (uq_method == 'en_t_mve' or uq_method == 'en_b_mve'):
                 # collect prediction means & aleatoric std: all ensemble members
                 mean_pred_list, aleatoric_std_list = [], []
                 for model_idx in range(1, ensemble_size+1):
@@ -426,11 +432,11 @@ def test_model(model=None, models = None, uq_method=None, num_mc_samples=None,
                 aleatoric_std = aleatoric_std.detach().cpu().numpy()
                 all_results['Aleatoric_Uncertainty'].extend(
                     aleatoric_std.tolist())   
-            elif uq_method == 'en_t':
+            elif (uq_method == 'en_t' or uq_method == 'en_b'):
                 epistemic_std = epistemic_std.detach().cpu().numpy()
                 all_results['Epistemic_Uncertainty'].extend(
                     epistemic_std.tolist())
-            elif uq_method == 'en_t_mve':
+            elif (uq_method == 'en_t_mve' or uq_method == 'en_b_mve'):
                 epistemic_std = epistemic_std.detach().cpu().numpy()
                 aleatoric_std = aleatoric_std.detach().cpu().numpy()
                 total_std = total_std.detach().cpu().numpy()

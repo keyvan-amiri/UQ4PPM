@@ -39,7 +39,7 @@ class DALSTM_train_evaluate ():
         self.n_splits = cfg.get('n_splits') 
         # get the number of ensembles
         self.num_models = cfg.get('num_models')
-        # get Bootstrapping_ratio which is used by each ensemble member
+        # get Bootstrapping ratio which is used by each ensemble member
         self.Bootstrapping_ratio = cfg.get('Bootstrapping_ratio')
         # Define important size and dimensions
         (self.input_size, self.max_len, self.max_train_val
@@ -55,8 +55,7 @@ class DALSTM_train_evaluate ():
         self.early_stop_patience = cfg.get('train').get('early_stop.patience')
         self.early_stop_min_delta = cfg.get('train').get('early_stop.min_delta')
         
-        # define the number of samples for inference with dropout approximation
-        # define other variables required for dropout approximation
+        # define parameters required for dropout approximation
         if (self.uq_method == 'DA' or self.uq_method == 'CDA' or
               self.uq_method == 'DA_A' or self.uq_method == 'CDA_A'):
             self.num_mcmc = cfg.get('uncertainty').get(
@@ -78,148 +77,194 @@ class DALSTM_train_evaluate ():
             # necessary to use the same execution path
             self.num_mcmc = None 
         
+        # set the ensemble mode and bootstrapping parameters
+        if (self.uq_method == 'en_b' or self.uq_method == 'en_b_mve' or
+            self.uq_method == 'en_t' or self.uq_method == 'en_t_mve'):
+            self.ensemble_mode = True
+            if (self.uq_method == 'en_b' or self.uq_method == 'en_b_mve'):
+                self.bootstrapping = True
+            else:
+                self.bootstrapping = False
+        else:
+            self.ensemble_mode = False
+            self.bootstrapping = False
+            
         # define loss function (heteroscedastic/homoscedastic):
         if (self.uq_method == 'deterministic' or self.uq_method == 'DA'
-            or self.uq_method == 'CDA' or self.uq_method == 'en_t'):
+            or self.uq_method == 'CDA' or self.uq_method == 'en_t' or
+            self.uq_method == 'en_b'):
             self.criterion = set_loss(
                 loss_func=cfg.get('train').get('loss_function'))            
         if (self.uq_method == 'DA_A' or self.uq_method == 'CDA_A' or
-            self.uq_method == 'mve' or self.uq_method == 'en_t_mve'):
+            self.uq_method == 'mve' or self.uq_method == 'en_t_mve' or
+            self.uq_method == 'en_b_mve'):
             self.criterion = set_loss(
                 loss_func=cfg.get('train').get('loss_function'),
                 heteroscedastic=True) 
-             
-        # define the model (based on the UQ method)
-        if self.uq_method == 'deterministic':
-            # define the model for deterministic approach (point estimate)
-            self.model = DALSTMModel(input_size=self.input_size,
-                                     hidden_size=self.hidden_size,
-                                     n_layers=self.n_layers,
-                                     max_len=self.max_len,
-                                     dropout=self.dropout,
-                                     p_fix=self.dropout_prob).to(self.device)            
-        elif (self.uq_method == 'DA' or self.uq_method == 'CDA'):
-            self.model = StochasticDALSTM(input_size=self.input_size,
-                                          hidden_size=self.hidden_size,
-                                          n_layers=self.n_layers,
-                                          max_len=self.max_len,
-                                          dropout=self.dropout,
-                                          concrete=self.concrete_dropout,
-                                          p_fix=self.dropout_prob,
-                                          weight_regularizer=self.weight_regularizer,
-                                          dropout_regularizer=self.dropout_regularizer,
-                                          hs=False,
-                                          Bayes=self.Bayes,
-                                          device=self.device).to(self.device)
-        elif (self.uq_method == 'DA_A' or self.uq_method == 'CDA_A'):
-            self.model = StochasticDALSTM(input_size=self.input_size,
-                                          hidden_size=self.hidden_size,
-                                          n_layers=self.n_layers,
-                                          max_len=self.max_len,
-                                          dropout=self.dropout,
-                                          concrete=self.concrete_dropout,
-                                          p_fix=self.dropout_prob,
-                                          weight_regularizer=self.weight_regularizer,
-                                          dropout_regularizer=self.dropout_regularizer,
-                                          hs=True,
-                                          Bayes=self.Bayes,
-                                          device=self.device).to(self.device) 
-        elif self.uq_method == 'mve':
-            # define the model for mean variance estimation (MVE) approach
-            self.model = DALSTMModelMve(input_size=self.input_size,
-                                     hidden_size=self.hidden_size,
-                                     n_layers=self.n_layers,
-                                     max_len=self.max_len,
-                                     dropout=self.dropout,
-                                     p_fix=self.dropout_prob).to(self.device)
-
-        # t: Traditional ensemble: multiple models, different initialization.
-        elif (self.uq_method == 'en_t' or self.uq_method == 'en_t_mve'):
-            # empty lists (ensemble of) models, optimizers, schedulers
-            self.models, self.optimizers, self.schedulers = [], [], []      
-            # Original random state (before initializing models)
-            original_rng_state = torch.get_rng_state()
-            for i in range(self.num_models):
-                # Set a unique seed for each model's initialization
-                unique_seed = i + 100  
-                torch.manual_seed(unique_seed)
-                if self.uq_method == 'en_t':
-                    # each of the models in ensemble is a deterministic model
-                    model = DALSTMModel(input_size=self.input_size,
-                                        hidden_size=self.hidden_size,
-                                        n_layers=self.n_layers,
-                                        max_len=self.max_len,
-                                        dropout=self.dropout,
-                                        p_fix=self.dropout_prob).to(self.device)
-                else:
-                    model = DALSTMModelMve(input_size=self.input_size,
-                                           hidden_size=self.hidden_size,
-                                           n_layers=self.n_layers,
-                                           max_len=self.max_len,
-                                           dropout=self.dropout,
-                                           p_fix=self.dropout_prob).to(self.device)                    
-                # Apply weight initialization function
-                model.apply(dalstm_init_weights)
-                self.models.append(model)
-            # Restore the original random state
-            torch.set_rng_state(original_rng_state)
-               
-        elif (self.uq_method == 'en_b' or self.uq_method == 'en_b_mve'):
-            pass
-        else:
-            #TODO: define UQ method models here or add them to previous one
-            pass
-        
-        if not (self.uq_method == 'en_t' or self.uq_method == 'en_t_mve'):
-            # get number of model parameters
-            total_params = sum(p.numel() for p in self.model.parameters()
-                               if p.requires_grad) 
-            # define optimizer
-            self.optimizer = set_optimizer(
-                self.model, cfg.get('optimizer').get('type'),
-                cfg.get('optimizer').get('base_lr'), 
-                cfg.get('optimizer').get('eps'), 
-                cfg.get('optimizer').get('weight_decay'))
-            # define scheduler
-            self.scheduler = optim.lr_scheduler.ReduceLROnPlateau(
-                self.optimizer, factor=0.5)            
-        else:
-            # get number of parameters for the first model
-            total_params = sum(p.numel() for p in self.models[0].parameters()
-                               if p.requires_grad) 
-            # define list of optimizeers and schedulers
-            for i in range(self.num_models):
-                current_optimizer = set_optimizer(
-                    self.models[i], cfg.get('optimizer').get('type'),
-                    cfg.get('optimizer').get('base_lr'),
-                    cfg.get('optimizer').get('eps'),
-                    cfg.get('optimizer').get('weight_decay'))
-                self.optimizers.append(current_optimizer)
-                current_scheduler = optim.lr_scheduler.ReduceLROnPlateau(
-                    self.optimizers[i], factor=0.5)
-                self.schedulers.append(current_scheduler)
-                
-        # print number of model parameters
-        print(f'Total model parameters: {total_params}')
         
         # execute training and evaluation loop
         for execution_seed in seeds:
+            
+            # set random seed
             self.seed = int(execution_seed) 
-            # set random seed 
-            set_random_seed(self.seed)
+            set_random_seed(self.seed) 
+            
+            # define the model (based on the UQ method)
+            # deterministic model
+            if self.uq_method == 'deterministic':
+                # define the model for deterministic approach (point estimate)
+                self.model = DALSTMModel(
+                    input_size=self.input_size,
+                    hidden_size=self.hidden_size,
+                    n_layers=self.n_layers,
+                    max_len=self.max_len,
+                    dropout=self.dropout,
+                    p_fix=self.dropout_prob).to(self.device) 
+            # model for dropout approximation
+            elif (self.uq_method == 'DA' or self.uq_method == 'CDA'):
+                self.model = StochasticDALSTM(
+                    input_size=self.input_size,
+                    hidden_size=self.hidden_size,
+                    n_layers=self.n_layers,
+                    max_len=self.max_len,
+                    dropout=self.dropout,
+                    concrete=self.concrete_dropout,
+                    p_fix=self.dropout_prob,
+                    weight_regularizer=self.weight_regularizer,
+                    dropout_regularizer=self.dropout_regularizer,
+                    hs=False,
+                    Bayes=self.Bayes,
+                    device=self.device).to(self.device)
+            # model for dropout approximation with heteroscedastic loss function
+            elif (self.uq_method == 'DA_A' or self.uq_method == 'CDA_A'):
+                self.model = StochasticDALSTM(
+                    input_size=self.input_size,
+                    hidden_size=self.hidden_size,
+                    n_layers=self.n_layers,
+                    max_len=self.max_len,
+                    dropout=self.dropout,
+                    concrete=self.concrete_dropout,
+                    p_fix=self.dropout_prob,
+                    weight_regularizer=self.weight_regularizer,
+                    dropout_regularizer=self.dropout_regularizer,
+                    hs=True,
+                    Bayes=self.Bayes,
+                    device=self.device).to(self.device)
+            # define the model for mean variance estimation (MVE) approach
+            elif self.uq_method == 'mve':                
+                self.model = DALSTMModelMve(
+                    input_size=self.input_size,
+                    hidden_size=self.hidden_size,
+                    n_layers=self.n_layers,
+                    max_len=self.max_len,
+                    dropout=self.dropout,
+                    p_fix=self.dropout_prob).to(self.device)
+            # b: Bootstrapping ensemble: multiple models, same initialization.            
+            elif (self.uq_method == 'en_b' or self.uq_method == 'en_b_mve'):
+                # empty lists (ensemble of) models, optimizers, schedulers
+                self.models, self.optimizers, self.schedulers = [], [], [] 
+                for i in range(self.num_models):
+                    if self.uq_method == 'en_b':
+                        # each ensemble member is a deterministic model
+                        model = DALSTMModel(
+                            input_size=self.input_size,
+                            hidden_size=self.hidden_size,
+                            n_layers=self.n_layers,
+                            max_len=self.max_len,
+                            dropout=self.dropout,
+                            p_fix=self.dropout_prob).to(self.device)
+                    else:
+                        # last layer include log variance estimation
+                        model = DALSTMModelMve(
+                            input_size=self.input_size,
+                            hidden_size=self.hidden_size,
+                            n_layers=self.n_layers,
+                            max_len=self.max_len,
+                            dropout=self.dropout,
+                            p_fix=self.dropout_prob).to(self.device)
+                    self.models.append(model)        
+            # t: Traditional ensemble: multiple models, different initialization.
+            elif (self.uq_method == 'en_t' or self.uq_method == 'en_t_mve'):
+                # empty lists (ensemble of) models, optimizers, schedulers
+                self.models, self.optimizers, self.schedulers = [], [], []      
+                # Original random state (before initializing models)
+                original_rng_state = torch.get_rng_state()
+                for i in range(self.num_models):
+                    # Set a unique seed for each model's initialization
+                    unique_seed = i + 100  
+                    torch.manual_seed(unique_seed)
+                    if self.uq_method == 'en_t':
+                        # each ensemble member is a deterministic model
+                        model = DALSTMModel(
+                            input_size=self.input_size,
+                            hidden_size=self.hidden_size,
+                            n_layers=self.n_layers,
+                            max_len=self.max_len,
+                            dropout=self.dropout,
+                            p_fix=self.dropout_prob).to(self.device)
+                    else:
+                        # last layer include log variance estimation
+                        model = DALSTMModelMve(
+                            input_size=self.input_size,
+                            hidden_size=self.hidden_size,
+                            n_layers=self.n_layers,
+                            max_len=self.max_len,
+                            dropout=self.dropout,
+                            p_fix=self.dropout_prob).to(self.device)                    
+                    # Apply weight initialization function
+                    model.apply(dalstm_init_weights)
+                    self.models.append(model)
+                # Restore the original random state
+                torch.set_rng_state(original_rng_state)
+            
+            # get #num of model parameters, define optimizer(s) & scheduler(s)
+            if not self.ensemble_mode:
+                # get number of model parameters
+                total_params = sum(p.numel() for p in self.model.parameters()
+                                   if p.requires_grad) 
+                # define optimizer
+                self.optimizer = set_optimizer(
+                    self.model, cfg.get('optimizer').get('type'),
+                    cfg.get('optimizer').get('base_lr'), 
+                    cfg.get('optimizer').get('eps'), 
+                    cfg.get('optimizer').get('weight_decay'))
+                # define scheduler
+                self.scheduler = optim.lr_scheduler.ReduceLROnPlateau(
+                    self.optimizer, factor=0.5)            
+            else:
+                # get number of parameters for the first model
+                total_params = sum(p.numel() for p in self.models[0].parameters()
+                                   if p.requires_grad) 
+                # define list of optimizeers and schedulers
+                for i in range(self.num_models):
+                    current_optimizer = set_optimizer(
+                        self.models[i], cfg.get('optimizer').get('type'),
+                        cfg.get('optimizer').get('base_lr'),
+                        cfg.get('optimizer').get('eps'),
+                        cfg.get('optimizer').get('weight_decay'))
+                    self.optimizers.append(current_optimizer)
+                    current_scheduler = optim.lr_scheduler.ReduceLROnPlateau(
+                        self.optimizers[i], factor=0.5)
+                    self.schedulers.append(current_scheduler)                
+            # print number of model parameters
+            print(f'Total model parameters: {total_params}')
+        
             # load train, validation, and test data loaders
             if self.split == 'holdout':
                 # define the report path
                 self.report_path = os.path.join(
                     self.result_path, '{}_{}_seed_{}_report_.txt'.format(
-                        self.uq_method, self.split, self.seed))                
+                        self.uq_method, self.split, self.seed))  
+                # get paths for processed data
                 (self.X_train_path, self.X_val_path, self.X_test_path,
                  self.y_train_path, self.y_val_path, self.y_test_path,
-                 self.test_lengths_path) = self.holdout_paths() 
-                (self.train_loader, self.val_loader, self.test_loader,
-                 self.test_lengths) = self.load_data()
+                 self.test_lengths_path) = self.holdout_paths()
+                # for all UQ methods except Bootstrapping ensemble
+                if not self.bootstrapping: 
+                    (self.train_loader, self.val_loader, self.test_loader,
+                     self.test_lengths) = self.load_data()
                 # if there is only one model to train
-                if not (self.uq_method == 'en_t' or self.uq_method == 'en_t_mve'):                
+                if not self.ensemble_mode:                
                     train_model(model=self.model, uq_method=self.uq_method,
                                 train_loader=self.train_loader,
                                 val_loader=self.val_loader,
@@ -234,7 +279,8 @@ class DALSTM_train_evaluate ():
                                 report_path=self.report_path,
                                 data_split='holdout',
                                 cfg=self.cfg,
-                                seed=self.seed)   
+                                seed=self.seed,
+                                ensemble_mode=self.ensemble_mode)   
                     test_model(model=self.model, uq_method=self.uq_method,
                                num_mc_samples=self.num_mcmc,              
                                test_loader=self.test_loader,
@@ -248,7 +294,17 @@ class DALSTM_train_evaluate ():
                                normalization=self.normalization)
                 else:
                     # if there are ensemble of models to train
+                    # get random state (before subset selction for Bootstrapping)
+                    original_rng_state = torch.get_rng_state()
                     for i in range(1, self.num_models+1):
+                        # load relevant data for Bootstrapping ensemble
+                        if self.bootstrapping:
+                            # Set a unique seed for selection of subset data
+                            unique_seed = i + 100  
+                            torch.manual_seed(unique_seed)
+                            (self.train_loader,self.val_loader,self.test_loader,
+                             self.test_lengths) = self.load_data()                           
+                        # train a member of ensemble    
                         train_model(model=self.models[i-1],
                                     uq_method=self.uq_method,
                                     train_loader=self.train_loader,
@@ -265,7 +321,11 @@ class DALSTM_train_evaluate ():
                                     data_split='holdout',
                                     cfg=self.cfg,
                                     seed=self.seed,
-                                    model_idx=i)
+                                    model_idx=i,
+                                    ensemble_mode=self.ensemble_mode)
+                    # Restore the original random state
+                    torch.set_rng_state(original_rng_state)
+                    # inference with all ensemble members
                     test_model(models=self.models,
                                uq_method=self.uq_method,
                                num_mc_samples=self.num_mcmc,              
@@ -278,7 +338,7 @@ class DALSTM_train_evaluate ():
                                seed=self.seed,
                                device=self.device,
                                normalization=self.normalization,
-                               ensemble_mode=True,
+                               ensemble_mode=self.ensemble_mode,
                                ensemble_size=self.num_models)                                  
             else:
                 for split_key in range(self.n_splits):
@@ -291,11 +351,12 @@ class DALSTM_train_evaluate ():
                     (self.X_train_path, self.X_val_path, self.X_test_path,
                      self.y_train_path, self.y_val_path, self.y_test_path,
                      self.test_lengths_path) = self.cv_paths(split_key=split_key)
-                    (self.train_loader, self.val_loader, self.test_loader,
-                     self.test_lengths) = self.load_data()  
-                    if not (self.uq_method == 'en_t' or
-                            self.uq_method == 'en_t_mve'):
-                        # if there is only one model to train
+                    # for all UQ methods except Bootstrapping ensemble
+                    if not self.bootstrapping:
+                        (self.train_loader, self.val_loader, self.test_loader,
+                         self.test_lengths) = self.load_data()
+                    # if there is only one model to train
+                    if not self.ensemble_mode:                        
                         train_model(model=self.model,
                                     uq_method=self.uq_method,
                                     train_loader=self.train_loader,
@@ -312,7 +373,8 @@ class DALSTM_train_evaluate ():
                                     data_split='cv',
                                     fold = split_key+1,
                                     cfg=self.cfg,
-                                    seed=self.seed)
+                                    seed=self.seed,
+                                    ensemble_mode=self.ensemble_mode)
                         test_model(model=self.model, 
                                    uq_method=self.uq_method,
                                    num_mc_samples=self.num_mcmc,  
@@ -328,7 +390,18 @@ class DALSTM_train_evaluate ():
                                    normalization=self.normalization) 
                     else:
                         # if there are ensemble of models to train
+                        # get random state (before subset selction for Bootstrapping)
+                        original_rng_state = torch.get_rng_state()
                         for i in range(1, self.num_models+1):
+                            # load relevant data for Bootstrapping ensemble
+                            if self.bootstrapping:
+                                # Set a unique seed for selection of subset data
+                                unique_seed = i + 100  
+                                torch.manual_seed(unique_seed)
+                                (self.train_loader, self.val_loader, 
+                                 self.test_loader, self.test_lengths
+                                 ) = self.load_data() 
+                            # train a member of ensemble 
                             train_model(model=self.models[i-1],
                                         uq_method=self.uq_method,
                                         train_loader=self.train_loader,
@@ -346,7 +419,11 @@ class DALSTM_train_evaluate ():
                                         fold = split_key+1,
                                         cfg=self.cfg,
                                         seed=self.seed,
-                                        model_idx=i)
+                                        model_idx=i,
+                                        ensemble_mode=self.ensemble_mode)
+                        # Restore the original random state
+                        torch.set_rng_state(original_rng_state)
+                        # inference with all ensemble members
                         test_model(models=self.models,
                                    uq_method=self.uq_method,
                                    num_mc_samples=self.num_mcmc,  
@@ -360,7 +437,7 @@ class DALSTM_train_evaluate ():
                                    seed=self.seed,
                                    device=self.device,
                                    normalization=self.normalization,
-                                   ensemble_mode=True,
+                                   ensemble_mode=self.ensemble_mode,
                                    ensemble_size=self.num_models)
                         
                     
@@ -436,9 +513,18 @@ class DALSTM_train_evaluate ():
         X_test = torch.load(self.X_test_path)
         y_train = torch.load(self.y_train_path)
         y_val = torch.load(self.y_val_path)
-        y_test = torch.load(self.y_test_path)        
-        # define training, validation, test datasets                    
-        train_dataset = TensorDataset(X_train, y_train)
+        y_test = torch.load(self.y_test_path)
+        # define training dataset
+        if self.bootstrapping:
+            subset_size = int(X_train.size(0) * self.Bootstrapping_ratio)
+            subset_indices = torch.randint(0, X_train.size(0), (subset_size,))
+            print(subset_indices)
+            X_sample = X_train[subset_indices]
+            y_sample = y_train[subset_indices]
+            train_dataset = TensorDataset(X_sample, y_sample)
+        else:
+            train_dataset = TensorDataset(X_train, y_train)            
+        # define validation and test datasets              
         val_dataset = TensorDataset(X_val, y_val)
         test_dataset = TensorDataset(X_test, y_test)
         """
