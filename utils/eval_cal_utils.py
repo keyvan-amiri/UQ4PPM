@@ -235,16 +235,19 @@ def inference_on_validation(args=None, model=None, model_list=None,
                             checkpoint_path=None, checkpoint_paths_list=None,
                             calibration_loader=None, num_mc_samples=None,
                             normalization=False, y_scaler=None, device=None,
-                            report_path=None, recalibration_path=None):
+                            report_path=None, recalibration_path=None,
+                            ensemble_mode=False, num_models=None):
         
     print('Now: start inference on validation set:')
     start=datetime.now()
     
     # setstructure of instance-level results
-    if (args.UQ == 'DA' or args.UQ == 'CDA'):
+    if (args.UQ == 'DA' or args.UQ == 'CDA' or 
+        args.UQ == 'en_t' or args.UQ == 'en_b'):
         res_dict = {'GroundTruth': [], 'Prediction': [],
                     'Epistemic_Uncertainty': []}
-    elif (args.UQ == 'DA_A' or args.UQ == 'CDA_A'):
+    elif (args.UQ == 'DA_A' or args.UQ == 'CDA_A' or
+          args.UQ == 'en_t_mve' or args.UQ == 'en_b_mve'):
         res_dict = {'GroundTruth': [], 'Prediction': [], 
                     'Epistemic_Uncertainty': [], 'Aleatoric_Uncertainty': [],
                     'Total_Uncertainty': []} 
@@ -252,12 +255,21 @@ def inference_on_validation(args=None, model=None, model_list=None,
         res_dict = {'GroundTruth': [], 'Prediction': [],
                     'Aleatoric_Uncertainty': []}
     
-    # load the checkpoint  
-    checkpoint = torch.load(checkpoint_path)
-    model.load_state_dict(checkpoint['model_state_dict'])
-    
-    # get instance-level results on validation set
-    model.eval()
+    # load the checkpoint(s) 
+    if not ensemble_mode:
+        checkpoint = torch.load(checkpoint_path)
+        model.load_state_dict(checkpoint['model_state_dict'])
+        # set model to evaluation mode
+        model.eval()
+    else:
+        for i in range(num_models):
+            # load one checkpoint in each iteration
+            checkpoint = torch.load(checkpoint_paths_list[i])
+            model_list[i].load_state_dict(checkpoint['model_state_dict'])
+            # set the relevant model to evaluation mode
+            model_list[i].eval()          
+
+    # get instance-level results on validation set    
     with torch.no_grad():
         for index, calibration_batch in enumerate(calibration_loader):
             # get batch data
@@ -298,7 +310,43 @@ def inference_on_validation(args=None, model=None, model_list=None,
                 aleatoric_std = torch.sqrt(torch.exp(log_var))
                 # normalize aleatoric uncertainty if necessary
                 if normalization:
-                    aleatoric_std = y_scaler * aleatoric_std            
+                    aleatoric_std = y_scaler * aleatoric_std 
+            elif (args.UQ == 'en_t' or args.UQ == 'en_b'):
+                # empty list to collect predictions of all members of ensemble
+                prediction_list = []
+                for model_idx in range(num_models):
+                    member_prediciton = model_list[model_idx](inputs)
+                    prediction_list.append(member_prediciton)
+                stacked_predictions = torch.stack(prediction_list, dim=0)
+                # predited value is the average of predictions of all members
+                _y_pred = torch.mean(stacked_predictions, dim=0)
+                # epistemic uncertainty = std of predictions of all members
+                epistemic_std = torch.std(stacked_predictions, dim=0).to(device)
+                # normalize epistemic uncertainty if necessary
+                if normalization:
+                    epistemic_std = y_scaler * epistemic_std
+            elif (args.UQ == 'en_t_mve' or args.UQ == 'en_b_mve'):
+                # collect prediction means & aleatoric std: all ensemble members
+                mean_pred_list, aleatoric_std_list = [], []
+                for model_idx in range(num_models):
+                    member_mean, member_log_var = model_list[model_idx](inputs)
+                    member_aleatoric_std = torch.sqrt(torch.exp(member_log_var))
+                    mean_pred_list.append(member_mean)
+                    aleatoric_std_list.append(member_aleatoric_std)
+                stacked_mean_pred = torch.stack(mean_pred_list, dim=0)
+                stacked_aleatoric = torch.stack(aleatoric_std_list, dim=0)
+                # predited value is the average of predictions of all members
+                _y_pred = torch.mean(stacked_mean_pred, dim=0)
+                # epistemic uncertainty = std of predictions of all members
+                epistemic_std = torch.std(stacked_mean_pred, dim=0).to(device)
+                # epistemic uncertainty = mean of aleatoric estimates of all members
+                aleatoric_std = torch.mean(stacked_aleatoric, dim=0)
+                # normalize uncertainties if necessary
+                if normalization:
+                    epistemic_std = y_scaler * epistemic_std
+                    aleatoric_std = y_scaler * aleatoric_std
+                total_std = epistemic_std + aleatoric_std
+                
             # convert tragets, outputs in case of normalization
             if normalization:
                 _y_truth = y_scaler * _y_truth
@@ -310,10 +358,12 @@ def inference_on_validation(args=None, model=None, model_list=None,
             res_dict['GroundTruth'].extend(_y_truth.tolist())
             res_dict['Prediction'].extend(_y_pred.tolist())
             if (args.UQ == 'DA' or args.UQ == 'CDA' or args.UQ == 'DA_A' or 
-                args.UQ == 'CDA_A'):
+                args.UQ == 'CDA_A' or args.UQ == 'en_t' or args.UQ == 'en_b' or
+                args.UQ == 'en_t_mve' or args.UQ == 'en_b_mve'):
                 epistemic_std = epistemic_std.detach().cpu().numpy()
                 res_dict['Epistemic_Uncertainty'].extend(epistemic_std.tolist()) 
-                if (args.UQ == 'DA_A' or args.UQ == 'CDA_A'):
+                if (args.UQ == 'DA_A' or args.UQ == 'CDA_A' or 
+                    args.UQ == 'en_t_mve' or args.UQ == 'en_b_mve'):
                     aleatoric_std = aleatoric_std.detach().cpu().numpy()
                     total_std = total_std.detach().cpu().numpy()
                     res_dict['Aleatoric_Uncertainty'].extend(aleatoric_std.tolist())
