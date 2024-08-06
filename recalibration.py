@@ -134,14 +134,22 @@ def main():
         os.makedirs(recalibration_plot_path)
     # define a path for report .txt to add recalibration time
     if args.UQ != 'CARD':
-        base_name = os.path.splitext(args.csv_file)[0].removesuffix('inference_result_')       
+        base_name = os.path.splitext(args.csv_file)[0].removesuffix(
+            'inference_result_')       
         report_name = base_name + 'recalibration_report.txt'
         report_path = os.path.join(recalibration_path, report_name)        
     # define a path for inference on validation (calibration set)
-    val_inference_name = add_suffix_to_csv(args.csv_file, added_suffix='validation_')    
-    val_inference_path = os.path.join(recalibration_path, val_inference_name)    
-
-    # a separate execution path for CARD model
+    val_inference_name = add_suffix_to_csv(args.csv_file,
+                                           added_suffix='validation_')    
+    val_inference_path = os.path.join(recalibration_path, val_inference_name)
+    # set ensemble mode
+    if (args.UQ == 'en_t' or args.UQ == 'en_b' or args.UQ == 'en_b_mve' or
+        args.UQ == 'en_t_mve'):
+        ensemble_mode = True
+    else:
+        ensemble_mode = False
+        
+    # the execution path for all UQ methods except CARD
     if args.UQ != 'CARD':
         args.UQ = get_uq_method(args.csv_file)
         # load cfg file used for training
@@ -152,27 +160,30 @@ def main():
             print('Inference is already done on validation set.')
             calibration_df = pd.read_csv(val_inference_path)
         else:
-            # define name of the check point (best model)
-            checkpoint_name = replace_suffix(
-                args.csv_file, 'inference_result_.csv', 'best_model.pt')
-            checkpoint_path = os.path.join(result_path, checkpoint_name)
             # Get calibration loader, model dimensions, normalization ratios
             (calibration_loader, input_size, max_len, max_train_val,
              mean_train_val, median_train_val
              ) = get_validation_data_and_model_size(args=args, cfg=cfg,
                                                     root_path=root_path)
+            # if there is only one checkpoint (not for ensemble approaches)
+            if not ensemble_mode:
+                # define name of the check point (best model)
+                checkpoint_name = replace_suffix(
+                    args.csv_file, 'inference_result_.csv', 'best_model.pt')
+                checkpoint_path = os.path.join(result_path, checkpoint_name)
+            
             # define model and loss function
-            (model, criterion, heteroscedastic, num_mcmc, normalization
+            (model, criterion, num_mcmc, normalization
              ) = get_model_and_loss(args=args, cfg=cfg, input_size=input_size,
                                     max_len=max_len, device=device)
             # execute inference on validation set
             calibration_df = inference_on_validation(
                 args=args, model=model, checkpoint_path=checkpoint_path,
-                calibration_loader=calibration_loader,
-                heteroscedastic=heteroscedastic, num_mc_samples=num_mcmc,
+                calibration_loader=calibration_loader, num_mc_samples=num_mcmc,
                 normalization=normalization, y_scaler=mean_train_val,
                 device=device, report_path=report_path,
                 recalibration_path=recalibration_path) 
+    # a separate execution path for CARD model
     else:
         args = prepare_args(args=args, result_path=result_path,
                             root_path=root_path) 

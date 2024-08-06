@@ -28,7 +28,8 @@ def extract_info_from_cfg(cfg_file):
             uq_method=uq_method.upper()
         return model, dataset, uq_method
     else:
-        raise ValueError('The configuration file name does not match the expected pattern.')
+        raise ValueError('The configuration file name does not match \
+                         the expected pattern.')
         
 def get_uq_method(csv_file):
     # Define the regex pattern to capture uq_method
@@ -143,57 +144,65 @@ def get_model_and_loss(args=None, cfg=None, input_size=None, max_len=None,
     dropout_prob = cfg.get('model').get('lstm').get('dropout_prob')
     normalization = cfg.get('data').get('normalization')
     
-    # define model, loss function, and other important variables                            
-    if args.UQ == 'mve':
-        model = DALSTMModelMve(input_size=input_size, hidden_size=hidden_size,
-                               n_layers=n_layers, max_len=max_len,
-                               dropout=dropout, p_fix=dropout_prob).to(device)
-        # use heteroscedastic loss funciton for MVE approach
-        criterion = set_loss(loss_func=cfg.get('train').get('loss_function'),
-                             heteroscedastic=True)  
-        heteroscedastic = False 
-        num_mcmc = None
-    elif (args.UQ == 'DA' or args.UQ == 'CDA' or args.UQ == 'DA_A' or 
-          args.UQ == 'CDA_A'):
-        dropout = True
-        Bayes = True
+    # set parameters for dropout approximation
+    if (args.UQ == 'DA' or args.UQ == 'CDA' or args.UQ == 'DA_A' or 
+          args.UQ == 'CDA_A'): 
         num_mcmc = cfg.get('uncertainty').get('dropout_approximation').get(
             'num_stochastic_forward_path')
         weight_regularizer = cfg.get('uncertainty').get(
             'dropout_approximation').get('weight_regularizer')
         dropout_regularizer = cfg.get('uncertainty').get(
             'dropout_approximation').get('dropout_regularizer')
-        # Set the parameter for concrete dropout
         if (args.UQ == 'DA' or args.UQ == 'DA_A'):
             concrete_dropout = False
         else:
             concrete_dropout = True
-        # Set the loss function (heteroscedastic/homoscedastic)
-        if (args.UQ == 'DA' or args.UQ == 'CDA'):
-            heteroscedastic = False
-            criterion = set_loss(loss_func=cfg.get('train').get('loss_function'))
-        else:
-            heteroscedastic = True
-            criterion = set_loss(loss_func=cfg.get('train').get('loss_function'),
-                                 heteroscedastic=True) 
+    else:
+        # to use the same execution path
+        num_mcmc = None
+    
+    # define loss function (heteroscedastic/homoscedastic):
+    if (args.UQ == 'DA' or args.UQ == 'CDA' or args.UQ == 'en_t' or
+        args.UQ == 'en_b'):
+        criterion = set_loss(loss_func=cfg.get('train').get('loss_function'))          
+    elif (args.UQ == 'DA_A' or args.UQ == 'CDA_A' or args.UQ == 'mve' or
+        args.UQ == 'en_t_mve' or args.UQ == 'en_b_mve'):
+        criterion = set_loss(loss_func=cfg.get('train').get('loss_function'),
+                             heteroscedastic=True)    
+    
+    # define model, and other important variables                            
+    if args.UQ == 'mve':
+        model = DALSTMModelMve(input_size=input_size, hidden_size=hidden_size,
+                               n_layers=n_layers, max_len=max_len,
+                               dropout=dropout, p_fix=dropout_prob).to(device)
+    elif (args.UQ == 'DA' or args.UQ == 'CDA'):
+        # hs (heteroscedastic) is set to False
         model = StochasticDALSTM(input_size=input_size, hidden_size=hidden_size,
                                  n_layers=n_layers, max_len=max_len,
-                                 dropout=dropout, concrete=concrete_dropout,
+                                 dropout=True, concrete=concrete_dropout,
                                  p_fix=dropout_prob, 
                                  weight_regularizer=weight_regularizer,
                                  dropout_regularizer=dropout_regularizer,
-                                 hs=heteroscedastic, Bayes=Bayes, 
+                                 hs=False, Bayes=True, 
                                  device=device).to(device)
-            
-            
-    return (model, criterion, heteroscedastic, num_mcmc, normalization)
+    elif (args.UQ == 'DA_A' or args.UQ == 'CDA_A'):
+        # hs (heteroscedastic) is set to True
+        model = StochasticDALSTM(input_size=input_size, hidden_size=hidden_size,
+                                 n_layers=n_layers, max_len=max_len,
+                                 dropout=True, concrete=concrete_dropout,
+                                 p_fix=dropout_prob, 
+                                 weight_regularizer=weight_regularizer,
+                                 dropout_regularizer=dropout_regularizer,
+                                 hs=True, Bayes=True, 
+                                 device=device).to(device)      
 
-# inference for validation for DA,CDA,DA_A, CDA_A, mve approaches
+    return (model, criterion, num_mcmc, normalization)
+
+# inference for validation for DA, CDA,DA_A, CDA_A, mve approaches
 def inference_on_validation(args=None, model=None, checkpoint_path=None,
-                            calibration_loader=None, heteroscedastic=None,
-                            num_mc_samples=None, normalization=False, 
-                            y_scaler=None, device=None, report_path=None,
-                            recalibration_path=None):
+                            calibration_loader=None, num_mc_samples=None,
+                            normalization=False, y_scaler=None, device=None,
+                            report_path=None, recalibration_path=None):
         
     print('Now: start inference on validation set:')
     start=datetime.now()
@@ -242,7 +251,7 @@ def inference_on_validation(args=None, model=None, checkpoint_path=None,
                 if normalization:
                     epistemic_std = y_scaler * epistemic_std
                 # now obtain aleatoric uncertainty
-                if heteroscedastic:
+                if (args.UQ == 'DA_A' or args.UQ == 'CDA_A'):
                     stacked_log_var = torch.stack(logvar_list, dim=0)
                     stacked_var = torch.exp(stacked_log_var)
                     mean_var = torch.mean(stacked_var, dim=0)
@@ -271,7 +280,7 @@ def inference_on_validation(args=None, model=None, checkpoint_path=None,
                 args.UQ == 'CDA_A'):
                 epistemic_std = epistemic_std.detach().cpu().numpy()
                 res_dict['Epistemic_Uncertainty'].extend(epistemic_std.tolist()) 
-                if heteroscedastic:
+                if (args.UQ == 'DA_A' or args.UQ == 'CDA_A'):
                     aleatoric_std = aleatoric_std.detach().cpu().numpy()
                     total_std = total_std.detach().cpu().numpy()
                     res_dict['Aleatoric_Uncertainty'].extend(aleatoric_std.tolist())
