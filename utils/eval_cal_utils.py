@@ -8,12 +8,25 @@ from datetime import datetime
 import uncertainty_toolbox as uct
 import torch
 from torch.utils.data import TensorDataset, DataLoader
-from models.dalstm import DALSTMModelMve
+from models.dalstm import DALSTMModel, DALSTMModelMve
 from models.stochastic_dalstm import StochasticDALSTM
 from loss.loss_handler import set_loss
 from evaluation import evaluate_coverage
 
 
+def get_num_models_from_file(file_path):
+    with open(file_path, 'r') as file:
+        for line in file:
+            # Check if the line contains the 'num_models' key
+            if "'num_models':" in line:
+                # Extract the number after 'num_models':
+                num_str = line.split("'num_models':")[1].split(',')[0].strip()
+                try:
+                    num_models = int(num_str)
+                    return num_models
+                except ValueError:
+                    raise ValueError('Cannot find num_models value.')
+    raise ValueError('num_models not found in the file.')
 
 def extract_info_from_cfg(cfg_file):
     # Define the regex pattern
@@ -44,9 +57,13 @@ def get_uq_method(csv_file):
     else:
         raise ValueError("The CSV file name does not match the expected pattern.")
         
-def replace_suffix(input_string, old_suffix, new_suffix):
+def replace_suffix(input_string, old_suffix, new_suffix,
+                   ensemble_mode=False, model_idx=None):
     if input_string.endswith(old_suffix):
-        return input_string[:-len(old_suffix)] + new_suffix
+        if ensemble_mode:
+            return input_string[:-len(old_suffix)] + 'member_' + str(model_idx) + '_' + new_suffix
+        else:
+            return input_string[:-len(old_suffix)] + new_suffix
     else:
         raise ValueError(
             'The input string does not end with the specified old suffix.')
@@ -135,7 +152,7 @@ def get_validation_data_and_model_size(args=None, cfg=None, root_path=None):
 
 
 def get_model_and_loss(args=None, cfg=None, input_size=None, max_len=None, 
-                       device=None):
+                       device=None, ensemble_mode=None, num_models=None):
 
     # get other model characteristics
     hidden_size = cfg.get('model').get('lstm').get('hidden_size')
@@ -169,37 +186,53 @@ def get_model_and_loss(args=None, cfg=None, input_size=None, max_len=None,
         args.UQ == 'en_t_mve' or args.UQ == 'en_b_mve'):
         criterion = set_loss(loss_func=cfg.get('train').get('loss_function'),
                              heteroscedastic=True)    
-    
-    # define model, and other important variables                            
-    if args.UQ == 'mve':
-        model = DALSTMModelMve(input_size=input_size, hidden_size=hidden_size,
-                               n_layers=n_layers, max_len=max_len,
-                               dropout=dropout, p_fix=dropout_prob).to(device)
-    elif (args.UQ == 'DA' or args.UQ == 'CDA'):
-        # hs (heteroscedastic) is set to False
-        model = StochasticDALSTM(input_size=input_size, hidden_size=hidden_size,
-                                 n_layers=n_layers, max_len=max_len,
-                                 dropout=True, concrete=concrete_dropout,
-                                 p_fix=dropout_prob, 
-                                 weight_regularizer=weight_regularizer,
-                                 dropout_regularizer=dropout_regularizer,
-                                 hs=False, Bayes=True, 
-                                 device=device).to(device)
-    elif (args.UQ == 'DA_A' or args.UQ == 'CDA_A'):
-        # hs (heteroscedastic) is set to True
-        model = StochasticDALSTM(input_size=input_size, hidden_size=hidden_size,
-                                 n_layers=n_layers, max_len=max_len,
-                                 dropout=True, concrete=concrete_dropout,
-                                 p_fix=dropout_prob, 
-                                 weight_regularizer=weight_regularizer,
-                                 dropout_regularizer=dropout_regularizer,
-                                 hs=True, Bayes=True, 
-                                 device=device).to(device)      
 
-    return (model, criterion, num_mcmc, normalization)
+    # define model(s) based on UQ method
+    # an emtpy list for ensemble of models
+    model_list = []  # in case of single models remains empty
+    if not ensemble_mode:
+        if args.UQ == 'mve':
+            model = DALSTMModelMve(
+                input_size=input_size, hidden_size=hidden_size,
+                n_layers=n_layers, max_len=max_len, dropout=dropout,
+                p_fix=dropout_prob).to(device)
+        elif (args.UQ == 'DA' or args.UQ == 'CDA'):
+            # hs (heteroscedastic) is set to False
+            model = StochasticDALSTM(
+                input_size=input_size, hidden_size=hidden_size,
+                n_layers=n_layers, max_len=max_len, dropout=True,
+                concrete=concrete_dropout, p_fix=dropout_prob, 
+                weight_regularizer=weight_regularizer,
+                dropout_regularizer=dropout_regularizer, 
+                hs=False, Bayes=True, device=device).to(device)
+        elif (args.UQ == 'DA_A' or args.UQ == 'CDA_A'):
+            # hs (heteroscedastic) is set to True
+            model = StochasticDALSTM(
+                input_size=input_size, hidden_size=hidden_size, 
+                n_layers=n_layers, max_len=max_len, dropout=True,
+                concrete=concrete_dropout, p_fix=dropout_prob, 
+                weight_regularizer=weight_regularizer,
+                dropout_regularizer=dropout_regularizer,
+                hs=True, Bayes=True, device=device).to(device)
+    else:
+        for i in range(num_models):
+            if (args.UQ == 'en_t' or args.UQ == 'en_b'):
+                model = DALSTMModel(
+                    input_size=input_size, hidden_size=hidden_size,
+                    n_layers=n_layers, max_len=max_len, dropout=dropout,
+                    p_fix=dropout_prob).to(device)
+            elif (args.UQ == 'en_t_mve' or args.UQ == 'en_b_mve'):
+                model = DALSTMModelMve(
+                    input_size=input_size, hidden_size=hidden_size,
+                    n_layers=n_layers, max_len=max_len, dropout=dropout,
+                    p_fix=dropout_prob).to(device)
+            model_list.append(model)
+    return (model, criterion, num_mcmc, normalization, model_list)
+
 
 # inference for validation for DA, CDA,DA_A, CDA_A, mve approaches
-def inference_on_validation(args=None, model=None, checkpoint_path=None,
+def inference_on_validation(args=None, model=None, model_list=None,
+                            checkpoint_path=None, checkpoint_paths_list=None,
                             calibration_loader=None, num_mc_samples=None,
                             normalization=False, y_scaler=None, device=None,
                             report_path=None, recalibration_path=None):

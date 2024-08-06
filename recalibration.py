@@ -17,7 +17,7 @@ from utils.eval_cal_utils import (extract_info_from_cfg, replace_suffix,
                                   get_validation_data_and_model_size,
                                   get_model_and_loss, get_uq_method,
                                   add_suffix_to_csv, get_mean_std_truth,
-                                  prepare_args)
+                                  prepare_args, get_num_models_from_file)
 from utils.eval_cal_utils import inference_on_validation
 from utils.eval_cal_utils import recalibration_evaluation
 from main import main_card
@@ -146,8 +146,17 @@ def main():
     if (args.UQ == 'en_t' or args.UQ == 'en_b' or args.UQ == 'en_b_mve' or
         args.UQ == 'en_t_mve'):
         ensemble_mode = True
+        # get the report file name to find number of members in ensemble
+        inference_report_name = replace_suffix(args.csv_file,
+                                               'inference_result_.csv',
+                                               'report_.txt')
+        inference_report_path = os.path.join(result_path, inference_report_name)
+        # ger number of members in ensemble
+        num_models = get_num_models_from_file(inference_report_path)       
     else:
+        # to use same execution path for single models similar to ensembles
         ensemble_mode = False
+        num_models = None
         
     # the execution path for all UQ methods except CARD
     if args.UQ != 'CARD':
@@ -170,19 +179,40 @@ def main():
                 # define name of the check point (best model)
                 checkpoint_name = replace_suffix(
                     args.csv_file, 'inference_result_.csv', 'best_model.pt')
-                checkpoint_path = os.path.join(result_path, checkpoint_name)
-            
-            # define model and loss function
-            (model, criterion, num_mcmc, normalization
-             ) = get_model_and_loss(args=args, cfg=cfg, input_size=input_size,
-                                    max_len=max_len, device=device)
-            # execute inference on validation set
-            calibration_df = inference_on_validation(
-                args=args, model=model, checkpoint_path=checkpoint_path,
-                calibration_loader=calibration_loader, num_mc_samples=num_mcmc,
-                normalization=normalization, y_scaler=mean_train_val,
-                device=device, report_path=report_path,
-                recalibration_path=recalibration_path) 
+                checkpoint_path = os.path.join(result_path, checkpoint_name)            
+                # define model and loss function
+                (model, criterion, num_mcmc, normalization, _
+                 ) = get_model_and_loss(
+                     args=args, cfg=cfg, input_size=input_size, max_len=max_len,
+                     device=device, ensemble_mode=ensemble_mode,
+                     num_models=num_models)            
+                # execute inference on validation set
+                calibration_df = inference_on_validation(
+                    args=args, model=model, checkpoint_path=checkpoint_path,
+                    calibration_loader=calibration_loader,
+                    num_mc_samples=num_mcmc, normalization=normalization,
+                    y_scaler=mean_train_val, device=device,
+                    report_path=report_path, 
+                    recalibration_path=recalibration_path) 
+            # if there are more than one checkpoint (ensembles)
+            else:
+                # empty list for all checkpoint addresses
+                checkpoint_paths_list = []
+                for i in range(1, num_models+1): 
+                    checkpoint_name = replace_suffix(
+                        args.csv_file, 'inference_result_.csv',
+                        'best_model.pt', ensemble_mode=True, model_idx=i)
+                    checkpoint_path = os.path.join(result_path, checkpoint_name)
+                    checkpoint_paths_list.append(checkpoint_path)
+                (_, criterion, num_mcmc, normalization, model_list
+                     ) = get_model_and_loss(
+                         args=args, cfg=cfg, input_size=input_size, max_len=max_len,
+                         device=device, ensemble_mode=ensemble_mode,
+                         num_models=num_models)  
+                
+                
+                
+                
     # a separate execution path for CARD model
     else:
         args = prepare_args(args=args, result_path=result_path,
