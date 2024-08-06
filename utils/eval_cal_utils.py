@@ -407,11 +407,13 @@ def recalibration_evaluation (args=None, calibrated_test_def=None,
     pred_mean = calibrated_test_def['Prediction'].values
     y_true = calibrated_test_def['GroundTruth'].values
     # get prediction standard deviation before recalibration
-    if (args.UQ=='DA_A' or args.UQ=='CDA_A'):
+    if (args.UQ=='DA_A' or args.UQ=='CDA_A' or 
+        args.UQ == 'en_t_mve' or args.UQ == 'en_b_mve'):
         pred_std = calibrated_test_def['Total_Uncertainty'].values 
     elif (args.UQ=='CARD' or args.UQ=='mve'):
         pred_std = calibrated_test_def['Aleatoric_Uncertainty'].values
-    elif (args.UQ=='DA' or args.UQ=='CDA'):
+    elif (args.UQ=='DA' or args.UQ=='CDA' or 
+          args.UQ == 'en_t' or args.UQ == 'en_b'):
         pred_std = calibrated_test_def['Epistemic_Uncertainty'].values
          
     # Non-Gaussian calibration: expected proportions and observed proportions
@@ -431,11 +433,13 @@ def recalibration_evaluation (args=None, calibrated_test_def=None,
     sorted_df = calibrated_test_def.sort_values(by='Absolute_error')
     sorted_pred_mean = sorted_df['Prediction'].values
     sorted_errors = sorted_df['Absolute_error'].values
-    if (args.UQ=='DA_A' or args.UQ=='CDA_A'):
+    if (args.UQ=='DA_A' or args.UQ=='CDA_A' or 
+        args.UQ == 'en_t_mve' or args.UQ == 'en_b_mve'):
         sorted_pred_std = sorted_df['Total_Uncertainty'].values 
     elif (args.UQ=='CARD' or args.UQ=='mve'):
         sorted_pred_std = sorted_df['Aleatoric_Uncertainty'].values
-    elif (args.UQ=='DA' or args.UQ=='CDA'):
+    elif (args.UQ=='DA' or args.UQ=='CDA' or 
+          args.UQ == 'en_t' or args.UQ == 'en_b'):
         sorted_pred_std = sorted_df['Epistemic_Uncertainty'].values
     # now compare confidence intervals before and after calibration
     orig_bounds = uct.metrics_calibration.get_prediction_interval(
@@ -464,11 +468,13 @@ def recalibration_evaluation (args=None, calibrated_test_def=None,
     sorted_df = calibrated_test_def.sort_values(by='Prefix_length')
     sorted_pred_mean = sorted_df['Prediction'].values
     sorted_lengths = sorted_df['Prefix_length'].values
-    if (args.UQ=='DA_A' or args.UQ=='CDA_A'):
+    if (args.UQ=='DA_A' or args.UQ=='CDA_A' or 
+        args.UQ == 'en_t_mve' or args.UQ == 'en_b_mve'):
         sorted_pred_std = sorted_df['Total_Uncertainty'].values 
     elif (args.UQ=='CARD' or args.UQ=='mve'):
         sorted_pred_std = sorted_df['Aleatoric_Uncertainty'].values
-    elif (args.UQ=='DA' or args.UQ=='CDA'):
+    elif (args.UQ=='DA' or args.UQ=='CDA' or 
+          args.UQ == 'en_t' or args.UQ == 'en_b'):
         sorted_pred_std = sorted_df['Epistemic_Uncertainty'].values
     # now compare confidence intervals before and after calibration
     orig_bounds = uct.metrics_calibration.get_prediction_interval(
@@ -497,11 +503,13 @@ def recalibration_evaluation (args=None, calibrated_test_def=None,
     sorted_df = calibrated_test_def.sort_values(by='GroundTruth')
     sorted_pred_mean = sorted_df['Prediction'].values
     sorted_rem_time = sorted_df['GroundTruth'].values
-    if (args.UQ=='DA_A' or args.UQ=='CDA_A'):
+    if (args.UQ=='DA_A' or args.UQ=='CDA_A' or 
+        args.UQ == 'en_t_mve' or args.UQ == 'en_b_mve'):
         sorted_pred_std = sorted_df['Total_Uncertainty'].values 
     elif (args.UQ=='CARD' or args.UQ=='mve'):
         sorted_pred_std = sorted_df['Aleatoric_Uncertainty'].values
-    elif (args.UQ=='DA' or args.UQ=='CDA'):
+    elif (args.UQ=='DA' or args.UQ=='CDA' or 
+          args.UQ == 'en_t' or args.UQ == 'en_b'):
         sorted_pred_std = sorted_df['Epistemic_Uncertainty'].values
     # now compare confidence intervals before and after calibration
     orig_bounds = uct.metrics_calibration.get_prediction_interval(
@@ -535,7 +543,7 @@ def recalibration_evaluation (args=None, calibrated_test_def=None,
         file.write(f"Prediction Interval Coverage Probability (PICP): {picp}\n")
         file.write(f"Mean Prediction Interval Width (MPIW): {mpiw}\n")   
     
-    # Now average calibration for Gaussian calibrations
+    # Now plot miscalibration for Gaussian calibrations
     pred_std_miscal = calibrated_test_def['calibrated_std_miscal'].values
     uct.viz.plot_calibration(pred_mean, pred_std_miscal, y_true)
     plt.gcf().set_size_inches(10, 10)
@@ -677,11 +685,13 @@ def recalibration_evaluation (args=None, calibrated_test_def=None,
 def get_mean_std_truth (df=None, uq_method=None):
     pred_mean = df['Prediction'].values 
     y_true = df['GroundTruth'].values
-    if (uq_method=='DA_A' or uq_method=='CDA_A'):
+    if (uq_method=='DA_A' or uq_method=='CDA_A' or
+        uq_method == 'en_t_mve' or uq_method == 'en_b_mve'):
         pred_std = df['Total_Uncertainty'].values 
     elif (uq_method=='CARD' or uq_method=='mve'):
         pred_std = df['Aleatoric_Uncertainty'].values
-    elif (uq_method=='DA' or uq_method=='CDA'):
+    elif (uq_method=='DA' or uq_method=='CDA' or
+          uq_method == 'en_t' or uq_method == 'en_b'):
         pred_std = df['Epistemic_Uncertainty'].values
     else:
         raise NotImplementedError(

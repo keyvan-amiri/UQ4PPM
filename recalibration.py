@@ -209,10 +209,17 @@ def main():
                          args=args, cfg=cfg, input_size=input_size, max_len=max_len,
                          device=device, ensemble_mode=ensemble_mode,
                          num_models=num_models)  
-                
-                
-                
-                
+                # execute inference on validation set
+                calibration_df = inference_on_validation(
+                    args=args, model_list=model_list,
+                    checkpoint_paths_list=checkpoint_paths_list,
+                    calibration_loader=calibration_loader,
+                    num_mc_samples=num_mcmc, normalization=normalization,
+                    y_scaler=mean_train_val, device=device,
+                    report_path=report_path, 
+                    recalibration_path=recalibration_path,
+                    ensemble_mode=ensemble_mode, num_models=num_models)            
+                  
     # a separate execution path for CARD model
     else:
         args = prepare_args(args=args, result_path=result_path,
