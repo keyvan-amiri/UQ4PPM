@@ -71,8 +71,7 @@ def get_optimizer(config_optim, parameters):
 
 
 # function to handle training the model
-def train_model(model=None, uq_method=None, heteroscedastic=None, 
-                train_loader=None, val_loader=None,
+def train_model(model=None, uq_method=None, train_loader=None, val_loader=None,
                 criterion=None, optimizer=None, scheduler=None, device=None,
                 num_epochs=100, early_patience=20, min_delta=0,
                 clip_grad_norm=None, clip_value=None,
@@ -148,8 +147,8 @@ def train_model(model=None, uq_method=None, heteroscedastic=None,
                 loss = criterion(outputs, targets)
             elif (uq_method == 'DA' or uq_method == 'CDA' or
                   uq_method == 'DA_A' or uq_method == 'CDA_A'):
-                mean, log_var, regularization = model(inputs)                
-                if heteroscedastic:
+                mean, log_var, regularization = model(inputs) 
+                if (uq_method == 'DA_A' or uq_method == 'CDA_A'):
                     loss = criterion(targets, mean, log_var) + regularization
                 else:
                     loss = criterion(mean, targets) + regularization
@@ -174,7 +173,7 @@ def train_model(model=None, uq_method=None, heteroscedastic=None,
                 elif (uq_method == 'DA' or uq_method == 'CDA' or
                       uq_method == 'DA_A' or uq_method == 'CDA_A'):
                     mean, log_var, regularization = model(inputs)
-                    if heteroscedastic:
+                    if (uq_method == 'DA_A' or uq_method == 'CDA_A'):
                         valid_loss = criterion(targets, mean,
                                                log_var) + regularization
                     else:
@@ -225,9 +224,8 @@ def train_model(model=None, uq_method=None, heteroscedastic=None,
                 
            
 # function to handle inference with trained model(s)
-def test_model(model=None, models = None, uq_method=None, heteroscedastic=None,
-               num_mc_samples=None, test_loader=None,
-               test_original_lengths=None, y_scaler=None, 
+def test_model(model=None, models = None, uq_method=None, num_mc_samples=None,
+               test_loader=None, test_original_lengths=None, y_scaler=None, 
                processed_data_path=None, report_path=None,
                data_split=None, fold=None, seed=None, device=None,
                normalization=False, ensemble_mode=False, ensemble_size=None): 
@@ -336,7 +334,7 @@ def test_model(model=None, models = None, uq_method=None, heteroscedastic=None,
                 if normalization:
                     epistemic_std = y_scaler * epistemic_std
                 # now obtain aleatoric uncertainty
-                if heteroscedastic:
+                if (uq_method == 'DA_A' or uq_method == 'CDA_A'):
                     stacked_log_var = torch.stack(logvar_list, dim=0)
                     stacked_var = torch.exp(stacked_log_var)
                     mean_var = torch.mean(stacked_var, dim=0)
@@ -417,7 +415,7 @@ def test_model(model=None, models = None, uq_method=None, heteroscedastic=None,
                 epistemic_std = epistemic_std.detach().cpu().numpy()
                 all_results['Epistemic_Uncertainty'].extend(
                     epistemic_std.tolist()) 
-                if heteroscedastic:
+                if (uq_method == 'DA_A' or uq_method == 'CDA_A'):
                     aleatoric_std = aleatoric_std.detach().cpu().numpy()
                     total_std = total_std.detach().cpu().numpy()
                     all_results['Aleatoric_Uncertainty'].extend(

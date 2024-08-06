@@ -53,31 +53,18 @@ class DALSTM_train_evaluate ():
         # define training hyperparameters
         self.max_epochs = cfg.get('train').get('max_epochs')
         self.early_stop_patience = cfg.get('train').get('early_stop.patience')
-        self.early_stop_min_delta = cfg.get('train').get('early_stop.min_delta') 
+        self.early_stop_min_delta = cfg.get('train').get('early_stop.min_delta')
         
-        # define the model and loss function (based on the UQ method)
-        if self.uq_method == 'deterministic':
-            # define the model for deterministic approach (point estimate)
-            self.model = DALSTMModel(input_size=self.input_size,
-                                     hidden_size=self.hidden_size,
-                                     n_layers=self.n_layers,
-                                     max_len=self.max_len,
-                                     dropout=self.dropout,
-                                     p_fix=self.dropout_prob).to(self.device)
-            # define loss function
-            self.criterion = set_loss(
-                loss_func=cfg.get('train').get('loss_function'))
-            # set some attributes to use generic train and test methods
-            self.heteroscedastic = False 
-            self.num_mcmc = None
-        elif (self.uq_method == 'DA' or self.uq_method == 'CDA' or
+        # define the number of samples for inference with dropout approximation
+        # define other variables required for dropout approximation
+        if (self.uq_method == 'DA' or self.uq_method == 'CDA' or
               self.uq_method == 'DA_A' or self.uq_method == 'CDA_A'):
+            self.num_mcmc = cfg.get('uncertainty').get(
+                'dropout_approximation').get('num_stochastic_forward_path')
             # hard-coded parameters since we have separate deterministic model
             self.dropout = True
             self.Bayes = True
-            # general configurations for all 4 possible methods   
-            self.num_mcmc = cfg.get('uncertainty').get(
-                'dropout_approximation').get('num_stochastic_forward_path')
+            # define regularizers for dropout approximation
             self.weight_regularizer = cfg.get('uncertainty').get(
                 'dropout_approximation').get('weight_regularizer')
             self.dropout_regularizer = cfg.get('uncertainty').get(
@@ -87,28 +74,56 @@ class DALSTM_train_evaluate ():
                 self.concrete_dropout = False
             else:
                 self.concrete_dropout = True
-            # Set the loss function (heteroscedastic/homoscedastic)
-            if (self.uq_method == 'DA' or self.uq_method == 'CDA'):
-                self.heteroscedastic = False
-                self.criterion = set_loss(
-                    loss_func=cfg.get('train').get('loss_function'))
-            else:
-                self.heteroscedastic = True
-                self.criterion = set_loss(
-                    loss_func=cfg.get('train').get('loss_function'),
-                    heteroscedastic=True)                    
+        else:
+            # necessary to use the same execution path
+            self.num_mcmc = None 
+        
+        # define loss function (heteroscedastic/homoscedastic):
+        if (self.uq_method == 'deterministic' or self.uq_method == 'DA'
+            or self.uq_method == 'CDA' or self.uq_method == 'en_t'):
+            self.criterion = set_loss(
+                loss_func=cfg.get('train').get('loss_function'))            
+        if (self.uq_method == 'DA_A' or self.uq_method == 'CDA_A' or
+            self.uq_method == 'mve' or self.uq_method == 'en_t_mve'):
+            self.criterion = set_loss(
+                loss_func=cfg.get('train').get('loss_function'),
+                heteroscedastic=True) 
+             
+        # define the model (based on the UQ method)
+        if self.uq_method == 'deterministic':
+            # define the model for deterministic approach (point estimate)
+            self.model = DALSTMModel(input_size=self.input_size,
+                                     hidden_size=self.hidden_size,
+                                     n_layers=self.n_layers,
+                                     max_len=self.max_len,
+                                     dropout=self.dropout,
+                                     p_fix=self.dropout_prob).to(self.device)            
+        elif (self.uq_method == 'DA' or self.uq_method == 'CDA'):
             self.model = StochasticDALSTM(input_size=self.input_size,
-                                 hidden_size=self.hidden_size,
-                                 n_layers=self.n_layers,
-                                 max_len=self.max_len,
-                                 dropout=self.dropout,
-                                 concrete=self.concrete_dropout,
-                                 p_fix=self.dropout_prob,
-                                 weight_regularizer=self.weight_regularizer,
-                                 dropout_regularizer=self.dropout_regularizer,
-                                 hs=self.heteroscedastic,
-                                 Bayes=self.Bayes,
-                                 device=self.device).to(self.device) 
+                                          hidden_size=self.hidden_size,
+                                          n_layers=self.n_layers,
+                                          max_len=self.max_len,
+                                          dropout=self.dropout,
+                                          concrete=self.concrete_dropout,
+                                          p_fix=self.dropout_prob,
+                                          weight_regularizer=self.weight_regularizer,
+                                          dropout_regularizer=self.dropout_regularizer,
+                                          hs=False,
+                                          Bayes=self.Bayes,
+                                          device=self.device).to(self.device)
+        elif (self.uq_method == 'DA_A' or self.uq_method == 'CDA_A'):
+            self.model = StochasticDALSTM(input_size=self.input_size,
+                                          hidden_size=self.hidden_size,
+                                          n_layers=self.n_layers,
+                                          max_len=self.max_len,
+                                          dropout=self.dropout,
+                                          concrete=self.concrete_dropout,
+                                          p_fix=self.dropout_prob,
+                                          weight_regularizer=self.weight_regularizer,
+                                          dropout_regularizer=self.dropout_regularizer,
+                                          hs=True,
+                                          Bayes=self.Bayes,
+                                          device=self.device).to(self.device) 
         elif self.uq_method == 'mve':
             # define the model for mean variance estimation (MVE) approach
             self.model = DALSTMModelMve(input_size=self.input_size,
@@ -117,14 +132,7 @@ class DALSTM_train_evaluate ():
                                      max_len=self.max_len,
                                      dropout=self.dropout,
                                      p_fix=self.dropout_prob).to(self.device)
-            # use heteroscedastic loss funciton for MVE approach
-            self.criterion = set_loss(
-                loss_func=cfg.get('train').get('loss_function'),
-                heteroscedastic=True)  
-            # we used heteroscedastic loss function, in the following we just
-            # set self.heteroscedastic to False to use same execution path
-            self.heteroscedastic = False 
-            self.num_mcmc = None
+
         # t: Traditional ensemble: multiple models, different initialization.
         elif (self.uq_method == 'en_t' or self.uq_method == 'en_t_mve'):
             # empty lists (ensemble of) models, optimizers, schedulers
@@ -155,18 +163,7 @@ class DALSTM_train_evaluate ():
                 self.models.append(model)
             # Restore the original random state
             torch.set_rng_state(original_rng_state)
-            # define loss function
-            if self.uq_method == 'en_t':
-                self.criterion = set_loss(
-                    loss_func=cfg.get('train').get('loss_function'))
-            else:
-                self.criterion = set_loss(
-                    loss_func=cfg.get('train').get('loss_function'),
-                    heteroscedastic=True) 
-            # set some attributes to use generic train and test methods
-            self.heteroscedastic = False 
-            self.num_mcmc = None
-                
+               
         elif (self.uq_method == 'en_b' or self.uq_method == 'en_b_mve'):
             pass
         else:
@@ -224,7 +221,6 @@ class DALSTM_train_evaluate ():
                 # if there is only one model to train
                 if not (self.uq_method == 'en_t' or self.uq_method == 'en_t_mve'):                
                     train_model(model=self.model, uq_method=self.uq_method,
-                                heteroscedastic=self.heteroscedastic,
                                 train_loader=self.train_loader,
                                 val_loader=self.val_loader,
                                 criterion=self.criterion,
@@ -240,7 +236,6 @@ class DALSTM_train_evaluate ():
                                 cfg=self.cfg,
                                 seed=self.seed)   
                     test_model(model=self.model, uq_method=self.uq_method,
-                               heteroscedastic=self.heteroscedastic,
                                num_mc_samples=self.num_mcmc,              
                                test_loader=self.test_loader,
                                test_original_lengths=self.test_lengths,
@@ -256,7 +251,6 @@ class DALSTM_train_evaluate ():
                     for i in range(1, self.num_models+1):
                         train_model(model=self.models[i-1],
                                     uq_method=self.uq_method,
-                                    heteroscedastic=self.heteroscedastic,
                                     train_loader=self.train_loader,
                                     val_loader=self.val_loader,
                                     criterion=self.criterion,
@@ -274,7 +268,6 @@ class DALSTM_train_evaluate ():
                                     model_idx=i)
                     test_model(models=self.models,
                                uq_method=self.uq_method,
-                               heteroscedastic=self.heteroscedastic,
                                num_mc_samples=self.num_mcmc,              
                                test_loader=self.test_loader,
                                test_original_lengths=self.test_lengths,
@@ -305,7 +298,6 @@ class DALSTM_train_evaluate ():
                         # if there is only one model to train
                         train_model(model=self.model,
                                     uq_method=self.uq_method,
-                                    heteroscedastic=self.heteroscedastic,
                                     train_loader=self.train_loader,
                                     val_loader=self.val_loader,
                                     criterion=self.criterion,
@@ -323,7 +315,6 @@ class DALSTM_train_evaluate ():
                                     seed=self.seed)
                         test_model(model=self.model, 
                                    uq_method=self.uq_method,
-                                   heteroscedastic=self.heteroscedastic,
                                    num_mc_samples=self.num_mcmc,  
                                    test_loader=self.test_loader,
                                    test_original_lengths=self.test_lengths,
@@ -340,7 +331,6 @@ class DALSTM_train_evaluate ():
                         for i in range(1, self.num_models+1):
                             train_model(model=self.models[i-1],
                                         uq_method=self.uq_method,
-                                        heteroscedastic=self.heteroscedastic,
                                         train_loader=self.train_loader,
                                         val_loader=self.val_loader,
                                         criterion=self.criterion,
@@ -359,7 +349,6 @@ class DALSTM_train_evaluate ():
                                         model_idx=i)
                         test_model(models=self.models,
                                    uq_method=self.uq_method,
-                                   heteroscedastic=self.heteroscedastic,
                                    num_mc_samples=self.num_mcmc,  
                                    test_loader=self.test_loader,
                                    test_original_lengths=self.test_lengths,
