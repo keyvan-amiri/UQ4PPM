@@ -19,13 +19,14 @@ def get_num_models_from_file(file_path):
         for line in file:
             # Check if the line contains the 'num_models' key
             if "'num_models':" in line:
-                # Extract the number after 'num_models':
-                num_str = line.split("'num_models':")[1].split(',')[0].strip()
+                # Extract the part after 'num_models':
                 try:
+                    # Split the line at 'num_models' and then split at the first occurrence of either ',' or '}'
+                    num_str = line.split("'num_models':")[1].split(',')[0].split('}')[0].strip()
                     num_models = int(num_str)
                     return num_models
-                except ValueError:
-                    raise ValueError('Cannot find num_models value.')
+                except (ValueError, IndexError):
+                    raise ValueError('Cannot find a valid num_models value.')
     raise ValueError('num_models not found in the file.')
 
 
@@ -63,9 +64,15 @@ def get_uq_method(csv_file):
         return uq_method
     else:
         raise ValueError("The CSV file name does not match the expected pattern.")
-        
+
+# A method to replace a customized suffix for any file        
 def replace_suffix(input_string, old_suffix, new_suffix,
                    ensemble_mode=False, model_idx=None):
+    """
+    In case of ensemble models, it will add this string between the base_name
+    and the new suffix: 'member_' + str(model_idx) + '_' this means:
+    'member_1_', 'member_1_', and so on.
+    """
     if input_string.endswith(old_suffix):
         if ensemble_mode:
             return input_string[:-len(old_suffix)] + 'member_' + str(model_idx) + '_' + new_suffix
@@ -74,7 +81,8 @@ def replace_suffix(input_string, old_suffix, new_suffix,
     else:
         raise ValueError(
             'The input string does not end with the specified old suffix.')
-        
+
+# Extract fold number from a csv file name. (for cross-fold validation usage)        
 def extract_fold(csv_file):
     # Define the regex pattern with fold
     pattern_with_fold = r"^[^_]+_[^_]+_cv_fold(?P<fold>\d+)_seed_\d+_inference_result_\.csv$"
@@ -88,6 +96,7 @@ def extract_fold(csv_file):
     else:
         return None
 
+# A method to add a customized suffix to a csv file name.
 def add_suffix_to_csv(csv_file, added_suffix=None):
     # Check if the file name ends with .csv
     if csv_file.endswith('.csv'):
@@ -96,7 +105,8 @@ def add_suffix_to_csv(csv_file, added_suffix=None):
         return new_csv_file
     else:
         raise ValueError("The file name does not end with .csv")
-    
+
+# A method to extract processed data and model dimensions.
 def get_validation_data_and_model_size(args=None, cfg=None, root_path=None):
     # check holdout/cv data split and get the fold
     fold = extract_fold(args.csv_file)    
@@ -157,9 +167,34 @@ def get_validation_data_and_model_size(args=None, cfg=None, root_path=None):
 
         return None
 
-
+# A method to extract model and loss type.
 def get_model_and_loss(args=None, cfg=None, input_size=None, max_len=None, 
                        device=None, ensemble_mode=None, num_models=None):
+    """
+    Parameters
+    ----------
+    args : Argument for recalibration step.
+    cfg : cfg file that is used for training and inference.
+    input_size : Number of features. 
+    max_len : Length of the sequences.
+    device : Device that executes this script (e.g., GPU number)
+    ensemble_mode : Whether UQ techniques is an ensemble approach or not.
+    num_models : Number of ensembl members (if any)
+
+    Returns
+    -------
+    model : In case of non-ensembl approaches (including all variations of 
+    drop out approaximation, and MVE approach), it returns a predictive model
+    that is used for training and inference. This model will be used to load 
+    a checkpoint file (pre-trained model that is ready for inference.)
+    criterion : The loss function that is used in Backpropagation.
+    num_mcmc : Number of Monte-carlo samples that is used for inference with
+    dropout approximation.
+    normalization : Whether normalization is done on target attribute or not.
+    model_list : In case of ensemble models, instead of one single pre-trained
+    model a list of models (one for each ensemble member) is created to be
+    later loaded with the relevant checkpoint file created during training.
+    """
 
     # get other model characteristics
     hidden_size = cfg.get('model').get('lstm').get('hidden_size')

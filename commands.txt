@@ -15,7 +15,7 @@ evaluation:
 bash bash_scripts/evaluation.sh
 
 recalibration:
-bash bash_scripts/recalibration_HelpDesk2.sh
+bash bash_scripts/recalibration_HelpDesk.sh
 bash bash_scripts/recalibration_Sepsis.sh
 bash bash_scripts/recalibration_BPIC13I.sh
 bash bash_scripts/recalibration_BPIC12.sh

@@ -145,6 +145,15 @@ def main():
     val_inference_name = add_suffix_to_csv(args.csv_file,
                                            added_suffix='validation_')    
     val_inference_path = os.path.join(recalibration_path, val_inference_name)
+    
+    # Report the process to the user.
+    print('Recalibration will be done for the following set up:', args.model)
+    print('Model:', args.model)
+    print('dataset:', args.dataset)
+    print('UQ method:', args.UQ)
+    print('#############################################################')
+
+    
     # set ensemble mode
     if (args.UQ == 'en_t' or args.UQ == 'en_b' or args.UQ == 'en_b_mve' or
         args.UQ == 'en_t_mve'):
@@ -161,9 +170,6 @@ def main():
         ensemble_mode = False
         num_models = None
     
-    print('model is', args.model)
-    print('dataset is', args.dataset)
-    print('UQ method is', args.UQ)
     # the execution path for all UQ methods except CARD
     if args.UQ != 'CARD':
         # load cfg file used for training
