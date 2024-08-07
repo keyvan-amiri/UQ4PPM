@@ -13,7 +13,7 @@ from models.stochastic_dalstm import StochasticDALSTM
 from loss.loss_handler import set_loss
 from evaluation import evaluate_coverage
 
-
+# A method to extract number of ensemble members from the report .txt file
 def get_num_models_from_file(file_path):
     with open(file_path, 'r') as file:
         for line in file:
@@ -28,7 +28,13 @@ def get_num_models_from_file(file_path):
                     raise ValueError('Cannot find num_models value.')
     raise ValueError('num_models not found in the file.')
 
+
+# Extract model type, dataset, and Uncertainty Quantification from cfg file
 def extract_info_from_cfg(cfg_file):
+    """
+    Note: it can only detect CARD model, for other UQ techniques a separate
+    method (i.e., get_uq_method) is used.
+    """
     # Define the regex pattern
     pattern = r"^(?P<model>[a-zA-Z0-9]+)_(?P<dataset>[a-zA-Z0-9]+)(?:_(?P<uq_method>[a-zA-Z0-9]+))?\.(?:yaml|yml)$"    
     # Match the pattern against the cfg_file
@@ -43,7 +49,8 @@ def extract_info_from_cfg(cfg_file):
     else:
         raise ValueError('The configuration file name does not match \
                          the expected pattern.')
-        
+
+# A method t extract Uncertainty Quantification approach from csv file       
 def get_uq_method(csv_file):
     # Define the regex pattern to capture uq_method
     pattern = r"^(?P<uq_method>.+?)_(holdout|cv)_.*\.csv$"
@@ -215,6 +222,7 @@ def get_model_and_loss(args=None, cfg=None, input_size=None, max_len=None,
                 dropout_regularizer=dropout_regularizer,
                 hs=True, Bayes=True, device=device).to(device)
     else:
+        print(num_models)
         for i in range(num_models):
             if (args.UQ == 'en_t' or args.UQ == 'en_b'):
                 model = DALSTMModel(

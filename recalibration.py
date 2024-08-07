@@ -120,7 +120,7 @@ def main():
     root_path = os.getcwd()
     cfg_path = os.path.join(root_path, 'cfg', args.cfg_file)    
     # Get model, dataset, and uq_method based on configuration file name
-    args.model, args.dataset, args.UQ = extract_info_from_cfg(args.cfg_file)    
+    args.model, args.dataset, args.UQ = extract_info_from_cfg(args.cfg_file)     
     result_path = os.path.join(root_path, 'results', args.dataset, args.model)
     plot_path = os.path.join(root_path, 'plots', args.dataset, args.model)
     # path to inference results on test set
@@ -134,6 +134,9 @@ def main():
         os.makedirs(recalibration_plot_path)
     # define a path for report .txt to add recalibration time
     if args.UQ != 'CARD':
+        # get the exact UQ method from csv file in arguments.
+        args.UQ = get_uq_method(args.csv_file)
+        # Define report name it is done separately for CARD model
         base_name = os.path.splitext(args.csv_file)[0].removesuffix(
             'inference_result_')       
         report_name = base_name + 'recalibration_report.txt'
@@ -157,10 +160,12 @@ def main():
         # to use same execution path for single models similar to ensembles
         ensemble_mode = False
         num_models = None
-        
+    
+    print('model is', args.model)
+    print('dataset is', args.dataset)
+    print('UQ method is', args.UQ)
     # the execution path for all UQ methods except CARD
     if args.UQ != 'CARD':
-        args.UQ = get_uq_method(args.csv_file)
         # load cfg file used for training
         with open(cfg_path, 'r') as f:
             cfg = yaml.safe_load(f)
