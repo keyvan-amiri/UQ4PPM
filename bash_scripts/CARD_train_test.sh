@@ -17,8 +17,8 @@ python main.py --dataset ${DATASET} --model ${MODEL} --n_splits ${N_SPLITS} --se
 
 export DATASET=Sepsis
 
-#python main.py --dataset ${DATASET} --model ${MODEL} --n_splits ${N_SPLITS} --seed ${SEED} --device ${DEVICE_ID}  --UQ CARD 
-#python main.py --dataset ${DATASET} --model ${MODEL} --n_splits ${N_SPLITS} --seed ${SEED} --device ${DEVICE_ID} --UQ CARD --test 
+python main.py --dataset ${DATASET} --model ${MODEL} --n_splits ${N_SPLITS} --seed ${SEED} --device ${DEVICE_ID}  --UQ CARD 
+python main.py --dataset ${DATASET} --model ${MODEL} --n_splits ${N_SPLITS} --seed ${SEED} --device ${DEVICE_ID} --UQ CARD --test 
 
 
 export DATASET=BPIC20I
@@ -28,10 +28,12 @@ python main.py --dataset ${DATASET} --model ${MODEL} --n_splits ${N_SPLITS} --se
 
 export DATASET=BPIC12
 
-python main.py --dataset ${DATASET} --model ${MODEL} --n_splits ${N_SPLITS} --seed ${SEED} --device ${DEVICE_ID}  --UQ CARD --resume_training
+python main.py --dataset ${DATASET} --model ${MODEL} --n_splits ${N_SPLITS} --seed ${SEED} --device ${DEVICE_ID}  --UQ CARD
 python main.py --dataset ${DATASET} --model ${MODEL} --n_splits ${N_SPLITS} --seed ${SEED} --device ${DEVICE_ID} --UQ CARD --test 
 
 export DATASET=BPIC13I
 
-python main.py --dataset ${DATASET} --model ${MODEL} --n_splits ${N_SPLITS} --seed ${SEED} --device ${DEVICE_ID}  --UQ CARD --resume_training
+python main.py --dataset ${DATASET} --model ${MODEL} --n_splits ${N_SPLITS} --seed ${SEED} --device ${DEVICE_ID}  --UQ CARD
 python main.py --dataset ${DATASET} --model ${MODEL} --n_splits ${N_SPLITS} --seed ${SEED} --device ${DEVICE_ID} --UQ CARD --test 
+
+

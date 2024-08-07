@@ -1,15 +1,18 @@
 dws-15.informatik.uni-mannheim.de
 tmux new -s uq4ppm
-conda activate graphgps
-conda activate card
+conda activate graphgps   (only for PGTNet, evaluation and recalibration)
+conda activate card	  (for train and test)
 tmux attach-session -t uq4ppm
 
 Pre-processing
 python preprocess.py --datasets HelpDesk
 
 train and test:
-bash bash_scripts/other_models_train_test.sh
-bash bash_scripts/CARD_train_test2.sh
+bash bash_scripts/CARD_train_test.sh
+bash bash_scripts/dropout_mve_train_test.sh
+bash bash_scripts/ensemble_train_test.sh
+bash bash_scripts/ensemble_GPU1.sh   16 uq4ppm
+bash bash_scripts/ensemble_GPU2.sh   16 uq4ppm2
 
 evaluation:
 bash bash_scripts/evaluation.sh

@@ -257,7 +257,7 @@ def get_model_and_loss(args=None, cfg=None, input_size=None, max_len=None,
                 dropout_regularizer=dropout_regularizer,
                 hs=True, Bayes=True, device=device).to(device)
     else:
-        print(num_models)
+        #print(num_models)
         for i in range(num_models):
             if (args.UQ == 'en_t' or args.UQ == 'en_b'):
                 model = DALSTMModel(
