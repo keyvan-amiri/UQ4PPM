@@ -8,7 +8,6 @@ model:
     dropout_prob: 0.1
 uncertainty:
   dropout_approximation:
-    concrete_dropout: True
     weight_regularizer: 0.1
     dropout_regularizer: 0.1
     num_stochastic_forward_path: 50
