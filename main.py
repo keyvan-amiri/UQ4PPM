@@ -25,6 +25,7 @@ from utils.utils import parse_temp_config, parse_config, str2bool
 #from utils.utils import delete_preprocessd_tensors
 
 
+# The main method for exceution of CARD models.
 def main_card(arg_set=None):
     config, logger = parse_config(args=arg_set)
 
@@ -73,6 +74,7 @@ def main_card(arg_set=None):
         logging.error(traceback.format_exc())
 
 
+# The main method for execution of all UQ techniques
 def main():
    
     # Parse arguments     
@@ -86,32 +88,21 @@ def main():
     # Argument to select the dataset (i.e., an event log)
     parser.add_argument('--dataset', default='HelpDesk',
                         help='Datasets used by model')    
-    """
-    Argument to select architecture:
-    For CARD: is the architecture of pre-trained point estimator.
-    For dropout approximation, and heterosedastic loss: backbone architecture
-    
-    """
+    # Argument to select backbone architecture.
     parser.add_argument('--model', default='pgtnet',
                         help='Type of the predictive model')
     # select the uncertainty quantification approach
     parser.add_argument('--UQ', default='deterministic',
                         help='Uncertainty quantification method to be used')
-    """
-    Split arguments: --n_splits and --split_mode:
-    dropout and heterosedastic loss: split_mode should be explicitly defined
-    CARD: if --n_splits == 1, holdout split is used otherwise cv split
-    The default n_splits == 5, is used for preprocessing as well.
-    """
+    # five splits are used for cross-fold valiation by default
     parser.add_argument('--n_splits', type=int, default=5,
                         help='Number of splits that is used')
+    # CARD: n_splits == 1 implies holdout split, otherwise cross-fold validation
+    # Other UQ techniques: split_mode should be explicitly defined
     parser.add_argument('--split_mode', default='holdout',
                         help='The data split that is used')
-    """
-    seed argument:
-    CARD: each seed should be executed separately from command line.
-    Other approches can handle multiple seeds e.g., seed=[42,56,79]
-    """
+    # CARD: each seed should be executed separately from command line.
+    # Other UQ techniques: handle multiple seeds e.g., seed=[42,56,79]
     parser.add_argument('--seed', nargs='+', help='Random seed to use',
                         required=True)
     # device and thread arguments.
@@ -122,6 +113,7 @@ def main():
     ##########################################################################
     #########################    CARD arguments    ###########################
     ##########################################################################
+    
     # if --test is provided evaluation is done, otherwise: training
     parser.add_argument('--test', action='store_true',
                         help='Whether to test the model')
@@ -129,43 +121,40 @@ def main():
     parser.add_argument('--train_guidance_only', action='store_true', 
                         help='Whether to only pre-train the guidance model f_phi')
     """
-    CARD model arguments:
         --loss_guidance: loss function for guidance model that predicts y_0_hat.
         If L2 all CARD, results are reorted in RMSE otherwise it will be
-        reported in MAE.  
-        --noise_prior: if explicitly added in the command line:
-            a noise prior is applied instead of pre-trained guidance model.
-            noise_prior_approach (zero, mean, or median) is specified in config.
-        --no_cat_f_phi: if explicitly added in the command line:
-            new_config.model.cat_y_pred is set to False. This means that f_phi
-            (point estimate) is not concatanated in noise estimation network.
-        --timesteps: number of timesteps can be set using command line.
-        If not spcified, it should be included in the configuration file.
+        reported in MAE.
     """
     parser.add_argument('--loss_guidance', type=str, default='L2',
                         help='Which loss to use for guidance model: L1/L2')
+    """
+        --noise_prior: if explicitly added in the command line:
+            a noise prior is applied instead of pre-trained guidance model.
+            noise_prior_approach (zero, mean, or median) is specified in config.
+    """      
     parser.add_argument('--noise_prior', action='store_true', 
-                        help='Whether to apply a noise prior distribution at \
-                            timestep T')
+                            help='Whether to apply a noise prior distribution at \
+                                timestep T')
+    """
+        --no_cat_f_phi: if explicitly added in the command line:
+            new_config.model.cat_y_pred is set to False. This means that f_phi
+            (point estimate) is not concatanated in noise estimation network.
+    """
     parser.add_argument('--no_cat_f_phi', action='store_true',
                         help='Whether to not concatenate f_phi as part of \
-                            eps_theta input')  
+                            eps_theta input') 
+    """
+        --timesteps: number of timesteps can be set using command line.
+        If not spcified, it should be included in the configuration file.
+    """
     parser.add_argument('--timesteps', type=int, default=None,
-                            help='number of steps involved')
-    
-    """
-    Execution control arguments:
-        --run_all: train or test all available splits together (default: True)
-        --split: to train or test different splits seperately
-        --init_split: can be used to resume training
-        --resume_training: to resume training
-        --ni:         
-    """
+                            help='number of steps involved')    
     parser.add_argument('--run_all', type=str2bool, nargs='?',
                         const=True, default=True,
                         help='Whether to run all train test splits.')
     parser.add_argument('--split', type=int, default=0,
                         help='which split to use for regression data')
+    # --init_split: can be used to resume training
     parser.add_argument('--init_split', type=int, default=0,
                         help='initial split to train for regression data')
     parser.add_argument('--resume_training', action='store_true',
@@ -173,8 +162,7 @@ def main():
     #TODO: important! use the following in large-scale experiments.
     #TODO: solve the problem of overwriting feedbacks in CARD
     parser.add_argument( '--ni', action='store_true', 
-                        help='No interaction. Suitable for Slurm Job launcher')
-    
+                        help='No interaction. Suitable for Slurm Job launcher')    
     # Evaluation metrics arguments:
     parser.add_argument('--rmse_timestep', type=int, default=0,
                         help='selected timestep to report metric y RMSE')
@@ -189,8 +177,7 @@ def main():
                         help='Apply global variance for NLL computation')
     parser.add_argument('--nll_test_var', action='store_true',
                         help='Apply sample variance of the test set for NLL \
-                            computation')   
-    
+                            computation')       
     # documentation arguments:
     parser.add_argument('--comment', type=str, default='',
                             help='A string for experiment comment')

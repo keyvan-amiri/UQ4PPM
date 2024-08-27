@@ -47,7 +47,7 @@ training:
     image_folder: 'training_image_samples'
 
 testing:
-    batch_size: 32
+    batch_size: 8
     sampling_size: 1000
     last_only: True
     plot_freq: 5

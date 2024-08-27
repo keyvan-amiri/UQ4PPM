@@ -1222,6 +1222,7 @@ class Diffusion(object):
                             float(normalized_median_target_value)).to(
                                 self.device)                        
                         #y_T_mean_tile = torch.full_like(y_0_hat_tile, normalized_median_target_value).to(self.device)                            
+                #TODO: check memory problem is resolved!
                 x_tile = (x_batch.repeat(
                     config.testing.n_z_samples, 1, 1).transpose(0, 1)).to(
                         self.device).flatten(0, 1).view(
