@@ -4,7 +4,8 @@ import torch.optim as optim
 import os
 import pickle
 from sklearn.ensemble import RandomForestRegressor
-from utils.utils import set_random_seed, set_optimizer, train_model, test_model
+from utils.utils import (set_random_seed, set_optimizer, train_model,
+                         test_model, fit_rf)
 from loss.loss_handler import set_loss
 from models.dalstm import DALSTMModel, DALSTMModelMve, dalstm_init_weights
 from models.stochastic_dalstm import StochasticDALSTM
@@ -299,8 +300,8 @@ class DALSTM_train_evaluate ():
                 (self.X_train_path, self.X_val_path, self.X_test_path,
                  self.y_train_path, self.y_val_path, self.y_test_path,
                  self.test_lengths_path) = self.holdout_paths()
-                # except for Bootstrapping ensemble and embedding-based
-                if ((not self.bootstrapping) and (not self.union_mode)):
+                # except for Bootstrapping ensemble
+                if not self.bootstrapping:
                     (self.train_loader, self.val_loader, self.test_loader,
                      self.test_lengths) = self.load_data()
                 # if there is only one model to train (and not embedding-based)
@@ -414,8 +415,8 @@ class DALSTM_train_evaluate ():
                     (self.X_train_path, self.X_val_path, self.X_test_path,
                      self.y_train_path, self.y_val_path, self.y_test_path,
                      self.test_lengths_path) = self.cv_paths(split_key=split_key)
-                    # except for Bootstrapping ensemble and embedding-based
-                    if ((not self.bootstrapping) and (not self.union_mode)):
+                    # except for Bootstrapping ensemble
+                    if not self.bootstrapping:
                         (self.train_loader, self.val_loader, self.test_loader,
                          self.test_lengths) = self.load_data()
                     # if there is only one model to train (and not embedding-based)

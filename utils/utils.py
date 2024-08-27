@@ -69,6 +69,29 @@ def get_optimizer(config_optim, parameters):
         raise NotImplementedError(
             'Optimizer {} not understood.'.format(config_optim.optimizer))
 
+def fit_rf(model=None, aux_model=None, val_loader=None, y_val_path=None,
+           val_emb_path=None):
+    if not os.path.isfile(val_emb_path):  
+        print('Get the embedding of validation set using pre-trained model.')       
+        # set deterministic point estimate to evaluation mode
+        model.eval()
+        with torch.no_grad():
+            for index, test_batch in enumerate(test_loader):
+                inputs = test_batch[0].to(device)
+                _y_truth = test_batch[1].to(device)
+                batch_size = inputs.shape[0]
+    else:
+        print('Embedding for validation set is already created.')
+        # TODO: load the embedding
+
+    #y_val = torch.load(y_val_path)
+    
+    
+    # Convert PyTorch tensors to NumPy arrays
+    #X_val = X_val_tensor.cpu().numpy() if y_val_tensor.is_cuda else X_val_tensor.numpy()
+    #y_val = y_val_tensor.cpu().numpy() if y_val_tensor.is_cuda else y_val_tensor.numpy()
+    
+    return None
 
 # function to handle training the model
 def train_model(model=None, uq_method=None, train_loader=None, val_loader=None,
@@ -230,7 +253,7 @@ def train_model(model=None, uq_method=None, train_loader=None, val_loader=None,
                 
            
 # function to handle inference with trained model(s)
-def test_model(model=None, models = None, uq_method=None, num_mc_samples=None,
+def test_model(model=None, models=None, uq_method=None, num_mc_samples=None,
                test_loader=None, test_original_lengths=None, y_scaler=None, 
                processed_data_path=None, report_path=None,
                data_split=None, fold=None, seed=None, device=None,
