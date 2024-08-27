@@ -5,7 +5,8 @@ import torch.nn as nn
 ##############################################################################
 class DALSTMModel(nn.Module):
     def __init__(self, input_size=None, hidden_size=None, n_layers=None,
-                 max_len=None, dropout=True, p_fix=0.2):
+                 max_len=None, dropout=True, p_fix=0.2, 
+                 exclude_last_layer=False):
         '''
         ARGUMENTS:
         input_size: number of features
@@ -23,7 +24,10 @@ class DALSTMModel(nn.Module):
         self.lstm2 = nn.LSTM(hidden_size, hidden_size, batch_first=True)
         self.dropout_layer = nn.Dropout(p=p_fix)
         self.batch_norm1 = nn.BatchNorm1d(max_len)
-        self.linear1 = nn.Linear(hidden_size, 1) 
+        # whether to drop the last layer or not (for embedding-based UQ)
+        self.exclude_last_layer = exclude_last_layer
+        if not self.exclude_last_layer:
+            self.linear1 = nn.Linear(hidden_size, 1)
         
     def forward(self, x):
         x = x.float() # if tensors are saved in a different format
@@ -38,8 +42,11 @@ class DALSTMModel(nn.Module):
                 if self.dropout:
                     x = self.dropout_layer(x)
                 x = self.batch_norm1(x)
-        yhat = self.linear1(x[:, -1, :]) # only the last one in the sequence 
-        return yhat.squeeze(dim=1) 
+        if not self.exclude_last_layer:
+            yhat = self.linear1(x[:, -1, :]) # only the last one in the sequence
+            return yhat.squeeze(dim=1)
+        else:
+            return x  # Return the output without applying the last linear layer
     
 ##############################################################################
 # Stochastic Data-aware LSTM modelL remaining time prediction (mean & variance)

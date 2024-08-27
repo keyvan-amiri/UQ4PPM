@@ -3,6 +3,7 @@ from torch.utils.data import TensorDataset, DataLoader
 import torch.optim as optim
 import os
 import pickle
+from sklearn.ensemble import RandomForestRegressor
 from utils.utils import set_random_seed, set_optimizer, train_model, test_model
 from loss.loss_handler import set_loss
 from models.dalstm import DALSTMModel, DALSTMModelMve, dalstm_init_weights
@@ -41,6 +42,8 @@ class DALSTM_train_evaluate ():
         self.num_models = cfg.get('num_models')
         # get Bootstrapping ratio which is used by each ensemble member
         self.Bootstrapping_ratio = cfg.get('Bootstrapping_ratio')
+        # get type of the probabilistic model to work upon embedding
+        self.union = cfg.get('union')
         # Define important size and dimensions
         (self.input_size, self.max_len, self.max_train_val
          ) = self.load_dimensions()
@@ -88,19 +91,43 @@ class DALSTM_train_evaluate ():
         else:
             self.ensemble_mode = False
             self.bootstrapping = False
-            
-        # define loss function (heteroscedastic/homoscedastic):
+        
+        # set relevant parameters for embedding-based UQ
+        if self.uq_method == 'union':
+            self.union_mode = True
+            self.n_estimators = (
+                cfg.get('uncertainty').get('union').get('n_estimators'))
+            depth_control = (
+                cfg.get('uncertainty').get('union').get('depth_control'))
+            if depth_control:
+                self.max_depth = (
+                    cfg.get('uncertainty').get('union').get('max_depth'))
+            else:
+                self.max_depth = None
+            self.min_samples_split = (
+                cfg.get('uncertainty').get('union').get('min_samples_split'))
+            self.min_samples_leaf = (
+                cfg.get('uncertainty').get('union').get('min_samples_leaf'))   
+        else:
+            self.union_mode = False
+
+        ######################################################################
+        ######  define loss function (heteroscedastic/homoscedastic)  ########
+        ######################################################################
         if (self.uq_method == 'deterministic' or self.uq_method == 'DA'
             or self.uq_method == 'CDA' or self.uq_method == 'en_t' or
             self.uq_method == 'en_b'):
             self.criterion = set_loss(
                 loss_func=cfg.get('train').get('loss_function'))            
-        if (self.uq_method == 'DA_A' or self.uq_method == 'CDA_A' or
+        elif (self.uq_method == 'DA_A' or self.uq_method == 'CDA_A' or
             self.uq_method == 'mve' or self.uq_method == 'en_t_mve' or
             self.uq_method == 'en_b_mve'):
             self.criterion = set_loss(
                 loss_func=cfg.get('train').get('loss_function'),
                 heteroscedastic=True) 
+        elif self.uq_method == 'union':
+            # define loss funciton for fitting the auxiliary model
+            self.criterion = cfg.get('uncertainty').get('union').get('loss_function')
         
         # execute training and evaluation loop
         for execution_seed in seeds:
@@ -109,10 +136,11 @@ class DALSTM_train_evaluate ():
             self.seed = int(execution_seed) 
             set_random_seed(self.seed) 
             
-            # define the model (based on the UQ method)
-            # deterministic model
+            ##################################################################
+            ###########  define the model (based on the UQ method)  ##########
+            ##################################################################
+            # deterministic model (point estimate)
             if self.uq_method == 'deterministic':
-                # define the model for deterministic approach (point estimate)
                 self.model = DALSTMModel(
                     input_size=self.input_size,
                     hidden_size=self.hidden_size,
@@ -120,7 +148,17 @@ class DALSTM_train_evaluate ():
                     max_len=self.max_len,
                     dropout=self.dropout,
                     p_fix=self.dropout_prob).to(self.device) 
-            # model for dropout approximation
+            # embedding-based approach
+            if self.uq_method == 'union':
+                self.model = DALSTMModel(
+                    input_size=self.input_size,
+                    hidden_size=self.hidden_size,
+                    n_layers=self.n_layers,
+                    max_len=self.max_len,
+                    dropout=self.dropout,
+                    p_fix=self.dropout_prob,
+                    exclude_last_layer=True).to(self.device) 
+            # dropout approximation
             elif (self.uq_method == 'DA' or self.uq_method == 'CDA'):
                 self.model = StochasticDALSTM(
                     input_size=self.input_size,
@@ -135,7 +173,7 @@ class DALSTM_train_evaluate ():
                     hs=False,
                     Bayes=self.Bayes,
                     device=self.device).to(self.device)
-            # model for dropout approximation with heteroscedastic loss function
+            # dropout approximation with heteroscedastic regression
             elif (self.uq_method == 'DA_A' or self.uq_method == 'CDA_A'):
                 self.model = StochasticDALSTM(
                     input_size=self.input_size,
@@ -150,7 +188,7 @@ class DALSTM_train_evaluate ():
                     hs=True,
                     Bayes=self.Bayes,
                     device=self.device).to(self.device)
-            # define the model for mean variance estimation (MVE) approach
+            # heteroscedastic regression also known as mean variance estimation
             elif self.uq_method == 'mve':                
                 self.model = DALSTMModelMve(
                     input_size=self.input_size,
@@ -217,8 +255,10 @@ class DALSTM_train_evaluate ():
                 # Restore the original random state
                 torch.set_rng_state(original_rng_state)
             
-            # get #num of model parameters, define optimizer(s) & scheduler(s)
-            if not self.ensemble_mode:
+            ##################################################################
+            ############   define optimizer(s) & scheduler(s)   ##############
+            ##################################################################
+            if ((not self.ensemble_mode) and (not self.union_mode)):
                 # get number of model parameters
                 total_params = sum(p.numel() for p in self.model.parameters()
                                    if p.requires_grad) 
@@ -230,8 +270,9 @@ class DALSTM_train_evaluate ():
                     cfg.get('optimizer').get('weight_decay'))
                 # define scheduler
                 self.scheduler = optim.lr_scheduler.ReduceLROnPlateau(
-                    self.optimizer, factor=0.5)            
-            else:
+                    self.optimizer, factor=0.5)  
+                print(f'Total model parameters: {total_params}')
+            elif self.ensemble_mode:
                 # get number of parameters for the first model
                 total_params = sum(p.numel() for p in self.models[0].parameters()
                                    if p.requires_grad) 
@@ -246,10 +287,9 @@ class DALSTM_train_evaluate ():
                     current_scheduler = optim.lr_scheduler.ReduceLROnPlateau(
                         self.optimizers[i], factor=0.5)
                     self.schedulers.append(current_scheduler)                
-            # print number of model parameters
-            print(f'Total model parameters: {total_params}')
+                print(f'Total model parameters: {total_params}')
         
-            # load train, validation, and test data loaders
+            # load train, validation, and test data loaders  
             if self.split == 'holdout':
                 # define the report path
                 self.report_path = os.path.join(
@@ -259,12 +299,12 @@ class DALSTM_train_evaluate ():
                 (self.X_train_path, self.X_val_path, self.X_test_path,
                  self.y_train_path, self.y_val_path, self.y_test_path,
                  self.test_lengths_path) = self.holdout_paths()
-                # for all UQ methods except Bootstrapping ensemble
-                if not self.bootstrapping: 
+                # except for Bootstrapping ensemble and embedding-based
+                if ((not self.bootstrapping) and (not self.union_mode)):
                     (self.train_loader, self.val_loader, self.test_loader,
                      self.test_lengths) = self.load_data()
-                # if there is only one model to train
-                if not self.ensemble_mode:                
+                # if there is only one model to train (and not embedding-based)
+                if ((not self.ensemble_mode) and (not self.union_mode)):         
                     train_model(model=self.model, uq_method=self.uq_method,
                                 train_loader=self.train_loader,
                                 val_loader=self.val_loader,
@@ -292,7 +332,7 @@ class DALSTM_train_evaluate ():
                                seed=self.seed,
                                device=self.device,
                                normalization=self.normalization)
-                else:
+                elif self.ensemble_mode:
                     # if there are ensemble of models to train
                     # get random state (before subset selction for Bootstrapping)
                     original_rng_state = torch.get_rng_state()
@@ -339,7 +379,30 @@ class DALSTM_train_evaluate ():
                                device=self.device,
                                normalization=self.normalization,
                                ensemble_mode=self.ensemble_mode,
-                               ensemble_size=self.num_models)                                  
+                               ensemble_size=self.num_models)  
+                elif self.union_mode:
+                    # check deterministic pre-trained model is available                    
+                    deterministic_checkpoint_path = os.path.join(
+                        self.result_path,
+                        'deterministic_{}_seed_{}_best_model.pt'.format(
+                            self.split, self.seed)) 
+                    if not os.path.isfile(deterministic_checkpoint_path):
+                        raise FileNotFoundError(
+                            'Deterministic model should be trained in advance')
+                    else:
+                        # load the checkpoint except the last layer
+                        checkpoint = torch.load(deterministic_checkpoint_path)
+                        self.model.load_state_dict(
+                            checkpoint['model_state_dict'], strict=False)
+                    # define a Random Forest Regressor to work on embeddings
+                    if self.union_mode == 'RF':
+                        self.aux_model = RandomForestRegressor(
+                            n_estimators=self.n_estimators,
+                            criterion=self.criterion,                            
+                            max_depth=self.max_depth,
+                            min_samples_split=self.min_samples_split,
+                            min_samples_leaf=self.min_samples_leaf,
+                            random_state=self.seed) 
             else:
                 for split_key in range(self.n_splits):
                     # define the report path
@@ -351,12 +414,12 @@ class DALSTM_train_evaluate ():
                     (self.X_train_path, self.X_val_path, self.X_test_path,
                      self.y_train_path, self.y_val_path, self.y_test_path,
                      self.test_lengths_path) = self.cv_paths(split_key=split_key)
-                    # for all UQ methods except Bootstrapping ensemble
-                    if not self.bootstrapping:
+                    # except for Bootstrapping ensemble and embedding-based
+                    if ((not self.bootstrapping) and (not self.union_mode)):
                         (self.train_loader, self.val_loader, self.test_loader,
                          self.test_lengths) = self.load_data()
-                    # if there is only one model to train
-                    if not self.ensemble_mode:                        
+                    # if there is only one model to train (and not embedding-based)
+                    if ((not self.ensemble_mode) and (not self.union_mode)):                    
                         train_model(model=self.model,
                                     uq_method=self.uq_method,
                                     train_loader=self.train_loader,
@@ -388,7 +451,7 @@ class DALSTM_train_evaluate ():
                                    seed=self.seed,
                                    device=self.device,
                                    normalization=self.normalization) 
-                    else:
+                    elif self.ensemble_mode:
                         # if there are ensemble of models to train
                         # get random state (before subset selction for Bootstrapping)
                         original_rng_state = torch.get_rng_state()
@@ -439,6 +502,29 @@ class DALSTM_train_evaluate ():
                                    normalization=self.normalization,
                                    ensemble_mode=self.ensemble_mode,
                                    ensemble_size=self.num_models)
+                    elif self.union_mode:
+                        # check deterministic pre-trained model is available                    
+                        deterministic_checkpoint_path = os.path.join(
+                            self.result_path,
+                            'deterministic_{}_fold{}_seed_{}_best_model.pt'.format(
+                                self.split, split_key+1, self.seed))                       
+                        if not os.path.isfile(deterministic_checkpoint_path):
+                            raise FileNotFoundError(
+                                'Deterministic model should be trained in advance')    
+                        else:
+                            # load the checkpoint except the last layer
+                            checkpoint = torch.load(deterministic_checkpoint_path)
+                            self.model.load_state_dict(
+                                checkpoint['model_state_dict'], strict=False) 
+                        # define a Random Forest Regressor to work on embeddings
+                        if self.union_mode == 'RF':
+                            self.aux_model = RandomForestRegressor(
+                                n_estimators=self.n_estimators,
+                                criterion=self.criterion,                            
+                                max_depth=self.max_depth,
+                                min_samples_split=self.min_samples_split,
+                                min_samples_leaf=self.min_samples_leaf,
+                                random_state=self.seed) 
                         
                     
     # A method to load important dimensions
