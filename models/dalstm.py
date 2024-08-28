@@ -43,10 +43,12 @@ class DALSTMModel(nn.Module):
                     x = self.dropout_layer(x)
                 x = self.batch_norm1(x)
         if not self.exclude_last_layer:
-            yhat = self.linear1(x[:, -1, :]) # only the last one in the sequence
+            # only the last one in the sequence is used by dense layer
+            yhat = self.linear1(x[:, -1, :]) 
             return yhat.squeeze(dim=1)
         else:
-            return x  # Return the output without applying the last linear layer
+            # Return the output without applying the last linear layer
+            return x[:, -1, :]  
     
 ##############################################################################
 # Stochastic Data-aware LSTM modelL remaining time prediction (mean & variance)
