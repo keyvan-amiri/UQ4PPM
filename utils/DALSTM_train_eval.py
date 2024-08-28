@@ -3,7 +3,6 @@ from torch.utils.data import TensorDataset, DataLoader
 import torch.optim as optim
 import os
 import pickle
-from sklearn.ensemble import RandomForestRegressor
 from utils.utils import (set_random_seed, set_optimizer, train_model,
                          test_model, fit_rf)
 from loss.loss_handler import set_loss
@@ -43,8 +42,6 @@ class DALSTM_train_evaluate ():
         self.num_models = cfg.get('num_models')
         # get Bootstrapping ratio which is used by each ensemble member
         self.Bootstrapping_ratio = cfg.get('Bootstrapping_ratio')
-        # get type of the probabilistic model to work upon embedding
-        self.union = cfg.get('union')
         # Define important size and dimensions
         (self.input_size, self.max_len, self.max_train_val
          ) = self.load_dimensions()
@@ -94,21 +91,8 @@ class DALSTM_train_evaluate ():
             self.bootstrapping = False
         
         # set relevant parameters for embedding-based UQ
-        if self.uq_method == 'union':
+        if self.uq_method == 'RF':
             self.union_mode = True
-            self.n_estimators = (
-                cfg.get('uncertainty').get('union').get('n_estimators'))
-            depth_control = (
-                cfg.get('uncertainty').get('union').get('depth_control'))
-            if depth_control:
-                self.max_depth = (
-                    cfg.get('uncertainty').get('union').get('max_depth'))
-            else:
-                self.max_depth = None
-            self.min_samples_split = (
-                cfg.get('uncertainty').get('union').get('min_samples_split'))
-            self.min_samples_leaf = (
-                cfg.get('uncertainty').get('union').get('min_samples_leaf'))   
         else:
             self.union_mode = False
 
@@ -126,7 +110,7 @@ class DALSTM_train_evaluate ():
             self.criterion = set_loss(
                 loss_func=cfg.get('train').get('loss_function'),
                 heteroscedastic=True) 
-        elif self.uq_method == 'union':
+        elif self.uq_method == 'RF':
             # define loss funciton for fitting the auxiliary model
             self.criterion = cfg.get('uncertainty').get('union').get('loss_function')
         
@@ -150,7 +134,7 @@ class DALSTM_train_evaluate ():
                     dropout=self.dropout,
                     p_fix=self.dropout_prob).to(self.device) 
             # embedding-based approach
-            if self.uq_method == 'union':
+            if self.uq_method == 'RF':
                 self.model = DALSTMModel(
                     input_size=self.input_size,
                     hidden_size=self.hidden_size,
@@ -381,29 +365,12 @@ class DALSTM_train_evaluate ():
                                normalization=self.normalization,
                                ensemble_mode=self.ensemble_mode,
                                ensemble_size=self.num_models)  
-                elif self.union_mode:
-                    # check deterministic pre-trained model is available                    
-                    deterministic_checkpoint_path = os.path.join(
-                        self.result_path,
-                        'deterministic_{}_seed_{}_best_model.pt'.format(
-                            self.split, self.seed)) 
-                    if not os.path.isfile(deterministic_checkpoint_path):
-                        raise FileNotFoundError(
-                            'Deterministic model should be trained in advance')
-                    else:
-                        # load the checkpoint except the last layer
-                        checkpoint = torch.load(deterministic_checkpoint_path)
-                        self.model.load_state_dict(
-                            checkpoint['model_state_dict'], strict=False)
-                    # define a Random Forest Regressor to work on embeddings
-                    if self.union_mode == 'RF':
-                        self.aux_model = RandomForestRegressor(
-                            n_estimators=self.n_estimators,
-                            criterion=self.criterion,                            
-                            max_depth=self.max_depth,
-                            min_samples_split=self.min_samples_split,
-                            min_samples_leaf=self.min_samples_leaf,
-                            random_state=self.seed) 
+                elif self.union_mode:                    
+                    self.aux_model = fit_rf(
+                        model=self.model, cfg=self.cfg, criterion=self.criterion,
+                        val_loader=self.val_loader, dataset_path=self.dataset_path,
+                        result_path=self.result_path, y_val_path=self.y_val_path,
+                        split=self.split, seed=self.seed, device=self.device)                       
             else:
                 for split_key in range(self.n_splits):
                     # define the report path
@@ -504,28 +471,12 @@ class DALSTM_train_evaluate ():
                                    ensemble_mode=self.ensemble_mode,
                                    ensemble_size=self.num_models)
                     elif self.union_mode:
-                        # check deterministic pre-trained model is available                    
-                        deterministic_checkpoint_path = os.path.join(
-                            self.result_path,
-                            'deterministic_{}_fold{}_seed_{}_best_model.pt'.format(
-                                self.split, split_key+1, self.seed))                       
-                        if not os.path.isfile(deterministic_checkpoint_path):
-                            raise FileNotFoundError(
-                                'Deterministic model should be trained in advance')    
-                        else:
-                            # load the checkpoint except the last layer
-                            checkpoint = torch.load(deterministic_checkpoint_path)
-                            self.model.load_state_dict(
-                                checkpoint['model_state_dict'], strict=False) 
-                        # define a Random Forest Regressor to work on embeddings
-                        if self.union_mode == 'RF':
-                            self.aux_model = RandomForestRegressor(
-                                n_estimators=self.n_estimators,
-                                criterion=self.criterion,                            
-                                max_depth=self.max_depth,
-                                min_samples_split=self.min_samples_split,
-                                min_samples_leaf=self.min_samples_leaf,
-                                random_state=self.seed) 
+                        self.aux_model = fit_rf(
+                            model=self.model, cfg=self.cfg, criterion=self.criterion,
+                            val_loader=self.val_loader, dataset_path=self.dataset_path,
+                            result_path=self.result_path, y_val_path=self.y_val_path,
+                            split=self.split, fold = split_key+1, seed=self.seed,
+                            device=self.device) 
                         
                     
     # A method to load important dimensions

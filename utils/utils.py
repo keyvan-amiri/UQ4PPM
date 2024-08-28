@@ -5,6 +5,7 @@ import sys
 import logging
 import random
 import shutil
+import pickle
 from datetime import datetime
 import numpy as np
 import pandas as pd
@@ -13,6 +14,7 @@ import torch.nn.functional as F
 from torch.nn.utils import clip_grad_value_
 import torch.optim as optim
 import torch.utils.tensorboard as tb
+from sklearn.ensemble import RandomForestRegressor
 from loss.mape import mape
 
 
@@ -69,29 +71,90 @@ def get_optimizer(config_optim, parameters):
         raise NotImplementedError(
             'Optimizer {} not understood.'.format(config_optim.optimizer))
 
-def fit_rf(model=None, aux_model=None, val_loader=None, y_val_path=None,
-           val_emb_path=None):
+def fit_rf(model=None, cfg=None, criterion=None, val_loader=None,
+           dataset_path=None, result_path=None, y_val_path=None,           
+           split=None, fold=None, seed=None, device=None):
+    
+    # path to deterministic point estimate
+    if split == 'holdout':
+        deterministic_checkpoint_path = os.path.join(
+            result_path,
+            'deterministic_{}_seed_{}_best_model.pt'.format(split, seed))
+    else:
+        deterministic_checkpoint_path = os.path.join(
+            result_path,
+            'deterministic_{}_fold{}_seed_{}_best_model.pt'.format(
+                split, fold, seed))
+    
+    # check deterministic pre-trained model is available
+    if not os.path.isfile(deterministic_checkpoint_path):
+        raise FileNotFoundError('Deterministic model must be trained first')
+    else:
+        # load the checkpoint except the last layer
+        checkpoint = torch.load(deterministic_checkpoint_path)
+        model.load_state_dict(checkpoint['model_state_dict'], strict=False)
+        
+    # path to random forest model to be saved after training
+    deterministic_model_name = os.path.basename(deterministic_checkpoint_path)
+    rf_name = deterministic_model_name.replace('deterministic_', 'RF_')
+    rf_name = rf_name.replace('.pt', '.pkl')
+    rf_path = os.path.join(result_path, rf_name)    
+        
+    # create a path for embedding
+    y_val_file = os.path.basename(y_val_path)
+    val_emb_filename = y_val_file.replace('_y_val_', '_X_val_emb_')
+    val_emb_path = os.path.join(dataset_path, val_emb_filename)
+    
+    # check whether embedding tensor is already available
     if not os.path.isfile(val_emb_path):  
         print('Get the embedding of validation set using pre-trained model.')       
         # set deterministic point estimate to evaluation mode
         model.eval()
+        # list to collect all embeddings
+        all_embeddings = []
         with torch.no_grad():
-            for index, test_batch in enumerate(test_loader):
-                inputs = test_batch[0].to(device)
-                _y_truth = test_batch[1].to(device)
-                batch_size = inputs.shape[0]
+            for index, val_batch in enumerate(val_loader):
+                # Get the embeddings for the current batch
+                inputs = val_batch[0].to(device)
+                batch_embedding = model(inputs)
+                # Move to CPU and add to list to save memory on GPU
+                all_embeddings.append(batch_embedding.cpu()) 
+        # Concatenate all embeddings into a single tensor
+        X_val_emb = torch.cat(all_embeddings, dim=0)
+        # save the embedding for validation set
+        torch.save(X_val_emb, val_emb_path)
     else:
         print('Embedding for validation set is already created.')
-        # TODO: load the embedding
-
-    #y_val = torch.load(y_val_path)
+        X_val_emb = torch.load(val_emb_path)
     
-    
+    # load remaining time for validation set
+    y_val = torch.load(y_val_path)    
     # Convert PyTorch tensors to NumPy arrays
-    #X_val = X_val_tensor.cpu().numpy() if y_val_tensor.is_cuda else X_val_tensor.numpy()
-    #y_val = y_val_tensor.cpu().numpy() if y_val_tensor.is_cuda else y_val_tensor.numpy()
+    X_val_emb = X_val_emb.cpu().numpy() if X_val_emb.is_cuda else X_val_emb.numpy()
+    y_val = y_val.cpu().numpy() if y_val.is_cuda else y_val.numpy()
     
-    return None
+    # get the parameters of random forest as auxiliary model
+    n_estimators = (cfg.get('uncertainty').get('union').get('n_estimators'))
+    depth_control = (cfg.get('uncertainty').get('union').get('depth_control'))
+    if depth_control:
+        max_depth = (cfg.get('uncertainty').get('union').get('max_depth'))
+    else:
+        max_depth = None
+    min_samples_split = (
+        cfg.get('uncertainty').get('union').get('min_samples_split'))
+    min_samples_leaf = (
+        cfg.get('uncertainty').get('union').get('min_samples_leaf'))  
+
+    # define a Random Forest Regressor to work on embeddings
+    aux_model = RandomForestRegressor(
+        n_estimators=n_estimators, criterion=criterion, max_depth=max_depth,
+        min_samples_split=min_samples_split, min_samples_leaf=min_samples_leaf,
+        random_state=seed) 
+    print('now: fit a random forest to predict remaining time based on embeddings')
+    aux_model.fit(X_val_emb, y_val) 
+    with open(rf_path, 'wb') as file:
+        pickle.dump(aux_model, file)
+    return aux_model
 
 # function to handle training the model
 def train_model(model=None, uq_method=None, train_loader=None, val_loader=None,

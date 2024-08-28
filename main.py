@@ -194,13 +194,6 @@ def main():
     parser.add_argument('--Bootstrapping_ratio', type=float, default=0.25,
                         help='Proportion of training and validation data, that\
                         is used by each ensemble member') 
-                        
-    ##########################################################################
-    ##################    Embedding-based UQ arguments    ####################
-    ##########################################################################
-    parser.add_argument('--union', default='RF', help='Type of probabilistic \
-                        model that is used on top of the embedding')
-    
 
     args = parser.parse_args()    
     root_path = os.getcwd()
@@ -488,8 +481,7 @@ def main():
         cfg['device'] = device_name
         cfg['seed'] = args.seed
         cfg['num_models'] = args.num_models 
-        cfg['Bootstrapping_ratio'] = args.Bootstrapping_ratio
-        cfg['union'] = args.union        
+        cfg['Bootstrapping_ratio'] = args.Bootstrapping_ratio    
         
         if args.model == 'dalstm':
             DALSTM_train_evaluate(cfg=cfg)
