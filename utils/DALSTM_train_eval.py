@@ -4,7 +4,7 @@ import torch.optim as optim
 import os
 import pickle
 from utils.utils import (set_random_seed, set_optimizer, train_model,
-                         test_model, fit_rf)
+                         test_model, fit_rf, predict_rf)
 from loss.loss_handler import set_loss
 from models.dalstm import DALSTMModel, DALSTMModelMve, dalstm_init_weights
 from models.stochastic_dalstm import StochasticDALSTM
@@ -274,7 +274,7 @@ class DALSTM_train_evaluate ():
                     self.schedulers.append(current_scheduler)                
                 print(f'Total model parameters: {total_params}')
         
-            # load train, validation, and test data loaders  
+            # train-test pipeline for holdout data split
             if self.split == 'holdout':
                 # define the report path
                 self.report_path = os.path.join(
@@ -284,8 +284,9 @@ class DALSTM_train_evaluate ():
                 (self.X_train_path, self.X_val_path, self.X_test_path,
                  self.y_train_path, self.y_val_path, self.y_test_path,
                  self.test_lengths_path) = self.holdout_paths()
-                # except for Bootstrapping ensemble
+                # # load train, validation, and test data loaders
                 if not self.bootstrapping:
+                    #except for Bootstrapping ensemble
                     (self.train_loader, self.val_loader, self.test_loader,
                      self.test_lengths) = self.load_data()
                 # if there is only one model to train (and not embedding-based)
@@ -366,11 +367,25 @@ class DALSTM_train_evaluate ():
                                ensemble_mode=self.ensemble_mode,
                                ensemble_size=self.num_models)  
                 elif self.union_mode:                    
-                    self.aux_model = fit_rf(
-                        model=self.model, cfg=self.cfg, criterion=self.criterion,
-                        val_loader=self.val_loader, dataset_path=self.dataset_path,
-                        result_path=self.result_path, y_val_path=self.y_val_path,
-                        split=self.split, seed=self.seed, device=self.device)                       
+                    self.model, self.aux_model = fit_rf(
+                        model=self.model, cfg=self.cfg,
+                        criterion=self.criterion,
+                        val_loader=self.val_loader,
+                        dataset_path=self.dataset_path,
+                        result_path=self.result_path,
+                        y_val_path=self.y_val_path,
+                        report_path=self.report_path,
+                        split=self.split, seed=self.seed, device=self.device)
+                    predict_rf(
+                        model=self.model, aux_model=self.aux_model,
+                        test_loader=self.test_loader,
+                        test_original_lengths=self.test_lengths,
+                        y_scaler=self.max_train_val,
+                        normalization=self.normalization,
+                        report_path=self.report_path,
+                        result_path=self.result_path,
+                        split=self.split, seed=self.seed, device=self.device)                  
+            # train-test pipeline for cross=validation data split          
             else:
                 for split_key in range(self.n_splits):
                     # define the report path
@@ -471,12 +486,26 @@ class DALSTM_train_evaluate ():
                                    ensemble_mode=self.ensemble_mode,
                                    ensemble_size=self.num_models)
                     elif self.union_mode:
-                        self.aux_model = fit_rf(
-                            model=self.model, cfg=self.cfg, criterion=self.criterion,
-                            val_loader=self.val_loader, dataset_path=self.dataset_path,
-                            result_path=self.result_path, y_val_path=self.y_val_path,
-                            split=self.split, fold = split_key+1, seed=self.seed,
-                            device=self.device) 
+                        self.model, self.aux_model = fit_rf(
+                            model=self.model, cfg=self.cfg,
+                            criterion=self.criterion,
+                            val_loader=self.val_loader,
+                            dataset_path=self.dataset_path,
+                            result_path=self.result_path,
+                            y_val_path=self.y_val_path,
+                            report_path=self.report_path,
+                            split=self.split, fold = split_key+1,
+                            seed=self.seed, device=self.device)
+                        predict_rf(
+                            model=self.model, aux_model=self.aux_model,
+                            test_loader=self.test_loader,
+                            test_original_lengths=self.test_lengths,
+                            y_scaler=self.max_train_val,
+                            normalization=self.normalization,
+                            report_path=self.report_path,
+                            result_path=self.result_path,
+                            split=self.split, fold = split_key+1,
+                            seed=self.seed, device=self.device) 
                         
                     
     # A method to load important dimensions
