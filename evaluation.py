@@ -125,7 +125,8 @@ def main():
             pred_std = df['Total_Uncertainty'].values 
         elif (prefix=='CARD' or prefix=='mve'):
             pred_std = df['Aleatoric_Uncertainty'].values
-        elif (prefix=='DA' or prefix=='CDA' or prefix=='en_t' or prefix=='en_b'):
+        elif (prefix=='DA' or prefix=='CDA' or prefix=='en_t' or 
+              prefix=='en_b' or prefix=='RF'):
             pred_std = df['Epistemic_Uncertainty'].values
         else:
             raise NotImplementedError(
@@ -181,7 +182,8 @@ def main():
             prefix=='en_t_mve'):
             corr, p_value = spearmanr(df['Absolute_error'],
                                       df['Total_Uncertainty'])
-        elif (prefix=='DA' or prefix=='CDA' or prefix=='en_t' or prefix=='en_b'):
+        elif (prefix=='DA' or prefix=='CDA' or prefix=='en_t' or
+              prefix=='en_b' or prefix=='RF'):
             corr, p_value = spearmanr(df['Absolute_error'],
                                       df['Epistemic_Uncertainty'])
         elif (prefix=='CARD' or prefix=='mve'):
@@ -203,7 +205,8 @@ def main():
             prefix=='en_t_mve'):
             corr, p_value = spearmanr(df['Absolute_percentage_error'],
                                       df['Total_Uncertainty'])
-        elif (prefix=='DA' or prefix=='CDA' or prefix=='en_t' or prefix=='en_b'):
+        elif (prefix=='DA' or prefix=='CDA' or prefix=='en_t' or 
+              prefix=='en_b' or prefix=='RF'):
             corr, p_value = spearmanr(df['Absolute_percentage_error'],
                                       df['Epistemic_Uncertainty'])
         elif (prefix=='CARD' or prefix=='mve'):
@@ -232,7 +235,8 @@ def main():
             prefix=='en_t_mve'):
             corr, p_value = spearmanr(filtered_df['Absolute_percentage_error'],
                                       filtered_df['Total_Uncertainty'])
-        elif (prefix=='DA' or prefix=='CDA' or prefix=='en_t' or prefix=='en_b'):
+        elif (prefix=='DA' or prefix=='CDA' or prefix=='en_t' or 
+              prefix=='en_b' or prefix=='RF'):
             corr, p_value = spearmanr(filtered_df['Absolute_percentage_error'],
                                       filtered_df['Epistemic_Uncertainty'])
         elif (prefix=='CARD' or prefix=='mve'):

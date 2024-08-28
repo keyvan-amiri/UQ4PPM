@@ -136,7 +136,7 @@ def main():
     if args.UQ != 'CARD':
         # get the exact UQ method from csv file in arguments.
         args.UQ = get_uq_method(args.csv_file)
-        # Define report name it is done separately for CARD model
+        
         base_name = os.path.splitext(args.csv_file)[0].removesuffix(
             'inference_result_')       
         report_name = base_name + 'recalibration_report.txt'
@@ -170,7 +170,7 @@ def main():
         ensemble_mode = False
         num_models = None
     
-    # the execution path for all UQ methods except CARD
+    # recalibration pipeline for all UQ methods except CARD
     if args.UQ != 'CARD':
         # load cfg file used for training
         with open(cfg_path, 'r') as f:
