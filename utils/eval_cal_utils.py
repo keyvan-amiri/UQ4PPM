@@ -13,6 +13,96 @@ from models.stochastic_dalstm import StochasticDALSTM
 from loss.loss_handler import set_loss
 from evaluation import evaluate_coverage
 
+
+# a method to handle inference on validation set for union-based approaches
+def inf_val_union(args=None, cfg=None, result_path=None,
+                  root_path=None, val_inference_path=None, report_path=None):
+    
+    print('Now: start inference on validation set:')
+    start=datetime.now()   
+    # get normalization mode
+    normalization = cfg.get('data').get('normalization')    
+    # check holdout/cv data split and get the fold
+    fold = extract_fold(args.csv_file) 
+    if args.model == 'dalstm':
+        # get the path to dataset folder
+        dataset_class = 'DALSTM_'+ args.dataset
+        daaset_path = os.path.join(root_path, 'datasets', dataset_class)
+        # get the normalization factor
+        max_train_val_path = os.path.join(
+            daaset_path, 'DALSTM_max_train_val_'+args.dataset+'.pkl')
+        with open(max_train_val_path, 'rb') as f:
+            y_scaler =  pickle.load(f)
+        # get maximum length of feature vectors (possibly to use as batch size)
+        max_len_path = os.path.join(
+            daaset_path, 'DALSTM_max_len_'+args.dataset+'.pkl')
+        with open(max_len_path, 'rb') as f:
+            max_len =  pickle.load(f) 
+        # get embdding, ground truth for validation set (based on data split)
+        if fold == None:
+            X_val_emb_path = os.path.join(
+                daaset_path, 'DALSTM_X_val_emb_'+args.dataset+'.pt')
+            y_val_path = os.path.join(
+                daaset_path, 'DALSTM_y_val_'+args.dataset+'.pt')            
+        else:
+            X_val_emb_path = os.path.join(
+                daaset_path, 'DALSTM_X_val_emb_fold_'+fold+args.dataset+'.pt')
+            y_val_path = os.path.join(
+                daaset_path, 'DALSTM_y_val_fold_'+fold+args.dataset+'.pt')
+        # check whether embedding is already obtained
+        if os.path.isfile(X_val_emb_path):
+            X_val_emb = torch.load(X_val_emb_path)
+            y_val = torch.load(y_val_path)
+            # get relevant batch size
+            try:
+                calibration_batch_size = cfg.get('evaluation').get('batch_size')
+            except:
+                calibration_batch_size = max_len 
+            # create validation set
+            calibration_dataset = TensorDataset(X_val_emb, y_val)            
+            calibration_loader = DataLoader(calibration_dataset,
+                                            batch_size=calibration_batch_size,
+                                            shuffle=False)
+        else:
+            raise FileNotFoundError('Random Forest must be fitted first')
+   
+    # load fitted random forest regressor
+    aux_model_name = replace_suffix(
+        args.csv_file, 'inference_result_.csv', 'best_model.pkl')
+    aux_model_path = os.path.join(result_path, aux_model_name)
+    with open(aux_model_path, 'rb') as file:
+        aux_model = pickle.load(file) 
+        
+    # Now: inference on validation set    
+    # create a dictionary to collect inference results
+    res_dict = {'GroundTruth': [], 'Prediction': [], 
+                'Epistemic_Uncertainty': []}
+    for index, calib_batch in enumerate(calibration_loader):
+        batch_embedding = calib_batch[0].detach().cpu().numpy()
+        _y_truth = calib_batch[1].detach().cpu().numpy()
+        # Get predictions from each individual tree in the random forest
+        tree_pred = np.array([tree.predict(batch_embedding)
+                              for tree in aux_model.estimators_])
+        # Compute the mean prediction across all trees
+        _y_pred = np.mean(tree_pred, axis=0)
+        # Compute standard devition of predictions (epistemic uncertainty)
+        epistemic_std = np.std(tree_pred, axis=0)
+        # normalize tragets, outputs, epistemic uncertainty (if necessary)
+        if normalization:                
+            _y_truth = y_scaler * _y_truth
+            _y_pred = y_scaler * _y_pred
+            epistemic_std = y_scaler * epistemic_std
+        res_dict['GroundTruth'].extend(_y_truth.tolist())
+        res_dict['Prediction'].extend(_y_pred.tolist())
+        res_dict['Epistemic_Uncertainty'].extend(epistemic_std.tolist())
+    calibration_df = pd.DataFrame(res_dict)  
+    inference_val_time = (datetime.now()-start).total_seconds()
+    with open(report_path, 'w') as file:
+        file.write('Inference on validation set took  {} seconds. \n'.format(
+            inference_val_time))        
+    calibration_df.to_csv(val_inference_path, index=False)    
+    return calibration_df
+
 # A method to extract number of ensemble members from the report .txt file
 def get_num_models_from_file(file_path):
     with open(file_path, 'r') as file:
@@ -455,8 +545,8 @@ def recalibration_evaluation (args=None, calibrated_test_def=None,
         pred_std = calibrated_test_def['Total_Uncertainty'].values 
     elif (args.UQ=='CARD' or args.UQ=='mve'):
         pred_std = calibrated_test_def['Aleatoric_Uncertainty'].values
-    elif (args.UQ=='DA' or args.UQ=='CDA' or 
-          args.UQ == 'en_t' or args.UQ == 'en_b'):
+    elif (args.UQ=='DA' or args.UQ=='CDA' or args.UQ == 'en_t' or 
+          args.UQ == 'en_b' or args.UQ == 'RF'):
         pred_std = calibrated_test_def['Epistemic_Uncertainty'].values
          
     # Non-Gaussian calibration: expected proportions and observed proportions
@@ -481,8 +571,8 @@ def recalibration_evaluation (args=None, calibrated_test_def=None,
         sorted_pred_std = sorted_df['Total_Uncertainty'].values 
     elif (args.UQ=='CARD' or args.UQ=='mve'):
         sorted_pred_std = sorted_df['Aleatoric_Uncertainty'].values
-    elif (args.UQ=='DA' or args.UQ=='CDA' or 
-          args.UQ == 'en_t' or args.UQ == 'en_b'):
+    elif (args.UQ=='DA' or args.UQ=='CDA' or args.UQ == 'en_t' or 
+          args.UQ == 'en_b' or args.UQ == 'RF'):
         sorted_pred_std = sorted_df['Epistemic_Uncertainty'].values
     # now compare confidence intervals before and after calibration
     orig_bounds = uct.metrics_calibration.get_prediction_interval(
@@ -516,8 +606,8 @@ def recalibration_evaluation (args=None, calibrated_test_def=None,
         sorted_pred_std = sorted_df['Total_Uncertainty'].values 
     elif (args.UQ=='CARD' or args.UQ=='mve'):
         sorted_pred_std = sorted_df['Aleatoric_Uncertainty'].values
-    elif (args.UQ=='DA' or args.UQ=='CDA' or 
-          args.UQ == 'en_t' or args.UQ == 'en_b'):
+    elif (args.UQ=='DA' or args.UQ=='CDA' or args.UQ == 'en_t' or
+          args.UQ == 'en_b' or args.UQ == 'RF'):
         sorted_pred_std = sorted_df['Epistemic_Uncertainty'].values
     # now compare confidence intervals before and after calibration
     orig_bounds = uct.metrics_calibration.get_prediction_interval(
@@ -551,8 +641,8 @@ def recalibration_evaluation (args=None, calibrated_test_def=None,
         sorted_pred_std = sorted_df['Total_Uncertainty'].values 
     elif (args.UQ=='CARD' or args.UQ=='mve'):
         sorted_pred_std = sorted_df['Aleatoric_Uncertainty'].values
-    elif (args.UQ=='DA' or args.UQ=='CDA' or 
-          args.UQ == 'en_t' or args.UQ == 'en_b'):
+    elif (args.UQ=='DA' or args.UQ=='CDA' or args.UQ == 'en_t' or 
+          args.UQ == 'en_b' or args.UQ == 'RF'):
         sorted_pred_std = sorted_df['Epistemic_Uncertainty'].values
     # now compare confidence intervals before and after calibration
     orig_bounds = uct.metrics_calibration.get_prediction_interval(
@@ -733,8 +823,8 @@ def get_mean_std_truth (df=None, uq_method=None):
         pred_std = df['Total_Uncertainty'].values 
     elif (uq_method=='CARD' or uq_method=='mve'):
         pred_std = df['Aleatoric_Uncertainty'].values
-    elif (uq_method=='DA' or uq_method=='CDA' or
-          uq_method == 'en_t' or uq_method == 'en_b'):
+    elif (uq_method=='DA' or uq_method=='CDA' or uq_method == 'en_t' or
+          uq_method == 'en_b' or uq_method == 'RF'):
         pred_std = df['Epistemic_Uncertainty'].values
     else:
         raise NotImplementedError(

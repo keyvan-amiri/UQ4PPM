@@ -18,6 +18,7 @@ from utils.eval_cal_utils import (extract_info_from_cfg, replace_suffix,
                                   get_model_and_loss, get_uq_method,
                                   add_suffix_to_csv, get_mean_std_truth,
                                   prepare_args, get_num_models_from_file)
+from utils.eval_cal_utils import inf_val_union
 from utils.eval_cal_utils import inference_on_validation
 from utils.eval_cal_utils import recalibration_evaluation
 from main import main_card
@@ -60,7 +61,7 @@ def recalibration_on_test(args=None, calibration_df=None, test_df=None,
     test_df['calibrated_std_rms_cal'] = rms_cal_test_pred_std
     test_df['calibrated_std_ma_cal'] = ma_cal_test_pred_std
     
-    # Gaussian calibration on validation set
+    # Isotonic regression calibration on validation set
     # Get the expected proportions and observed proportions on calibration set
     exp_props, obs_props = uct.metrics_calibration.get_proportion_lists_vectorized(
         pred_mean, pred_std, y_true)
@@ -120,6 +121,7 @@ def main():
     root_path = os.getcwd()
     cfg_path = os.path.join(root_path, 'cfg', args.cfg_file)    
     # Get model, dataset, and uq_method based on configuration file name
+    # here, we only can distinguish CARD from the others
     args.model, args.dataset, args.UQ = extract_info_from_cfg(args.cfg_file)     
     result_path = os.path.join(root_path, 'results', args.dataset, args.model)
     plot_path = os.path.join(root_path, 'plots', args.dataset, args.model)
@@ -135,8 +137,7 @@ def main():
     # define a path for report .txt to add recalibration time
     if args.UQ != 'CARD':
         # get the exact UQ method from csv file in arguments.
-        args.UQ = get_uq_method(args.csv_file)
-        
+        args.UQ = get_uq_method(args.csv_file)        
         base_name = os.path.splitext(args.csv_file)[0].removesuffix(
             'inference_result_')       
         report_name = base_name + 'recalibration_report.txt'
@@ -169,6 +170,12 @@ def main():
         # to use same execution path for single models similar to ensembles
         ensemble_mode = False
         num_models = None
+        
+    # set union mode
+    if args.UQ == 'RF':
+        union_mode = True
+    else:
+        union_mode = False
     
     # recalibration pipeline for all UQ methods except CARD
     if args.UQ != 'CARD':
@@ -180,56 +187,66 @@ def main():
             print('Inference is already done on validation set.')
             calibration_df = pd.read_csv(val_inference_path)
         else:
-            # Get calibration loader, model dimensions, normalization ratios
-            (calibration_loader, input_size, max_len, max_train_val,
-             mean_train_val, median_train_val
-             ) = get_validation_data_and_model_size(args=args, cfg=cfg,
-                                                    root_path=root_path)
-            # if there is only one checkpoint (not for ensemble approaches)
-            if not ensemble_mode:
-                # define name of the check point (best model)
-                checkpoint_name = replace_suffix(
-                    args.csv_file, 'inference_result_.csv', 'best_model.pt')
-                checkpoint_path = os.path.join(result_path, checkpoint_name)            
-                # define model and loss function
-                (model, criterion, num_mcmc, normalization, _
-                 ) = get_model_and_loss(
-                     args=args, cfg=cfg, input_size=input_size, max_len=max_len,
-                     device=device, ensemble_mode=ensemble_mode,
-                     num_models=num_models)            
-                # execute inference on validation set
-                calibration_df = inference_on_validation(
-                    args=args, model=model, checkpoint_path=checkpoint_path,
-                    calibration_loader=calibration_loader,
-                    num_mc_samples=num_mcmc, normalization=normalization,
-                    y_scaler=mean_train_val, device=device,
-                    report_path=report_path, 
-                    recalibration_path=recalibration_path) 
-            # if there are more than one checkpoint (ensembles)
+            # to handle embedding-based approaches
+            if union_mode:
+                calibration_df = inf_val_union(
+                    args=args, cfg=cfg, result_path=result_path,
+                    root_path=root_path, val_inference_path=val_inference_path,
+                    report_path=report_path)
+            # for all models except embdding-based and CARD
             else:
-                # empty list for all checkpoint addresses
-                checkpoint_paths_list = []
-                for i in range(1, num_models+1): 
+                # Get calibration loader, model dims, normalization ratios
+                (calibration_loader, input_size, max_len, max_train_val,
+                 mean_train_val, median_train_val
+                 ) = get_validation_data_and_model_size(args=args, cfg=cfg,
+                                                        root_path=root_path)
+                # if the model is not ensemble or embedding-base
+                if not ensemble_mode:
+                    # define name of the check point (best model)
                     checkpoint_name = replace_suffix(
-                        args.csv_file, 'inference_result_.csv',
-                        'best_model.pt', ensemble_mode=True, model_idx=i)
-                    checkpoint_path = os.path.join(result_path, checkpoint_name)
-                    checkpoint_paths_list.append(checkpoint_path)
-                (_, criterion, num_mcmc, normalization, model_list
+                        args.csv_file, 'inference_result_.csv', 'best_model.pt')
+                    checkpoint_path = os.path.join(result_path, checkpoint_name)            
+                    # define model and loss function
+                    (model, criterion, num_mcmc, normalization, _
                      ) = get_model_and_loss(
-                         args=args, cfg=cfg, input_size=input_size, max_len=max_len,
-                         device=device, ensemble_mode=ensemble_mode,
-                         num_models=num_models)  
-                # execute inference on validation set
-                calibration_df = inference_on_validation(
-                    args=args, model_list=model_list,
-                    checkpoint_paths_list=checkpoint_paths_list,
-                    calibration_loader=calibration_loader,
-                    num_mc_samples=num_mcmc, normalization=normalization,
-                    y_scaler=mean_train_val, device=device,
-                    report_path=report_path, 
-                    recalibration_path=recalibration_path,
-                    ensemble_mode=ensemble_mode, num_models=num_models)            
+                         args=args, cfg=cfg, input_size=input_size,
+                         max_len=max_len, device=device,
+                         ensemble_mode=ensemble_mode,
+                         num_models=num_models)            
+                    # execute inference on validation set
+                    calibration_df = inference_on_validation(
+                        args=args, model=model, checkpoint_path=checkpoint_path,
+                        calibration_loader=calibration_loader,
+                        num_mc_samples=num_mcmc, normalization=normalization,
+                        y_scaler=max_train_val, device=device,
+                        report_path=report_path, 
+                        recalibration_path=recalibration_path) 
+                # if there are more than one checkpoint (ensembles)
+                else:
+                    # empty list for all checkpoint addresses
+                    checkpoint_paths_list = []
+                    for i in range(1, num_models+1): 
+                        checkpoint_name = replace_suffix(
+                            args.csv_file, 'inference_result_.csv',
+                            'best_model.pt', ensemble_mode=True, model_idx=i)
+                        checkpoint_path = os.path.join(result_path,
+                                                       checkpoint_name)
+                        checkpoint_paths_list.append(checkpoint_path)
+                    (_, criterion, num_mcmc, normalization, model_list
+                     ) = get_model_and_loss(
+                         args=args, cfg=cfg, input_size=input_size,
+                         max_len=max_len, device=device,
+                         ensemble_mode=ensemble_mode, num_models=num_models)  
+                    # execute inference on validation set
+                    calibration_df = inference_on_validation(
+                        args=args, model_list=model_list,
+                        checkpoint_paths_list=checkpoint_paths_list,
+                        calibration_loader=calibration_loader,
+                        num_mc_samples=num_mcmc, normalization=normalization,
+                        y_scaler=max_train_val, device=device,
+                        report_path=report_path, 
+                        recalibration_path=recalibration_path,
+                        ensemble_mode=ensemble_mode, num_models=num_models)            
                   
     # a separate execution path for CARD model
     else:
