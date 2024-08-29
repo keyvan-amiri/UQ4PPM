@@ -14,9 +14,29 @@ from loss.loss_handler import set_loss
 from evaluation import evaluate_coverage
 
 
-# a method to handle inference on validation set for union-based approaches
+
 def inf_val_union(args=None, cfg=None, result_path=None,
                   root_path=None, val_inference_path=None, report_path=None):
+    """
+    Handle inference on validation set for union-based approaches.
+    Parameters
+    ----------
+    args : arguments provided by user for recalibration.py script
+    cfg : configuration file used for training, and inference
+    result_path : result folder for a model (e.g., DALSTM), and a dataset
+    root_path : folder that main scripts are located in.
+    val_inference_path : path to the dataframe which includes predictions for
+    validation set.
+    report_path : path to a .txt file for reporting recalibration time.
+    Raises
+    ------
+    FileNotFoundError: in case embedding of the validation set is not saved
+    during training in advance.
+    Returns
+    -------
+    calibration_df : a dataframe includes all validation examples, with these 
+    columns: 'GroundTruth', 'Prediction', 'Epistemic_Uncertainty'
+    """
     
     print('Now: start inference on validation set:')
     start=datetime.now()   
@@ -111,8 +131,10 @@ def get_num_models_from_file(file_path):
             if "'num_models':" in line:
                 # Extract the part after 'num_models':
                 try:
-                    # Split the line at 'num_models' and then split at the first occurrence of either ',' or '}'
-                    num_str = line.split("'num_models':")[1].split(',')[0].split('}')[0].strip()
+                    # Split the line at 'num_models' and then,
+                    # split at the first occurrence of either ',' or '}'
+                    num_str = line.split(
+                        "'num_models':")[1].split(',')[0].split('}')[0].strip()
                     num_models = int(num_str)
                     return num_models
                 except (ValueError, IndexError):

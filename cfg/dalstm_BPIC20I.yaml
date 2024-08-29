@@ -11,6 +11,13 @@ uncertainty:
     weight_regularizer: 0.1
     dropout_regularizer: 0.1
     num_stochastic_forward_path: 50
+  union:
+    loss_function: squared_error # or absolute_error or friedman_mse or poisson
+    n_estimators: 100
+    depth_control: False # whether to use a maximum length for Random Forest or not
+    max_depth: 5 # if depth_control is True use this as the maximum depth in Random Forest
+    min_samples_split: 2
+    min_samples_leaf: 1
   laplace:
     empirical_bayes: True # whether to estimate the prior precision and observation noise using empirical Bayes after training or not
     subset_of_weights: last_layer # all or last_layer or subnetwork (default: last_layer seems to be the only option)
