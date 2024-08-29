@@ -100,14 +100,14 @@ def post_hoc_laplace(model=None, cfg=None,
         evaluation_batch_size = cfg.get('evaluation').get('batch_size')
     except:
         evaluation_batch_size = max_len     
-    # in case of empirical_bayes: separate validation set to avoid overfitting
+    # if empirical_bayes: prior precision is optimized using train+val datasets
     if empirical_bayes:
-        train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
-        val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False)
-    else:
         train_val_dataset = ConcatDataset([train_dataset, val_dataset])
         train_loader = DataLoader(train_val_dataset, batch_size=batch_size,
                                   shuffle=True)
+    else:
+        train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
+        val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False)
     test_loader = DataLoader(test_dataset, batch_size=evaluation_batch_size,
                              shuffle=False)
    
@@ -115,13 +115,41 @@ def post_hoc_laplace(model=None, cfg=None,
     model = model.to(device)
     model.train() 
     
-    # define the Laplace model, and conduct post-hoc fitting
+    """
+    Define the Laplace model, and conduct fit Laplace in a post-hoc fashion.
+    The Laplace approximation uses train_loader to compute the posterior
+    distribution of the model's weights around their MAP estimates.
+    """
     la = Laplace(model, likelihood='regression',
                  subset_of_weights=subset_of_weights,
-                 hessian_structure=hessian_structure, sigma_noise=sigma_noise,
-                 prior_precision=prior_precision, temperature=temperature,
-                 **optional_args)
-        
+                 hessian_structure=hessian_structure,
+                 sigma_noise=sigma_noise,
+                 prior_precision=prior_precision,
+                 temperature=temperature,
+                 **optional_args)    
     la.fit(train_loader)
+    
+    # optimnize prior precision    
+    if empirical_bayes:
+        # log of the prior precision 
+        log_prior = torch.full((1,), np.log(prior_precision),
+                               requires_grad=True, dtype=torch.float32)
+        #log_prior = torch.ones(1, requires_grad=True)
+        # log of the observation noise
+        log_sigma = torch.full((1,), np.log(sigma_noise),
+                               requires_grad=True, dtype=torch.float32)
+        #log_sigma = torch.ones(1, requires_grad=True)
+        hyper_optimizer = torch.optim.Adam([log_prior, log_sigma], lr=la_lr)
+        for i in range(la_epochs):
+            hyper_optimizer.zero_grad()
+            neg_marglik = - la.log_marginal_likelihood(log_prior.exp(),
+                                                       log_sigma.exp())
+            neg_marglik.backward()
+            hyper_optimizer.step()
+    else:
+        # optimization using marglik method in Laplace library
+        la.optimize_prior_precision(pred_type=pred_type,
+                                    init_prior_prec=prior_precision,
+                                    val_loader=val_loader)
         
     return
