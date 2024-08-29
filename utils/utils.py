@@ -78,9 +78,9 @@ def fit_rf(model=None, cfg=None, criterion=None, val_loader=None,
     # get current time (as start) to compute training time
     start=datetime.now()
     if split=='holdout':
-        print(f'Training for data split: {split}.')
+        print(f'Fitting auxiliary Random Forest for {split} data split.')
     else:
-        print(f'Training for data split: {split} , {fold}.')
+        print(f'Fitting auxiliary Random Forest for {split} data split, fold: {fold}.')
     with open(report_path, 'w') as file:
         file.write('Configurations:\n')
         file.write(str(cfg))

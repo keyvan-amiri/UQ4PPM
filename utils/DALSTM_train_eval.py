@@ -8,10 +8,19 @@ from utils.utils import (set_random_seed, set_optimizer, train_model,
 from loss.loss_handler import set_loss
 from models.dalstm import DALSTMModel, DALSTMModelMve, dalstm_init_weights
 from models.stochastic_dalstm import StochasticDALSTM
+from models.Laplace_approximation import post_hoc_laplace
 
 # A generic class for training and evaluation of DALSTM model
-class DALSTM_train_evaluate ():    
-    def __init__ (self, cfg=None, dalstm_dir=None):
+class DALSTM_train_evaluate ():
+    def __init__ (self, cfg=None, dalstm_dir=None):  
+        """
+        Parameters:
+        cfg : configuration that is used for training, and inference.
+        dalstm_dir : user specified for dataset folder which contain all
+        information about feature vectors represinting event prefixes, and 
+        used by DALSTM model.
+        """
+        #  Initial operations for effective training, and inference
         self.cfg = cfg
         seeds = cfg.get('seed')
         device_name = cfg.get('device')
@@ -29,6 +38,7 @@ class DALSTM_train_evaluate ():
         # set the address for all outputs: training and inference
         self.result_path = os.path.join(root_path,
                                         'results', self.dataset, 'dalstm')
+        # create the output address (i.e., 'results') if not in root directory.
         if not os.path.exists(self.result_path):
             os.makedirs(self.result_path)
         # set normalization status
@@ -42,7 +52,7 @@ class DALSTM_train_evaluate ():
         self.num_models = cfg.get('num_models')
         # get Bootstrapping ratio which is used by each ensemble member
         self.Bootstrapping_ratio = cfg.get('Bootstrapping_ratio')
-        # Define important size and dimensions
+        # Define important size and dimensions for DALSTM model
         (self.input_size, self.max_len, self.max_train_val
          ) = self.load_dimensions()
         self.hidden_size = cfg.get('model').get('lstm').get('hidden_size')
@@ -95,7 +105,44 @@ class DALSTM_train_evaluate ():
             self.union_mode = True
         else:
             self.union_mode = False
-
+            
+        # set necessary parameters for Laplace approximation
+        if self.uq_method == 'LA':
+            self.laplace = True
+            # We only use Laplace approximation which can be applied in 
+            # an architecture-agnostic fashion.
+            self.subset_of_weights= 'last_layer'
+            # we use Monte Carlo for approximate predictive distribution
+            # TODO: check to probably remove it as we can do exact?
+            self.link_approx = 'mc'
+            # type of posterior predictive
+            # TODO: check to probably remove: why not default values
+            self.pred_type = 'glm'
+            # whether to estimate the prior precision and observation noise 
+            # using empirical Bayes after training or not
+            self.empirical_bayes = cfg.get('uncertainty').get('laplace').get(
+                'empirical_bayes')
+            # if empirical_bayes: we need number of epochs + learning rate
+            self.la_epochs = cfg.get('uncertainty').get('laplace').get('epochs')
+            self.la_lr = cfg.get('uncertainty').get('laplace').get('lr')
+            self.last_layer_name = cfg.get('uncertainty').get('laplace').get(
+                'last_layer_name')
+            self.hessian_structure = cfg.get('uncertainty').get(
+                'laplace').get('hessian_structure')
+            # TODO: check to probably remove it as we can do exact?
+            self.n_samples = cfg.get('uncertainty').get('laplace').get(
+                'n_samples')
+            # observation noise for the regression setting
+            self.sigma_noise = cfg.get('uncertainty').get('laplace').get(
+                'sigma_noise')
+            # prior precision of a Gaussian prior (= weight decay)
+            self.prior_precision = cfg.get('uncertainty').get('laplace').get(
+                'prior_precision')
+            self.temperature= cfg.get('uncertainty').get('laplace').get(
+                'temperature')
+        else:
+            self.laplace = False
+            
         ######################################################################
         ######  define loss function (heteroscedastic/homoscedastic)  ########
         ######################################################################
@@ -125,7 +172,7 @@ class DALSTM_train_evaluate ():
             ###########  define the model (based on the UQ method)  ##########
             ##################################################################
             # deterministic model (point estimate)
-            if self.uq_method == 'deterministic':
+            if (self.uq_method == 'deterministic' or self.uq_method == 'LA'):
                 self.model = DALSTMModel(
                     input_size=self.input_size,
                     hidden_size=self.hidden_size,
@@ -243,7 +290,8 @@ class DALSTM_train_evaluate ():
             ##################################################################
             ############   define optimizer(s) & scheduler(s)   ##############
             ##################################################################
-            if ((not self.ensemble_mode) and (not self.union_mode)):
+            if ((not self.ensemble_mode) and (not self.union_mode) and 
+                (not self.laplace)):
                 # get number of model parameters
                 total_params = sum(p.numel() for p in self.model.parameters()
                                    if p.requires_grad) 
@@ -289,8 +337,9 @@ class DALSTM_train_evaluate ():
                     #except for Bootstrapping ensemble
                     (self.train_loader, self.val_loader, self.test_loader,
                      self.test_lengths) = self.load_data()
-                # if there is only one model to train (and not embedding-based)
-                if ((not self.ensemble_mode) and (not self.union_mode)):         
+                # execution path for dropout and heteroscedastic
+                if ((not self.ensemble_mode) and (not self.union_mode) and 
+                    (not self.laplace)):         
                     train_model(model=self.model, uq_method=self.uq_method,
                                 train_loader=self.train_loader,
                                 val_loader=self.val_loader,
@@ -384,7 +433,11 @@ class DALSTM_train_evaluate ():
                         normalization=self.normalization,
                         report_path=self.report_path,
                         result_path=self.result_path,
-                        split=self.split, seed=self.seed, device=self.device)                  
+                        split=self.split, seed=self.seed, device=self.device) 
+                # execution path for post-hoc Laplace approximation
+                elif self.laplace:
+                    post_hoc_laplace(model=self.model)
+                    
             # train-test pipeline for cross=validation data split          
             else:
                 for split_key in range(self.n_splits):
