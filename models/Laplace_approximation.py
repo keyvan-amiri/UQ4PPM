@@ -14,6 +14,7 @@ import logging
 import random
 import shutil
 import pickle
+import dill
 from datetime import datetime
 import numpy as np
 import pandas as pd
@@ -34,15 +35,14 @@ def post_hoc_laplace(model=None, cfg=None,
                      y_scaler=None, normalization=False,
                      subset_of_weights=None, hessian_structure='kron', 
                      empirical_bayes=False,
+                     method=None, grid_size=None,
                      last_layer_name=None,
-                     sigma_noise=None, prior_precision=None, temperature=None,                      
+                     sigma_noise=None, stat_noise=False, 
+                     prior_precision=None, temperature=None,                      
                      n_samples=None, link_approx=None, pred_type=None,
                      la_epochs=None, la_lr=None,
                      report_path=None, result_path=None,
                      split=None, fold=None, seed=None, device=None):    
-    
-    optional_args = dict() #empty dict for optional args in Laplace model
-    optional_args['last_layer_name'] = last_layer_name    
 
     # get current time (as start) to compute training time
     start=datetime.now()
@@ -56,7 +56,7 @@ def post_hoc_laplace(model=None, cfg=None,
         file.write(str(cfg))
         file.write('\n')
         file.write('\n') 
-    
+       
     # Load deterministic pre-trained point estimate
     # path to deterministic point estimate
     if split == 'holdout':
@@ -76,22 +76,24 @@ def post_hoc_laplace(model=None, cfg=None,
         checkpoint = torch.load(deterministic_checkpoint_path)
         model.load_state_dict(checkpoint['model_state_dict'])
         
-    # path to random forest model to be saved after training
+    # Path to Laplace model to be saved after training
     deterministic_model_name = os.path.basename(deterministic_checkpoint_path)
     la_name = deterministic_model_name.replace('deterministic_', 'LA_')
-    la_name = la_name.replace('.pt', '.pkl')
     la_path = os.path.join(result_path, la_name) 
     
-    # create data loaders for training and inference
+    # load feature vectors for train, val, test sets
     X_train = torch.load(X_train_path)
     X_val = torch.load(X_val_path)
     X_test = torch.load(X_test_path)
     y_train = torch.load(y_train_path)
     y_val = torch.load(y_val_path)
     y_test = torch.load(y_test_path)
+    # create datasets for training and inference with Laplace model
     train_dataset = TensorDataset(X_train, y_train)                        
     val_dataset = TensorDataset(X_val, y_val)
     test_dataset = TensorDataset(X_test, y_test)
+    train_val_dataset = ConcatDataset([train_dataset, val_dataset])
+    # get the batch size    
     try:
         batch_size = cfg.get('train').get('batch_size')
     except:
@@ -99,44 +101,86 @@ def post_hoc_laplace(model=None, cfg=None,
     try:
         evaluation_batch_size = cfg.get('evaluation').get('batch_size')
     except:
-        evaluation_batch_size = max_len     
-    # if empirical_bayes: prior precision is optimized using train+val datasets
-    if empirical_bayes:
-        train_val_dataset = ConcatDataset([train_dataset, val_dataset])
-        train_loader = DataLoader(train_val_dataset, batch_size=batch_size,
-                                  shuffle=True)
-    else:
-        train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
-        val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False)
+        evaluation_batch_size = max_len 
+    # create data loaders for training and inference
+    train_loader = DataLoader(train_dataset, batch_size=batch_size,
+                              shuffle=True)
+    val_loader = DataLoader(val_dataset, batch_size=batch_size,
+                              shuffle=False)
     test_loader = DataLoader(test_dataset, batch_size=evaluation_batch_size,
                              shuffle=False)
-   
-    # set the model to training mode
+    # in some cases we do not any separate validation set.
+    train_val_loader = DataLoader(train_val_dataset, batch_size=batch_size,
+                                  shuffle=True)
+    
+    if stat_noise:
+        # set sigma noise based on the statistical propertis of target attribute
+        y_all = torch.cat([y for _, y in train_val_dataset], dim=0)  
+        y_all = y_all.numpy()
+        y_std = np.std(y_all)
+        y_IQR = np.percentile(y_all, 75) - np.percentile(y_all, 25)
+        y_gold = (y_std + 3*y_IQR)/4
+        sigma_noise=sigma_noise*y_gold 
+    
+    # Move the model to device, and set it to training mode
     model = model.to(device)
     model.train() 
     
-    """
-    Define the Laplace model, and conduct fit Laplace in a post-hoc fashion.
-    The Laplace approximation uses train_loader to compute the posterior
-    distribution of the model's weights around their MAP estimates.
-    """
+    ##########################################################################
+    ##########  Laplace model, fitting it in a post-hoc fashion   ###########
+    ##########################################################################
+    optional_args = dict() #empty dict for optional args in Laplace model
+    optional_args['last_layer_name'] = last_layer_name 
     la = Laplace(model, likelihood='regression',
                  subset_of_weights=subset_of_weights,
                  hessian_structure=hessian_structure,
                  sigma_noise=sigma_noise,
                  prior_precision=prior_precision,
                  temperature=temperature,
-                 **optional_args)    
-    la.fit(train_loader)
-    
-    # optimnize prior precision    
-    if empirical_bayes:
+                 **optional_args) 
+    # Fit the local Laplace approximation at the parameters of the model.
+    # i.e., approximate the posterior of model's weight around MAP estimates.
+    # Laplace approximation (LA) is equivalent to fitting a Gaussian with:
+        # Mean = MAP estimate
+        # covariance matrix = negative inverse Hessian of the loss at the MAP
+    # Which data to use?
+    # if empirical_bayes=False, method== gridsearch: we need separate val set 
+    # else: we use training + validation set to fit the model
+    # beccause if method== gridsearch, then validation set is neglected
+    if ((not empirical_bayes) and (method == 'gridsearch')):
+        la.fit(train_loader)
+    else:
+        la.fit(train_val_loader)
+    # optimnize prior precision 
+    # whether to estimate the prior precision and observation noise using
+    # empirical Bayes after training or not.
+    if not empirical_bayes:
+        if method == 'gridsearch':
+            la.optimize_prior_precision(pred_type=pred_type,
+                                        method=method,
+                                        n_steps=la_epochs,
+                                        lr=la_lr,
+                                        init_prior_prec=prior_precision,
+                                        val_loader=val_loader,
+                                        grid_size=grid_size,
+                                        progress_bar=True)
+        else:
+            # optimization using marglik method in Laplace library
+            la.optimize_prior_precision(pred_type=pred_type,
+                                        method=method,
+                                        n_steps=la_epochs,
+                                        lr=la_lr,
+                                        init_prior_prec=prior_precision,
+                                        n_samples=n_samples,
+                                        link_approx=link_approx,
+                                        progress_bar=True)
+    else:
         # log of the prior precision 
-        log_prior = torch.full((1,), np.log(prior_precision),
-                               requires_grad=True, dtype=torch.float32)
+        log_prior = torch.full((1,), prior_precision, requires_grad=True,
+                               dtype=torch.float32)
         #log_prior = torch.ones(1, requires_grad=True)
         # log of the observation noise
-        log_sigma = torch.full((1,), np.log(sigma_noise),
+        log_sigma = torch.full((1,), sigma_noise,
                                requires_grad=True, dtype=torch.float32)
         #log_sigma = torch.ones(1, requires_grad=True)
         hyper_optimizer = torch.optim.Adam([log_prior, log_sigma], lr=la_lr)
@@ -146,10 +190,21 @@ def post_hoc_laplace(model=None, cfg=None,
                                                        log_sigma.exp())
             neg_marglik.backward()
             hyper_optimizer.step()
-    else:
-        # optimization using marglik method in Laplace library
-        la.optimize_prior_precision(pred_type=pred_type,
-                                    init_prior_prec=prior_precision,
-                                    val_loader=val_loader)
+            # print the results       
+            print(f'Epoch {i + 1}/{la_epochs},', 
+                  f'Negatie Log Likelihood: {neg_marglik}')
+            with open(report_path, 'a') as file:
+                file.write('Epoch {}/{} NLL: {}.\n'.format(
+                    i+1, la_epochs, neg_marglik))     
+        
+    #save the Laplace model (including deterministic model wrapped in it)
+    torch.save(la, la_path, pickle_module=dill)
+    
+    training_time = (datetime.now()-start).total_seconds()
+    with open(report_path, 'a') as file:
+        file.write('Training time- in seconds: {}\n'.format(
+            training_time)) 
+        file.write('#######################################################\n')
+        file.write('#######################################################\n')
         
     return

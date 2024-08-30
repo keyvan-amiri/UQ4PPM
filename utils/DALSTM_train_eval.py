@@ -140,6 +140,11 @@ class DALSTM_train_evaluate ():
                 'prior_precision')
             self.temperature= cfg.get('uncertainty').get('laplace').get(
                 'temperature')
+            # method for prior precision optimization
+            self.method = cfg.get('uncertainty').get('laplace').get('prior_opt')
+            # number of values to consider inside the gridsearch interval
+            self.grid_size = cfg.get('uncertainty').get('laplace').get('grid_size') 
+            self.stat_noise= cfg.get('uncertainty').get('laplace').get('stat_noise')
         else:
             self.laplace = False
             
