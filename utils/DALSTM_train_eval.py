@@ -122,7 +122,6 @@ class DALSTM_train_evaluate ():
             # using empirical Bayes after training or not
             self.empirical_bayes = cfg.get('uncertainty').get('laplace').get(
                 'empirical_bayes')
-            # if empirical_bayes: we need number of epochs + learning rate
             self.la_epochs = cfg.get('uncertainty').get('laplace').get('epochs')
             self.la_lr = cfg.get('uncertainty').get('laplace').get('lr')
             self.last_layer_name = cfg.get('uncertainty').get('laplace').get(
@@ -441,7 +440,32 @@ class DALSTM_train_evaluate ():
                         split=self.split, seed=self.seed, device=self.device) 
                 # execution path for post-hoc Laplace approximation
                 elif self.laplace:
-                    post_hoc_laplace(model=self.model)
+                    post_hoc_laplace(
+                        model=self.model, cfg=self.cfg, 
+                        X_train_path=self.X_train_path, 
+                        X_val_path=self.X_val_path,
+                        X_test_path=self.X_test_path,
+                        y_train_path=self.y_train_path,
+                        y_val_path=self.y_val_path, 
+                        y_test_path=self.y_test_path,
+                        test_original_lengths=self.test_lengths,
+                        y_scaler=self.max_train_val,
+                        normalization=self.normalization,
+                        subset_of_weights=self.subset_of_weights,
+                        hessian_structure=self.hessian_structure,
+                        empirical_bayes=self.empirical_bayes,
+                        method=self.method, grid_size=self.grid_size,
+                        last_layer_name=self.last_layer_name,
+                        sigma_noise=self.sigma_noise, 
+                        stat_noise=self.stat_noise,
+                        prior_precision=self.prior_precision,
+                        temperature=self.temperature,
+                        n_samples=self.n_samples, link_approx=self.link_approx,
+                        pred_type=self.pred_type,
+                        la_epochs=self.la_epochs, la_lr=self.la_lr,
+                        report_path=self.report_path,
+                        result_path=self.result_path,
+                        split=self.split, seed=self.seed, device=self.device)
                     
             # train-test pipeline for cross=validation data split          
             else:
@@ -565,6 +589,36 @@ class DALSTM_train_evaluate ():
                             split=self.split, fold = split_key+1,
                             seed=self.seed, device=self.device) 
                         
+                    # execution path for post-hoc Laplace approximation
+                    elif self.laplace:
+                        post_hoc_laplace(
+                            model=self.model, cfg=self.cfg, 
+                            X_train_path=self.X_train_path, 
+                            X_val_path=self.X_val_path,
+                            X_test_path=self.X_test_path,
+                            y_train_path=self.y_train_path,
+                            y_val_path=self.y_val_path, 
+                            y_test_path=self.y_test_path,
+                            test_original_lengths=self.test_lengths,
+                            y_scaler=self.max_train_val,
+                            normalization=self.normalization,
+                            subset_of_weights=self.subset_of_weights,
+                            hessian_structure=self.hessian_structure,
+                            empirical_bayes=self.empirical_bayes,
+                            method=self.method, grid_size=self.grid_size,
+                            last_layer_name=self.last_layer_name,
+                            sigma_noise=self.sigma_noise, 
+                            stat_noise=self.stat_noise,
+                            prior_precision=self.prior_precision,
+                            temperature=self.temperature,
+                            n_samples=self.n_samples,
+                            link_approx=self.link_approx,
+                            pred_type=self.pred_type,
+                            la_epochs=self.la_epochs, la_lr=self.la_lr,
+                            report_path=self.report_path,
+                            result_path=self.result_path,
+                            split=self.split, fold = split_key+1,
+                            seed=self.seed, device=self.device)                        
                     
     # A method to load important dimensions
     def load_dimensions(self):        

@@ -81,55 +81,14 @@ def post_hoc_laplace(net, model, train_loader, val_loader, test_loader,
     length_idx = 0
     with torch.no_grad():
         for index, test_batch in enumerate(test_loader):
-            if net == 'dalstm':
-                inputs = test_batch[0].to(device)
-                targets = test_batch[1].to(device)
-                batch_size = inputs.shape[0]
-            elif net == 'processtransformer':
-                token_x_batch, time_x_batch, targets = test_batch
-                token_x_batch = token_x_batch.to(device).long()
-                time_x_batch = time_x_batch.to(device)
-                targets = targets.to(device)
-                batch_size = token_x_batch.shape[0]
-            if pred_type == 'glm':
-                if net == 'dalstm':
-                    prediction_mean, f_var = la(inputs, pred_type=pred_type)
-                elif net == 'processtransformer':
-                    prediction_mean, f_var = la(token_x_batch, time_x_batch,
-                                                pred_type=pred_type)
-                    
-                # Remove the dimension of size 1 along axis 2
-                f_var = f_var.squeeze(dim=2) 
-                # Compute square root element-wise 
-                f_std = torch.sqrt(f_var)
-            else:
-                if net == 'dalstm':
-                    prediction_mean, f_var = la(inputs,pred_type=pred_type,
-                                                link_approx=link_approx,
-                                                n_samples=n_samples)
-                    # Remove the dimension of size 1 along axis 1
-                    f_var = f_var.squeeze(dim=1)
-                    # Compute square root element-wise
-                    f_std = torch.sqrt(f_var)  
-                    f_std = f_std.unsqueeze(1)
-                elif net == 'processtransformer':
-                    prediction_mean, f_var = la(token_x_batch, time_x_batch,
-                                                pred_type=pred_type,
-                                                link_approx=link_approx,
-                                                n_samples=n_samples)
-                    # Remove the dimension of size 1 along axis 1
-                    f_var = f_var.squeeze(dim=1)
-                    # Compute square root element-wise
-                    f_std = torch.sqrt(f_var)  
-                    f_std = f_std.unsqueeze(1)                    
-                    prediction_mean = \
-                        max_train_val.inverse_transform(
-                            prediction_mean.detach().cpu())
-                    f_std = \
-                        f_std.inverse_transform(f_std.detach().cpu())
-                    prediction_mean = torch.tensor(prediction_mean,
-                                                   device=device)
-                    f_std = torch.tensor(f_std, device=device)        
+            inputs = test_batch[0].to(device)
+            targets = test_batch[1].to(device)
+            batch_size = inputs.shape[0]
+            prediction_mean, f_var = la(inputs, pred_type=pred_type)                   
+            # Remove the dimension of size 1 along axis 2
+            f_var = f_var.squeeze(dim=2) 
+            # Compute square root element-wise 
+            f_std = torch.sqrt(f_var) 
                         
             #Compute overall loss for the test batch
             absolute_error += F.l1_loss(prediction_mean, targets).item()
@@ -181,17 +140,7 @@ def post_hoc_laplace(net, model, train_loader, val_loader, test_loader,
                         for key, value in all_results.items()}
     #for key, value in all_results_flat.items():
         #print(key, len(value), value[:5])
-    results_df = pd.DataFrame(all_results_flat)
-    if split_mode == 'holdout':
-        csv_filename = os.path.join(test_result_folder,
-                                    os.path.splitext(dataset_name)[0]+
-                                    "_per_example_Laplace-posthoc.csv")
-    else:
-        csv_filename = os.path.join(test_result_folder,
-                                    os.path.splitext(dataset_name)[0]+
-                                    '_fold'+str(fold_idx)+
-                                    "_per_example_Laplace-posthoc.csv")          
+    results_df = pd.DataFrame(all_results_flat)  
     results_df.to_csv(csv_filename, index=False) 
-    
-    return 
+
 
