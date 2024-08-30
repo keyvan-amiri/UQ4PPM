@@ -19,6 +19,7 @@ from utils.eval_cal_utils import (extract_info_from_cfg, replace_suffix,
                                   add_suffix_to_csv, get_mean_std_truth,
                                   prepare_args, get_num_models_from_file)
 from utils.eval_cal_utils import inf_val_union
+from models.Laplace_approximation import inf_val_laplace
 from utils.eval_cal_utils import inference_on_validation
 from utils.eval_cal_utils import recalibration_evaluation
 from main import main_card
@@ -176,6 +177,12 @@ def main():
         union_mode = True
     else:
         union_mode = False
+        
+    # set Laplace mode
+    if args.UQ == 'LA':
+        laplace_mode = True
+    else:
+        laplace_mode = False
     
     # recalibration pipeline for all UQ methods except CARD
     if args.UQ != 'CARD':
@@ -193,7 +200,14 @@ def main():
                     args=args, cfg=cfg, result_path=result_path,
                     root_path=root_path, val_inference_path=val_inference_path,
                     report_path=report_path)
-            # for all models except embdding-based and CARD
+            # to handle Laplace mode
+            elif laplace_mode:
+                calibration_df = inf_val_laplace(
+                    args=args, cfg=cfg, device=device, result_path=result_path,
+                    root_path=root_path, val_inference_path=val_inference_path,
+                    report_path=report_path)
+                
+            # for all other UQ techniques
             else:
                 # Get calibration loader, model dims, normalization ratios
                 (calibration_loader, input_size, max_len, max_train_val,

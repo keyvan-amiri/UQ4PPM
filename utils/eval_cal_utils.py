@@ -568,7 +568,7 @@ def recalibration_evaluation (args=None, calibrated_test_def=None,
     elif (args.UQ=='CARD' or args.UQ=='mve'):
         pred_std = calibrated_test_def['Aleatoric_Uncertainty'].values
     elif (args.UQ=='DA' or args.UQ=='CDA' or args.UQ == 'en_t' or 
-          args.UQ == 'en_b' or args.UQ == 'RF'):
+          args.UQ == 'en_b' or args.UQ == 'RF' or args.UQ == 'LA'):
         pred_std = calibrated_test_def['Epistemic_Uncertainty'].values
          
     # Non-Gaussian calibration: expected proportions and observed proportions
@@ -594,7 +594,7 @@ def recalibration_evaluation (args=None, calibrated_test_def=None,
     elif (args.UQ=='CARD' or args.UQ=='mve'):
         sorted_pred_std = sorted_df['Aleatoric_Uncertainty'].values
     elif (args.UQ=='DA' or args.UQ=='CDA' or args.UQ == 'en_t' or 
-          args.UQ == 'en_b' or args.UQ == 'RF'):
+          args.UQ == 'en_b' or args.UQ == 'RF' or args.UQ == 'LA'):
         sorted_pred_std = sorted_df['Epistemic_Uncertainty'].values
     # now compare confidence intervals before and after calibration
     orig_bounds = uct.metrics_calibration.get_prediction_interval(
@@ -629,7 +629,7 @@ def recalibration_evaluation (args=None, calibrated_test_def=None,
     elif (args.UQ=='CARD' or args.UQ=='mve'):
         sorted_pred_std = sorted_df['Aleatoric_Uncertainty'].values
     elif (args.UQ=='DA' or args.UQ=='CDA' or args.UQ == 'en_t' or
-          args.UQ == 'en_b' or args.UQ == 'RF'):
+          args.UQ == 'en_b' or args.UQ == 'RF' or args.UQ == 'LA'):
         sorted_pred_std = sorted_df['Epistemic_Uncertainty'].values
     # now compare confidence intervals before and after calibration
     orig_bounds = uct.metrics_calibration.get_prediction_interval(
@@ -664,7 +664,7 @@ def recalibration_evaluation (args=None, calibrated_test_def=None,
     elif (args.UQ=='CARD' or args.UQ=='mve'):
         sorted_pred_std = sorted_df['Aleatoric_Uncertainty'].values
     elif (args.UQ=='DA' or args.UQ=='CDA' or args.UQ == 'en_t' or 
-          args.UQ == 'en_b' or args.UQ == 'RF'):
+          args.UQ == 'en_b' or args.UQ == 'RF' or args.UQ == 'LA'):
         sorted_pred_std = sorted_df['Epistemic_Uncertainty'].values
     # now compare confidence intervals before and after calibration
     orig_bounds = uct.metrics_calibration.get_prediction_interval(

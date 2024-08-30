@@ -22,6 +22,9 @@ from torch.utils.data import TensorDataset, DataLoader, ConcatDataset
 import torch.nn.functional as F
 from loss.mape import mape
 from laplace import Laplace
+from utils.eval_cal_utils import (get_validation_data_and_model_size,
+                                  replace_suffix)
+
 
 def post_hoc_laplace(model=None, cfg=None,
                      X_train_path=None, X_val_path=None, X_test_path=None,
@@ -38,7 +41,52 @@ def post_hoc_laplace(model=None, cfg=None,
                      la_epochs=None, la_lr=None,
                      report_path=None, result_path=None,
                      split=None, fold=None, seed=None, device=None):    
-
+    """
+    A method to fit a Laplace model, and optimize its preior precision, and
+    finally, conduct Bayesian predictive inference with fitted model.
+    
+    Parameters
+    ----------
+    model : Backbone model which provides MAP estimates (point estimate)
+    cfg : Congiguration file that is used for training, and inference
+    X_train_path, X_val_path, X_test_path : Path to the feature vectors of
+    event prefixes, previously generated through pre-processing script.
+    y_train_path, y_val_path, y_test_path : Path to target attribute.
+    test_original_lengths: list of prefix lengths of event prefixes in test set
+    , it facilitates analysis w.r.t different lengths (i.e., earliness).
+    max_len : Maximum legth of feature vectors that are fed into DALSTM.
+    y_scaler : Scaler that is used for inverse normaliation.
+    normalization : whether to apply inverse normalization durng inference
+    subset_of_weights : type of weights that Hessian is computed for, we always
+    apply LA approximation to weights of the last layer of the network in an
+    architecture=agnostic manner.
+    hessian_structure : set factorizations assumption that is used for Hessian
+    matrix approximation. values: 'full', 'kron', 'diag' 'gp'
+    empirical_bayes : whether to estimate the prior precision and observation
+    noise using empirical Bayes after training or not.
+    method : method used for prior precision optimization.
+    values: 'marglik', 'gridsearch'
+    grid_size : number of values to consider inside the gridsearch interval.
+    last_layer_name : Name of the last layer in Backbone point estimate.
+    sigma_noise : observation noise prior
+    stat_noise : how to use observation noise, if False (default), value of
+    sigma_noise is directly used as prior of observation noise, otherwise,
+    based on statistical characteristics of remaining time, sigma_noise is 
+    used as a coefficient to be multiplied by (y_std + 3*y_IQR)/4 .
+    prior_precision : prior precision of a Gaussian prior (= weight decay)
+    temperature : controls sharpness of posterior approximation
+    n_samples : Number of Monte Carlo samples 
+    link_approx : Type of link approximation, we always apply mc (Monte Carlo)
+    pred_type : We only use glm prediction in our setting (see Laplace library)
+    la_epochs : Number of epochs that is used for prior precision optimization.
+    la_lr : Learning rate that is used for prior precision optimization.
+    report_path : Path to log important insights.
+    result_path : Path to the directory in which important results are saved.
+    split : Type of the split (holout/cv)
+    fold : fold number that is used
+    seed : seed that is used in the experiment.
+    device : device that is used in experiment.
+    """
     torch.backends.cudnn.enabled = False
     # get current time (as start) to compute training time
     start=datetime.now()
@@ -151,8 +199,6 @@ def post_hoc_laplace(model=None, cfg=None,
     else:
         la.fit(train_val_loader)
     # optimnize prior precision 
-    # whether to estimate the prior precision and observation noise using
-    # empirical Bayes after training or not.
     if not empirical_bayes:
         if method == 'gridsearch':
             la.optimize_prior_precision(pred_type=pred_type,
@@ -311,3 +357,70 @@ def post_hoc_laplace(model=None, cfg=None,
             result_path,'LA_{}_fold{}_seed_{}_inference_result_.csv'.format(
                 split, fold, seed))         
     results_df.to_csv(csv_filename, index=False)
+    
+    
+def inf_val_laplace(args=None, cfg=None, device=None, 
+                    result_path=None, root_path=None,
+                    val_inference_path=None, report_path=None):
+    
+    torch.backends.cudnn.enabled = False
+    print('Now: start inference on validation set:')
+    start=datetime.now()   
+    # get normalization mode
+    normalization = cfg.get('data').get('normalization') 
+    pred_type = 'glm' # define prediction type
+    
+    (calibration_loader, input_size, max_len, y_scaler, _, _
+     ) = get_validation_data_and_model_size(args=args, cfg=cfg, 
+                                            root_path=root_path)
+    # load fitted and optimized Laplace model
+    laplace_model_name = replace_suffix(
+        args.csv_file, 'inference_result_.csv', 'best_model.pt')
+    laplace_model_path = os.path.join(result_path, laplace_model_name)
+    la = torch.load(laplace_model_path)
+    # empty dict to collct predictios on validation (i.e., calibration) set
+    res_dict = {'GroundTruth': [], 'Prediction': [], 'Epistemic_Uncertainty': []}
+    
+    with torch.no_grad():
+        # get model prediction and epistemic uncertainty
+        for index, cal_batch in enumerate(calibration_loader):
+            inputs = cal_batch[0].to(device)
+            _y_truth = cal_batch[1].to(device)
+            _y_pred, f_var = la(inputs, pred_type=pred_type) 
+            # Remove the dimension of size 1 along axis 2
+            f_var = f_var.squeeze(dim=2) 
+            # Compute square root element-wise 
+            epistemic_std = torch.sqrt(f_var + la.sigma_noise.item()**2)
+            # conduct inverse normalization if required
+            if normalization:
+                _y_truth = y_scaler * _y_truth
+                _y_pred = y_scaler * _y_pred  
+                epistemic_std = y_scaler * epistemic_std
+            # Detach predictions and ground truths (np arrays)
+            _y_truth = _y_truth.detach().cpu().numpy()
+            _y_pred = _y_pred.detach().cpu().numpy()
+            # collect inference result in all_result dict.
+            res_dict['GroundTruth'].extend(_y_truth.tolist())
+            res_dict['Prediction'].extend(_y_pred.tolist())
+            epistemic_std = epistemic_std.detach().cpu().numpy()
+            res_dict['Epistemic_Uncertainty'].extend(
+                epistemic_std.tolist())
+
+    inference_val_time = (datetime.now()-start).total_seconds()
+    with open(report_path, 'w') as file:
+        file.write('Inference on validation set took  {} seconds. \n'.format(
+            inference_val_time))         
+    flattened_list = [item for sublist in res_dict['GroundTruth'] 
+                      for item in sublist]
+    res_dict['GroundTruth'] = flattened_list
+    flattened_list = [item for sublist in res_dict['Prediction'] 
+                      for item in sublist]
+    res_dict['Prediction'] = flattened_list
+    flattened_list = [item for sublist in res_dict['Epistemic_Uncertainty'] 
+                      for item in sublist]
+    res_dict['Epistemic_Uncertainty'] = flattened_list    
+    calibration_df = pd.DataFrame(res_dict)      
+    calibration_df.to_csv(val_inference_path, index=False)
+
+    return calibration_df     
+                                                        
