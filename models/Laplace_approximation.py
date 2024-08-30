@@ -6,6 +6,12 @@ To build this python script we use Laplace library:
     Erik Daxberger, Agustinus Kristiadi, Alexander Immer,
     Runa Eschenhagen, Matthias Bauerd, Philipp Hennig.
 """
+import warnings
+warnings.filterwarnings(
+    "ignore", 
+    message="You are using `torch.load` with `weights_only=False`", 
+    category=FutureWarning
+)
 import os
 import dill
 from datetime import datetime
@@ -33,6 +39,7 @@ def post_hoc_laplace(model=None, cfg=None,
                      report_path=None, result_path=None,
                      split=None, fold=None, seed=None, device=None):    
 
+    torch.backends.cudnn.enabled = False
     # get current time (as start) to compute training time
     start=datetime.now()
     # Announcement for fitting Laplace approximation
@@ -77,6 +84,9 @@ def post_hoc_laplace(model=None, cfg=None,
     y_train = torch.load(y_train_path)
     y_val = torch.load(y_val_path)
     y_test = torch.load(y_test_path)
+    y_train = y_train.unsqueeze(dim=1)
+    y_val = y_val.unsqueeze(dim=1)
+    y_test = y_test.unsqueeze(dim=1)
     # create datasets for training and inference with Laplace model
     train_dataset = TensorDataset(X_train, y_train)                        
     val_dataset = TensorDataset(X_val, y_val)
@@ -151,8 +161,7 @@ def post_hoc_laplace(model=None, cfg=None,
                                         lr=la_lr,
                                         init_prior_prec=prior_precision,
                                         val_loader=val_loader,
-                                        grid_size=grid_size,
-                                        progress_bar=True)
+                                        grid_size=grid_size)
         else:
             # optimization using marglik method in Laplace library
             la.optimize_prior_precision(pred_type=pred_type,
@@ -161,8 +170,7 @@ def post_hoc_laplace(model=None, cfg=None,
                                         lr=la_lr,
                                         init_prior_prec=prior_precision,
                                         n_samples=n_samples,
-                                        link_approx=link_approx,
-                                        progress_bar=True)
+                                        link_approx=link_approx)
     else:
         # log of the prior precision 
         log_prior = torch.full((1,), prior_precision, requires_grad=True,
@@ -235,6 +243,7 @@ def post_hoc_laplace(model=None, cfg=None,
                 _y_pred = y_scaler * _y_pred  
                 epistemic_std = y_scaler * epistemic_std
             # Compute batch loss
+            #_y_pred = _y_pred.squeeze(dim=1)
             absolute_error += F.l1_loss(_y_pred, _y_truth).item()
             absolute_percentage_error += mape(_y_pred, _y_truth).item()
             # Detach predictions and ground truths (np arrays)
@@ -278,6 +287,21 @@ def post_hoc_laplace(model=None, cfg=None,
     flattened_list = [item for sublist in all_results['Prefix_length'] 
                       for item in sublist]
     all_results['Prefix_length'] = flattened_list
+    flattened_list = [item for sublist in all_results['GroundTruth'] 
+                      for item in sublist]
+    all_results['GroundTruth'] = flattened_list
+    flattened_list = [item for sublist in all_results['Prediction'] 
+                      for item in sublist]
+    all_results['Prediction'] = flattened_list
+    flattened_list = [item for sublist in all_results['Absolute_error'] 
+                      for item in sublist]
+    all_results['Absolute_error'] = flattened_list
+    flattened_list = [item for sublist in all_results['Absolute_percentage_error'] 
+                      for item in sublist]
+    all_results['Absolute_percentage_error'] = flattened_list
+    flattened_list = [item for sublist in all_results['Epistemic_Uncertainty'] 
+                      for item in sublist]
+    all_results['Epistemic_Uncertainty'] = flattened_list    
     results_df = pd.DataFrame(all_results)
     if split=='holdout':
         csv_filename = os.path.join(

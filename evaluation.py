@@ -126,7 +126,7 @@ def main():
         elif (prefix=='CARD' or prefix=='mve'):
             pred_std = df['Aleatoric_Uncertainty'].values
         elif (prefix=='DA' or prefix=='CDA' or prefix=='en_t' or 
-              prefix=='en_b' or prefix=='RF'):
+              prefix=='en_b' or prefix=='RF' or prefix=='LA'):
             pred_std = df['Epistemic_Uncertainty'].values
         else:
             raise NotImplementedError(
@@ -183,7 +183,7 @@ def main():
             corr, p_value = spearmanr(df['Absolute_error'],
                                       df['Total_Uncertainty'])
         elif (prefix=='DA' or prefix=='CDA' or prefix=='en_t' or
-              prefix=='en_b' or prefix=='RF'):
+              prefix=='en_b' or prefix=='RF' or prefix=='LA'):
             corr, p_value = spearmanr(df['Absolute_error'],
                                       df['Epistemic_Uncertainty'])
         elif (prefix=='CARD' or prefix=='mve'):
@@ -206,7 +206,7 @@ def main():
             corr, p_value = spearmanr(df['Absolute_percentage_error'],
                                       df['Total_Uncertainty'])
         elif (prefix=='DA' or prefix=='CDA' or prefix=='en_t' or 
-              prefix=='en_b' or prefix=='RF'):
+              prefix=='en_b' or prefix=='RF' or prefix=='LA'):
             corr, p_value = spearmanr(df['Absolute_percentage_error'],
                                       df['Epistemic_Uncertainty'])
         elif (prefix=='CARD' or prefix=='mve'):
@@ -236,7 +236,7 @@ def main():
             corr, p_value = spearmanr(filtered_df['Absolute_percentage_error'],
                                       filtered_df['Total_Uncertainty'])
         elif (prefix=='DA' or prefix=='CDA' or prefix=='en_t' or 
-              prefix=='en_b' or prefix=='RF'):
+              prefix=='en_b' or prefix=='RF' or prefix=='LA'):
             corr, p_value = spearmanr(filtered_df['Absolute_percentage_error'],
                                       filtered_df['Epistemic_Uncertainty'])
         elif (prefix=='CARD' or prefix=='mve'):

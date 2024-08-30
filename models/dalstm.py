@@ -6,7 +6,7 @@ import torch.nn as nn
 class DALSTMModel(nn.Module):
     def __init__(self, input_size=None, hidden_size=None, n_layers=None,
                  max_len=None, dropout=True, p_fix=0.2, 
-                 exclude_last_layer=False):
+                 exclude_last_layer=False, return_squeezed=True):
         '''
         ARGUMENTS:
         input_size: number of features
@@ -26,6 +26,7 @@ class DALSTMModel(nn.Module):
         self.batch_norm1 = nn.BatchNorm1d(max_len)
         # whether to drop the last layer or not (for embedding-based UQ)
         self.exclude_last_layer = exclude_last_layer
+        self.return_squeezed = return_squeezed
         if not self.exclude_last_layer:
             self.linear1 = nn.Linear(hidden_size, 1)
         
@@ -45,7 +46,10 @@ class DALSTMModel(nn.Module):
         if not self.exclude_last_layer:
             # only the last one in the sequence is used by dense layer
             yhat = self.linear1(x[:, -1, :]) 
-            return yhat.squeeze(dim=1)
+            if self.return_squeezed:
+                return yhat.squeeze(dim=1)
+            else:
+                return yhat 
         else:
             # Return the output without applying the last linear layer
             return x[:, -1, :]  

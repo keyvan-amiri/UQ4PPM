@@ -19,16 +19,18 @@ uncertainty:
     min_samples_split: 2
     min_samples_leaf: 1
   laplace:
-    empirical_bayes: True # whether to estimate the prior precision and observation noise using empirical Bayes after training or not
-    subset_of_weights: last_layer # all or last_layer or subnetwork (default: last_layer seems to be the only option)
-    last_layer_name: linear2 # applicable when Laplace is applied only on the last layer
-    #subnetwork_type: ModuleName # LargestMagnitude or ModuleName (only applicable for subnetwork option)
-    hessian_structure: kron # full or lowrank or kron or diag (if last layer: lowrank does not work,  if subnetwork only full works)    
-    link_approx: mc # : type of approximation of link function seems that the default which is exact is the best option for last layer
+    empirical_bayes: False # whether to estimate the prior precision and observation noise using empirical Bayes after training or not
+    last_layer_name: linear1
+    hessian_structure: full # full kron diag gp       
     n_samples: 100 # number of MC samples for approximating the predictive distribution
-    pred_type: glm # glm or nn  : type of approximation of predictive distribution
-    optimize_prior_precision: marglik # marglik or gridsearch
-    prior_precision: 1.0 #prior precision to use for computing the covariance matrix
+    sigma_noise: 1.0 # observation noise [0, 1]
+    stat_noise: False
+    prior_precision: 1.0 #prior precision of a Gaussian prior
+    temperature: 1.0 # to control sharpness of posterior
+    prior_opt: marglik # or gridsearch
+    grid_size: 100            
+    epochs: 100
+    lr: 0.01
 train:
   loss_function: mae   
   max_epochs: 100

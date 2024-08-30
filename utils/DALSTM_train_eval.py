@@ -176,7 +176,7 @@ class DALSTM_train_evaluate ():
             ###########  define the model (based on the UQ method)  ##########
             ##################################################################
             # deterministic model (point estimate)
-            if (self.uq_method == 'deterministic' or self.uq_method == 'LA'):
+            if self.uq_method == 'deterministic':
                 self.model = DALSTMModel(
                     input_size=self.input_size,
                     hidden_size=self.hidden_size,
@@ -194,6 +194,16 @@ class DALSTM_train_evaluate ():
                     dropout=self.dropout,
                     p_fix=self.dropout_prob,
                     exclude_last_layer=True).to(self.device) 
+            # Laplace approximation
+            if self.uq_method == 'LA':
+                self.model = DALSTMModel(
+                    input_size=self.input_size,
+                    hidden_size=self.hidden_size,
+                    n_layers=self.n_layers,
+                    max_len=self.max_len,
+                    dropout=self.dropout,
+                    p_fix=self.dropout_prob,
+                    return_squeezed=False).to(self.device)                
             # dropout approximation
             elif (self.uq_method == 'DA' or self.uq_method == 'CDA'):
                 self.model = StochasticDALSTM(

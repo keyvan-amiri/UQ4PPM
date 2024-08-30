@@ -13,9 +13,12 @@ bash bash_scripts/dropout_mve_train_test.sh
 bash bash_scripts/ensemble_train_test.sh
 bash bash_scripts/ensemble_GPU1.sh   16 uq4ppm
 bash bash_scripts/ensemble_GPU2.sh   16 uq4ppm2
+bash bash_scripts/rf_train_test.sh
+bash bash_scripts/la_train_test.sh
 
 evaluation:
 bash bash_scripts/evaluation.sh
+bash bash_scripts/helpdesk_evaluation.sh
 
 recalibration:
 bash bash_scripts/recalibration_HelpDesk.sh
@@ -23,6 +26,7 @@ bash bash_scripts/recalibration_Sepsis.sh
 bash bash_scripts/recalibration_BPIC20I.sh
 bash bash_scripts/recalibration_BPIC13I.sh
 bash bash_scripts/recalibration_BPIC12.sh
+bash bash_scripts/recalibration_RF_HelpDesk.sh
 
 
 initial work on PGTNet:
