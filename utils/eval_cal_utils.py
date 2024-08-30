@@ -846,7 +846,7 @@ def get_mean_std_truth (df=None, uq_method=None):
     elif (uq_method=='CARD' or uq_method=='mve'):
         pred_std = df['Aleatoric_Uncertainty'].values
     elif (uq_method=='DA' or uq_method=='CDA' or uq_method == 'en_t' or
-          uq_method == 'en_b' or uq_method == 'RF'):
+          uq_method == 'en_b' or uq_method == 'RF' or uq_method == 'LA'):
         pred_std = df['Epistemic_Uncertainty'].values
     else:
         raise NotImplementedError(

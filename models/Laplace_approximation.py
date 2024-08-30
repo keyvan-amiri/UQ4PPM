@@ -22,9 +22,13 @@ from torch.utils.data import TensorDataset, DataLoader, ConcatDataset
 import torch.nn.functional as F
 from loss.mape import mape
 from laplace import Laplace
+from laplace import (LLLaplace, FullLLLaplace, KronLLLaplace, DiagLLLaplace)
 from utils.eval_cal_utils import (get_validation_data_and_model_size,
                                   replace_suffix)
 from models.dalstm import DALSTMModel
+
+
+
 
 
 def post_hoc_laplace(model=None, cfg=None,
@@ -124,6 +128,8 @@ def post_hoc_laplace(model=None, cfg=None,
     # Path to Laplace model to be saved after training
     deterministic_model_name = os.path.basename(deterministic_checkpoint_path)
     la_name = deterministic_model_name.replace('deterministic_', 'LA_')
+    # TODO: check type of the save and decide on following line:
+    #la_name = la_name.replace('.pt', '.bin')
     la_path = os.path.join(result_path, la_name) 
     
     # load feature vectors for train, val, test sets
@@ -186,6 +192,14 @@ def post_hoc_laplace(model=None, cfg=None,
                  prior_precision=prior_precision,
                  temperature=temperature,
                  **optional_args) 
+    """
+    la = FullLLLaplace(model, likelihood='regression',
+                 sigma_noise=sigma_noise,
+                 prior_precision=prior_precision,
+                 temperature=temperature,
+                 **optional_args) 
+    """
+
     # Fit the local Laplace approximation at the parameters of the model.
     # i.e., approximate the posterior of model's weight around MAP estimates.
     # Laplace approximation (LA) is equivalent to fitting a Gaussian with:
@@ -241,11 +255,15 @@ def post_hoc_laplace(model=None, cfg=None,
                 file.write(
                     'Epoch {}/{} NLL: {}, log prior: {}, log sigma: {}.\n'.format(
                         i+1, la_epochs, neg_marglik, log_prior, log_sigma))     
-        
+    
     #save the Laplace model
-    torch.save(la.state_dict(), la_path)
-    # initial implementation: include backbone in the object!
-    #torch.save(la, la_path, pickle_module=dill)
+    # TODO: Resolve serialization problem and decide on the following!
+    #print(f"Type of 'la': {type(la)}")
+    #print(f"Methods of 'la': {dir(la)}")
+    #print(la_path)
+    #print(la.state_dict()) 
+    #torch.save(la.state_dict(), la_path)
+    torch.save(la, la_path, pickle_module=dill)
     
     training_time = (datetime.now()-start).total_seconds()
     print('Fitting and optimizing the Laplace approximation is done')
@@ -409,7 +427,7 @@ def inf_val_laplace(args=None, cfg=None, device=None,
         dropout=dropout,
         p_fix=dropout_prob,
         return_squeezed=False).to(device)
-    model.load_state_dict(torch.load(deterministic_checkpoint_path))
+    model.load_state_dict(torch.load(deterministic_checkpoint_path), strict=False)
     
     # load fitted and optimized Laplace model
     optional_args = dict() #empty dict for optional args in Laplace model
@@ -423,7 +441,9 @@ def inf_val_laplace(args=None, cfg=None, device=None,
                  **optional_args) 
     
     laplace_model_path = os.path.join(result_path, laplace_model_name)
-    la.load_state_dict(torch.load(laplace_model_path))
+    la = torch.load(laplace_model_path)
+    # TODO: resolve serialization error!
+    #la.load_state_dict(torch.load(laplace_model_path))
 
     # empty dict to collct predictios on validation (i.e., calibration) set
     res_dict = {'GroundTruth': [], 'Prediction': [], 'Epistemic_Uncertainty': []}
@@ -456,10 +476,12 @@ def inf_val_laplace(args=None, cfg=None, device=None,
     inference_val_time = (datetime.now()-start).total_seconds()
     with open(report_path, 'w') as file:
         file.write('Inference on validation set took  {} seconds. \n'.format(
-            inference_val_time))         
+            inference_val_time)) 
+    """        
     flattened_list = [item for sublist in res_dict['GroundTruth'] 
                       for item in sublist]
     res_dict['GroundTruth'] = flattened_list
+    """
     flattened_list = [item for sublist in res_dict['Prediction'] 
                       for item in sublist]
     res_dict['Prediction'] = flattened_list

@@ -138,9 +138,14 @@ def main():
     # define a path for report .txt to add recalibration time
     if args.UQ != 'CARD':
         # get the exact UQ method from csv file in arguments.
-        args.UQ = get_uq_method(args.csv_file)        
-        base_name = os.path.splitext(args.csv_file)[0].removesuffix(
-            'inference_result_')       
+        args.UQ = get_uq_method(args.csv_file) 
+        # caused by some old versions of python stem from Laplace limitations!
+        # TODO: initial implementation was the following!
+        #base_name = os.path.splitext(args.csv_file)[0].removesuffix('inference_result_') 
+        base_name = os.path.splitext(args.csv_file)[0]
+        suffix = 'inference_result_'
+        if base_name.endswith(suffix):
+            base_name = base_name[:-len(suffix)]    
         report_name = base_name + 'recalibration_report.txt'
         report_path = os.path.join(recalibration_path, report_name)        
     # define a path for inference on validation (calibration set)
