@@ -275,7 +275,8 @@ def train_model(model=None, uq_method=None, train_loader=None, val_loader=None,
                 clip_grad_norm=None, clip_value=None,
                 processed_data_path=None, report_path =None,
                 data_split='holdout', fold=None, cfg=None, seed=None,
-                model_idx=None, ensemble_mode=False, sqr_q='all'):
+                model_idx=None, ensemble_mode=False, sqr_q='all',
+                sqr_factor=None):
     
     # get current time (as start) to compute training time
     start=datetime.now()
@@ -351,7 +352,8 @@ def train_model(model=None, uq_method=None, train_loader=None, val_loader=None,
                     taus = torch.rand(inputs.shape[0], 1)                    
                 else:
                     taus = torch.zeros(inputs.shape[0], 1).fill_(sqr_q)
-                outputs = model(augment(inputs, taus))
+                outputs = model(augment(inputs, tau=taus, 
+                                        sqr_factor=sqr_factor, aug_type='RNN'))               
                 loss = criterion(outputs, targets, taus)
             elif (uq_method == 'DA' or uq_method == 'CDA' or
                   uq_method == 'DA_A' or uq_method == 'CDA_A'):
@@ -385,7 +387,8 @@ def train_model(model=None, uq_method=None, train_loader=None, val_loader=None,
                         taus = torch.rand(inputs.shape[0], 1)                    
                     else:
                         taus = torch.zeros(inputs.shape[0], 1).fill_(sqr_q)
-                    outputs = model(augment(inputs, taus))
+                    outputs = model(augment(
+                        inputs, tau=taus, sqr_factor=sqr_factor, aug_type='RNN'))                 
                     valid_loss = criterion(outputs, targets, taus)
                 elif (uq_method == 'DA' or uq_method == 'CDA' or
                       uq_method == 'DA_A' or uq_method == 'CDA_A'):
@@ -447,7 +450,7 @@ def test_model(model=None, models=None, uq_method=None, num_mc_samples=None,
                processed_data_path=None, report_path=None,
                data_split=None, fold=None, seed=None, device=None,
                normalization=False, ensemble_mode=False, ensemble_size=None,
-               confidence_level=0.95): 
+               confidence_level=0.95, sqr_factor=None): 
     
     # lower, upper taus as well as z-score for SQR method
     lower_tau = (1-confidence_level)/2
@@ -540,8 +543,12 @@ def test_model(model=None, models=None, uq_method=None, num_mc_samples=None,
             elif (uq_method == 'SQR'):
                 lower_taus = torch.zeros(batch_size, 1).fill_(lower_tau)
                 upper_taus = torch.zeros(batch_size, 1).fill_(upper_tau) 
-                upper_y_pred = model(augment(inputs, upper_taus))
-                lower_y_pred = model(augment(inputs, lower_taus))
+                upper_y_pred = model(
+                    augment(inputs, tau=upper_taus, sqr_factor=sqr_factor,
+                            aug_type='RNN'))              
+                lower_y_pred = model(
+                    augment(inputs, tau=lower_taus, sqr_factor=sqr_factor,
+                            aug_type='RNN'))
                 _y_pred = (upper_y_pred+lower_y_pred)/2
                 aleatoric_std = (torch.abs(upper_y_pred-lower_y_pred)/
                                  (2*z_alpha_half))
@@ -892,7 +899,7 @@ def str2bool(v):
         raise argparse.ArgumentTypeError('Boolean value expected.')
         
         
-def augment(x, sqr_factor=12, tau=None, aug_type=None):
+def augment(x, tau=None, sqr_factor=12, aug_type=None):
     """
     Augment the input tensor `x` with the quantile `tau` as additional feature.
 
