@@ -481,7 +481,7 @@ def main():
         cfg['device'] = device_name
         cfg['seed'] = args.seed
         cfg['num_models'] = args.num_models 
-        cfg['Bootstrapping_ratio'] = args.Bootstrapping_ratio    
+        cfg['Bootstrapping_ratio'] = args.Bootstrapping_ratio 
         
         if args.model == 'dalstm':
             DALSTM_train_evaluate(cfg=cfg)

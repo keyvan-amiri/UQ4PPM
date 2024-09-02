@@ -6,6 +6,7 @@ import pickle
 from utils.utils import (set_random_seed, set_optimizer, train_model,
                          test_model, fit_rf, predict_rf)
 from loss.loss_handler import set_loss
+from loss.QuantileLoss import QuantileLoss
 from models.dalstm import DALSTMModel, DALSTMModelMve, dalstm_init_weights
 from models.stochastic_dalstm import StochasticDALSTM
 from models.Laplace_approximation import post_hoc_laplace
@@ -112,11 +113,7 @@ class DALSTM_train_evaluate ():
             # We only use Laplace approximation which can be applied in 
             # an architecture-agnostic fashion.
             self.subset_of_weights= 'last_layer'
-            # we use Monte Carlo for approximate predictive distribution
-            # TODO: check to probably remove it as we can do exact?
             self.link_approx = 'mc'
-            # type of posterior predictive
-            # TODO: check to probably remove: why not default values
             self.pred_type = 'glm'
             # whether to estimate the prior precision and observation noise 
             # using empirical Bayes after training or not
@@ -128,7 +125,6 @@ class DALSTM_train_evaluate ():
                 'last_layer_name')
             self.hessian_structure = cfg.get('uncertainty').get(
                 'laplace').get('hessian_structure')
-            # TODO: check to probably remove it as we can do exact?
             self.n_samples = cfg.get('uncertainty').get('laplace').get(
                 'n_samples')
             self.sigma_noise = cfg.get('uncertainty').get('laplace').get(
@@ -144,6 +140,20 @@ class DALSTM_train_evaluate ():
         else:
             self.laplace = False
             
+        # set necessary parameters for Simultaneous Quantile Regression
+        if self.uq_method == 'SQR':
+            self.sqr_factor = cfg.get('uncertainty').get('sqr').get(
+                'scaling_factor')
+        # sqr parameters to use same execution path for other UQ methods
+        # get the confidence level for inference with model
+        try:
+            self.confidence_level = cfg.get('uncertainty').get('sqr').get(
+                'confidence_level')
+        except:
+            self.confidence_level = 0.95
+        # we always use all quantiles for training
+        self.sqr_q = 'all'
+        
         ######################################################################
         ######  define loss function (heteroscedastic/homoscedastic)  ########
         ######################################################################
@@ -160,7 +170,10 @@ class DALSTM_train_evaluate ():
                 heteroscedastic=True) 
         elif self.uq_method == 'RF':
             # define loss funciton for fitting the auxiliary model
-            self.criterion = cfg.get('uncertainty').get('union').get('loss_function')
+            self.criterion = cfg.get('uncertainty').get('union').get(
+                'loss_function')
+        elif self.uq_method == 'SQR':
+            self.criterion = QuantileLoss()
         
         # execute training and evaluation loop
         for execution_seed in seeds:
@@ -181,8 +194,17 @@ class DALSTM_train_evaluate ():
                     max_len=self.max_len,
                     dropout=self.dropout,
                     p_fix=self.dropout_prob).to(self.device) 
+            # deterministic model (point estimate)
+            elif self.uq_method == 'SQR':
+                self.model = DALSTMModel(
+                    input_size=self.input_size+1,
+                    hidden_size=self.hidden_size,
+                    n_layers=self.n_layers,
+                    max_len=self.max_len,
+                    dropout=self.dropout,
+                    p_fix=self.dropout_prob).to(self.device) 
             # embedding-based approach
-            if self.uq_method == 'RF':
+            elif self.uq_method == 'RF':
                 self.model = DALSTMModel(
                     input_size=self.input_size,
                     hidden_size=self.hidden_size,
@@ -192,7 +214,7 @@ class DALSTM_train_evaluate ():
                     p_fix=self.dropout_prob,
                     exclude_last_layer=True).to(self.device) 
             # Laplace approximation
-            if self.uq_method == 'LA':
+            elif self.uq_method == 'LA':
                 self.model = DALSTMModel(
                     input_size=self.input_size,
                     hidden_size=self.hidden_size,
@@ -366,7 +388,8 @@ class DALSTM_train_evaluate ():
                                 data_split='holdout',
                                 cfg=self.cfg,
                                 seed=self.seed,
-                                ensemble_mode=self.ensemble_mode)   
+                                ensemble_mode=self.ensemble_mode,
+                                sqr_q=self.sqr_q)   
                     test_model(model=self.model, uq_method=self.uq_method,
                                num_mc_samples=self.num_mcmc,              
                                test_loader=self.test_loader,
@@ -377,7 +400,8 @@ class DALSTM_train_evaluate ():
                                data_split = 'holdout',
                                seed=self.seed,
                                device=self.device,
-                               normalization=self.normalization)
+                               normalization=self.normalization,
+                               confidence_level=self.confidence_level)
                 elif self.ensemble_mode:
                     # if there are ensemble of models to train
                     # get random state (before subset selction for Bootstrapping)
@@ -408,7 +432,8 @@ class DALSTM_train_evaluate ():
                                     cfg=self.cfg,
                                     seed=self.seed,
                                     model_idx=i,
-                                    ensemble_mode=self.ensemble_mode)
+                                    ensemble_mode=self.ensemble_mode,
+                                    sqr_q=self.sqr_q)
                     # Restore the original random state
                     torch.set_rng_state(original_rng_state)
                     # inference with all ensemble members
@@ -425,7 +450,8 @@ class DALSTM_train_evaluate ():
                                device=self.device,
                                normalization=self.normalization,
                                ensemble_mode=self.ensemble_mode,
-                               ensemble_size=self.num_models)  
+                               ensemble_size=self.num_models,
+                               confidence_level=self.confidence_level)  
                 elif self.union_mode:                    
                     self.model, self.aux_model = fit_rf(
                         model=self.model, cfg=self.cfg,
@@ -509,7 +535,8 @@ class DALSTM_train_evaluate ():
                                     fold = split_key+1,
                                     cfg=self.cfg,
                                     seed=self.seed,
-                                    ensemble_mode=self.ensemble_mode)
+                                    ensemble_mode=self.ensemble_mode,
+                                    sqr_q=self.sqr_q)
                         test_model(model=self.model, 
                                    uq_method=self.uq_method,
                                    num_mc_samples=self.num_mcmc,  
@@ -522,7 +549,8 @@ class DALSTM_train_evaluate ():
                                    fold = split_key+1,
                                    seed=self.seed,
                                    device=self.device,
-                                   normalization=self.normalization) 
+                                   normalization=self.normalization,
+                                   confidence_level=self.confidence_level) 
                     elif self.ensemble_mode:
                         # if there are ensemble of models to train
                         # get random state (before subset selction for Bootstrapping)
@@ -555,7 +583,8 @@ class DALSTM_train_evaluate ():
                                         cfg=self.cfg,
                                         seed=self.seed,
                                         model_idx=i,
-                                        ensemble_mode=self.ensemble_mode)
+                                        ensemble_mode=self.ensemble_mode,
+                                        sqr_q=self.sqr_q)
                         # Restore the original random state
                         torch.set_rng_state(original_rng_state)
                         # inference with all ensemble members
@@ -573,7 +602,8 @@ class DALSTM_train_evaluate ():
                                    device=self.device,
                                    normalization=self.normalization,
                                    ensemble_mode=self.ensemble_mode,
-                                   ensemble_size=self.num_models)
+                                   ensemble_size=self.num_models,
+                                   confidence_level=self.confidence_level)
                     elif self.union_mode:
                         self.model, self.aux_model = fit_rf(
                             model=self.model, cfg=self.cfg,

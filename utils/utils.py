@@ -15,6 +15,7 @@ from torch.nn.utils import clip_grad_value_
 import torch.optim as optim
 import torch.utils.tensorboard as tb
 from sklearn.ensemble import RandomForestRegressor
+from scipy.stats import norm
 from loss.mape import mape
 
 
@@ -274,7 +275,7 @@ def train_model(model=None, uq_method=None, train_loader=None, val_loader=None,
                 clip_grad_norm=None, clip_value=None,
                 processed_data_path=None, report_path =None,
                 data_split='holdout', fold=None, cfg=None, seed=None,
-                model_idx=None, ensemble_mode=False):
+                model_idx=None, ensemble_mode=False, sqr_q='all'):
     
     # get current time (as start) to compute training time
     start=datetime.now()
@@ -345,6 +346,13 @@ def train_model(model=None, uq_method=None, train_loader=None, val_loader=None,
                 uq_method == 'en_b'):
                 outputs = model(inputs)
                 loss = criterion(outputs, targets)
+            elif (uq_method == 'SQR'):
+                if sqr_q == 'all':
+                    taus = torch.rand(inputs.shape[0], 1)                    
+                else:
+                    taus = torch.zeros(inputs.shape[0], 1).fill_(sqr_q)
+                outputs = model(augment(inputs, taus))
+                loss = criterion(outputs, targets, taus)
             elif (uq_method == 'DA' or uq_method == 'CDA' or
                   uq_method == 'DA_A' or uq_method == 'CDA_A'):
                 mean, log_var, regularization = model(inputs) 
@@ -372,6 +380,13 @@ def train_model(model=None, uq_method=None, train_loader=None, val_loader=None,
                     uq_method == 'en_b'):
                     outputs = model(inputs)
                     valid_loss = criterion(outputs, targets)
+                elif (uq_method == 'SQR'):
+                    if sqr_q == 'all':
+                        taus = torch.rand(inputs.shape[0], 1)                    
+                    else:
+                        taus = torch.zeros(inputs.shape[0], 1).fill_(sqr_q)
+                    outputs = model(augment(inputs, taus))
+                    valid_loss = criterion(outputs, targets, taus)
                 elif (uq_method == 'DA' or uq_method == 'CDA' or
                       uq_method == 'DA_A' or uq_method == 'CDA_A'):
                     mean, log_var, regularization = model(inputs)
@@ -431,7 +446,13 @@ def test_model(model=None, models=None, uq_method=None, num_mc_samples=None,
                test_loader=None, test_original_lengths=None, y_scaler=None, 
                processed_data_path=None, report_path=None,
                data_split=None, fold=None, seed=None, device=None,
-               normalization=False, ensemble_mode=False, ensemble_size=None): 
+               normalization=False, ensemble_mode=False, ensemble_size=None,
+               confidence_level=0.95): 
+    
+    # lower, upper taus as well as z-score for SQR method
+    lower_tau = (1-confidence_level)/2
+    upper_tau = 1 - (1-confidence_level)/2
+    z_alpha_half = get_z_alpha_half(confidence_level)
     
     start=datetime.now()
     if data_split=='holdout':
@@ -480,7 +501,7 @@ def test_model(model=None, models=None, uq_method=None, num_mc_samples=None,
                        'Epistemic_Uncertainty': [], 'Prefix_length': [],
                        'Absolute_error': [], 'Absolute_percentage_error': []}
     # UQ methods capturing Aleatoric Uncertainty
-    elif uq_method == 'mve':
+    elif (uq_method == 'mve' or uq_method == 'SQR'):
         all_results = {'GroundTruth': [], 'Prediction': [],
                        'Aleatoric_Uncertainty': [], 'Prefix_length': [],
                        'Absolute_error': [], 'Absolute_percentage_error': []}
@@ -512,11 +533,20 @@ def test_model(model=None, models=None, uq_method=None, num_mc_samples=None,
         for index, test_batch in enumerate(test_loader):
             inputs = test_batch[0].to(device)
             _y_truth = test_batch[1].to(device)
-            batch_size = inputs.shape[0]
-            
+            batch_size = inputs.shape[0]            
             # get model outputs, and uncertainties if required
             if uq_method == 'deterministic':            
-                _y_pred = model(inputs)           
+                _y_pred = model(inputs)     
+            elif (uq_method == 'SQR'):
+                lower_taus = torch.zeros(batch_size, 1).fill_(lower_tau)
+                upper_taus = torch.zeros(batch_size, 1).fill_(upper_tau) 
+                upper_y_pred = model(augment(inputs, upper_taus))
+                lower_y_pred = model(augment(inputs, lower_taus))
+                _y_pred = (upper_y_pred+lower_y_pred)/2
+                aleatoric_std = (torch.abs(upper_y_pred-lower_y_pred)/
+                                 (2*z_alpha_half))
+                if normalization:
+                    aleatoric_std = y_scaler * aleatoric_std                     
             elif (uq_method == 'DA' or uq_method == 'CDA' or
                   uq_method == 'DA_A' or uq_method == 'CDA_A'):
                 means_list, logvar_list =[], []
@@ -860,3 +890,42 @@ def str2bool(v):
         return False
     else:
         raise argparse.ArgumentTypeError('Boolean value expected.')
+        
+        
+def augment(x, sqr_factor=12, tau=None, aug_type=None):
+    """
+    Augment the input tensor `x` with the quantile `tau` as additional feature.
+
+    Parameters:
+    - x: Input tensor 
+        if feature vector: batch_size*sequence_length*feature_size
+    - tau: Quantile values. If None, a tensor filled with 0.5 is created.
+           If a float, a tensor filled with this value is created.
+    Returns:
+    - Augmented tensor with tau appended as an additional feature.
+    """
+    if aug_type=='RNN':
+        batch_size, sequence_length, feature_size = x.size()
+        if tau is None:
+            tau = torch.zeros(batch_size, 1).fill_(0.5)  # (batch_size, 1)
+        elif isinstance(tau, float):
+            tau = torch.zeros(batch_size, 1).fill_(tau)  # (batch_size, 1)    
+        # Expand tau to match the sequence length
+        # (batch_size, sequence_length, 1)
+        tau = tau.unsqueeze(1).repeat(1, sequence_length, 1) 
+        # Center and scale tau
+        tau = (tau - 0.5) * sqr_factor  # (batch_size, sequence_length, 1)    
+        # Concatenate tau with the input features
+        # (batch_size, sequence_length, feature_size + 1)
+        augmented_x = torch.cat((x, tau), dim=2)  
+    else:
+        raise ValueError('Augmentation type has to be RNN') 
+    return augmented_x
+
+# method to provide z value for a confidence interval
+def get_z_alpha_half(confidence_level):
+    # Calculate alpha
+    alpha = 1 - confidence_level    
+    # Calculate the critical value z_alpha/2
+    z_alpha_half = norm.ppf(1 - alpha / 2)    
+    return z_alpha_half
