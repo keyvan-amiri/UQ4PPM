@@ -33,7 +33,9 @@ def get_csv_files(folder_path):
             prefixes.append(match.group(1))   
     return filtered_csv_files, prefixes
 
-
+# a helper function for sparsification plot (computes MAE)
+def compute_mae(y_true, y_pred):
+    return np.mean(np.abs(y_true - y_pred))
 
 def evaluate_coverage(y_true=None, pred_mean=None, pred_std=None,
                       low_percentile=2.5, high_percentile=97.5,
@@ -131,6 +133,61 @@ def main():
         else:
             raise NotImplementedError(
                 'Uncertainty quantification {} not understood.'.format(prefix))
+            
+        # Plot sparsification error
+        try:
+            n_samples = len(pred_mean)
+            n_steps = 100
+            step_size = int(n_samples / n_steps)
+            np.random.seed(42)
+            # Compute Oracle curve        
+            mae_per_sample = np.abs(pred_mean - y_true) # MAE for each sample
+            sorted_indices_by_mae = np.argsort(
+                mae_per_sample)[::-1]  # Sort by MAE descending
+            mae_oracle = []
+            for i in range(n_steps):
+                remaining_indices = sorted_indices_by_mae[i * step_size:]
+                mae_oracle.append(compute_mae(y_true[remaining_indices],
+                                              pred_mean[remaining_indices]))
+            # Compute Random curve
+            mae_random = []
+            for i in range(n_steps):
+                remaining_indices = np.random.choice(
+                    n_samples, n_samples - i * step_size, replace=False)
+                mae_random.append(compute_mae(y_true[remaining_indices],
+                                              pred_mean[remaining_indices]))
+            # Compute UQ curve
+            sorted_indices_by_uncertainty = np.argsort(
+                pred_std)[::-1]  # Sort by uncertainty descending
+            mae_uq = []
+            for i in range(n_steps):
+                remaining_indices = sorted_indices_by_uncertainty[i * step_size:]
+                mae_uq.append(compute_mae(y_true[remaining_indices],
+                                          pred_mean[remaining_indices]))
+            # Plot the curves
+            x = np.linspace(0, 1, n_steps)
+            plt.figure(figsize=(10, 6))
+            plt.plot(x, mae_oracle, label='Oracle', color='gray')
+            plt.plot(x, mae_random, label='Random', color='red')
+            plt.plot(x, mae_uq, label=prefix, color='blue')
+            plt.xlabel('Fraction of Removed Samples')
+            plt.ylabel('MAE')
+            plt.title('Sparsification Plot')
+            plt.legend()
+            # Compute areas for AUSE and AURG
+            ause = np.trapz(mae_uq, x) - np.trapz(mae_oracle, x)
+            aurg = np.trapz(mae_random, x) - np.trapz(mae_uq, x)
+            # Display AUSE and AURG on the plot
+            plt.text(0.6, max(mae_oracle) * 0.9, f'AUSE: {ause:.4f}',
+                     color='black', fontsize=12)
+            plt.text(0.6, max(mae_oracle) * 0.85, f'AURG: {aurg:.4f}',
+                     color='black', fontsize=12)
+            new_file_name = base_name + 'sparsification_plot' + '.pdf'
+            new_file_path = os.path.join(target_path, new_file_name)
+            plt.savefig(new_file_path, format='pdf')
+            plt.clf()
+        except:
+            print('Plotting sparsfication is not possible', prefix)       
             
         # Plot average calibration
         try:
