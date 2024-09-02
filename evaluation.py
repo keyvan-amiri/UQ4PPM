@@ -125,7 +125,7 @@ def main():
         if (prefix=='DA_A' or prefix=='CDA_A' or prefix=='en_b_mve' or
             prefix=='en_t_mve'):
             pred_std = df['Total_Uncertainty'].values 
-        elif (prefix=='CARD' or prefix=='mve'):
+        elif (prefix=='CARD' or prefix=='mve' or prefix=='SQR'):
             pred_std = df['Aleatoric_Uncertainty'].values
         elif (prefix=='DA' or prefix=='CDA' or prefix=='en_t' or 
               prefix=='en_b' or prefix=='RF' or prefix=='LA'):
@@ -243,7 +243,7 @@ def main():
               prefix=='en_b' or prefix=='RF' or prefix=='LA'):
             corr, p_value = spearmanr(df['Absolute_error'],
                                       df['Epistemic_Uncertainty'])
-        elif (prefix=='CARD' or prefix=='mve'):
+        elif (prefix=='CARD' or prefix=='mve' or prefix=='SQR'):
             corr, p_value = spearmanr(df['Absolute_error'],
                                       df['Aleatoric_Uncertainty'])
         else:
@@ -266,7 +266,7 @@ def main():
               prefix=='en_b' or prefix=='RF' or prefix=='LA'):
             corr, p_value = spearmanr(df['Absolute_percentage_error'],
                                       df['Epistemic_Uncertainty'])
-        elif (prefix=='CARD' or prefix=='mve'):
+        elif (prefix=='CARD' or prefix=='mve' or prefix=='SQR'):
             corr, p_value = spearmanr(df['Absolute_percentage_error'],
                                       df['Aleatoric_Uncertainty'])
         else:
@@ -296,7 +296,7 @@ def main():
               prefix=='en_b' or prefix=='RF' or prefix=='LA'):
             corr, p_value = spearmanr(filtered_df['Absolute_percentage_error'],
                                       filtered_df['Epistemic_Uncertainty'])
-        elif (prefix=='CARD' or prefix=='mve'):
+        elif (prefix=='CARD' or prefix=='mve' or prefix=='SQR'):
             corr, p_value = spearmanr(filtered_df['Absolute_percentage_error'],
                                       filtered_df['Aleatoric_Uncertainty'])
         else:

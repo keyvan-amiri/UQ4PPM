@@ -271,7 +271,7 @@ def predict_rf(model=None, aux_model=None,
 # function to handle training the model
 def train_model(model=None, uq_method=None, train_loader=None, val_loader=None,
                 criterion=None, optimizer=None, scheduler=None, device=None,
-                num_epochs=100, early_patience=20, min_delta=0,
+                num_epochs=100, early_patience=20, min_delta=0, early_stop=True,
                 clip_grad_norm=None, clip_value=None,
                 processed_data_path=None, report_path =None,
                 data_split='holdout', fold=None, cfg=None, seed=None,
@@ -349,7 +349,12 @@ def train_model(model=None, uq_method=None, train_loader=None, val_loader=None,
                 loss = criterion(outputs, targets)
             elif (uq_method == 'SQR'):
                 if sqr_q == 'all':
-                    taus = torch.rand(inputs.shape[0], 1)                    
+                    taus = torch.rand(inputs.shape[0], 1) 
+                elif isinstance(sqr_q, list):
+                    # Generate random values from the list
+                    taus = torch.tensor([random.choice(sqr_q) 
+                                         for _ in range(inputs.shape[0])]
+                                        ).view(-1, 1)   
                 else:
                     taus = torch.zeros(inputs.shape[0], 1).fill_(sqr_q)
                 taus = taus.to(device)
@@ -386,7 +391,12 @@ def train_model(model=None, uq_method=None, train_loader=None, val_loader=None,
                     valid_loss = criterion(outputs, targets)
                 elif (uq_method == 'SQR'):
                     if sqr_q == 'all':
-                        taus = torch.rand(inputs.shape[0], 1)                    
+                        taus = torch.rand(inputs.shape[0], 1)
+                    elif isinstance(sqr_q, list):
+                        # Generate random values from the list
+                        taus = torch.tensor([random.choice(sqr_q) 
+                                             for _ in range(inputs.shape[0])]
+                                            ).view(-1, 1)                        
                     else:
                         taus = torch.zeros(inputs.shape[0], 1).fill_(sqr_q)
                     outputs = model(
@@ -429,7 +439,7 @@ def train_model(model=None, uq_method=None, train_loader=None, val_loader=None,
         else:
             current_patience += 1
             # Check for early stopping
-            if current_patience >= early_patience:
+            if (early_stop and current_patience >= early_patience):
                 print('Early stopping No improvement in Val loss for:', 
                       f'{early_patience} epochs.')
                 with open(report_path, 'a') as file:

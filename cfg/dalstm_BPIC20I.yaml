@@ -35,6 +35,7 @@ train:
   loss_function: mae   
   max_epochs: 100
   batch_size: 64
+  early_stop: True
   early_stop.patience: 50
   early_stop.min_delta: 0
 optimizer:

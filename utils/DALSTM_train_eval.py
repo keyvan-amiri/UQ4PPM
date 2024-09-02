@@ -64,6 +64,7 @@ class DALSTM_train_evaluate ():
         self.dropout_prob = cfg.get('model').get('lstm').get('dropout_prob')  
         # define training hyperparameters
         self.max_epochs = cfg.get('train').get('max_epochs')
+        self.early_stop = cfg.get('train').get('early_stop')
         self.early_stop_patience = cfg.get('train').get('early_stop.patience')
         self.early_stop_min_delta = cfg.get('train').get('early_stop.min_delta')
         
@@ -147,11 +148,11 @@ class DALSTM_train_evaluate ():
                 'scaling_factor')
             self.confidence_level = cfg.get('uncertainty').get('sqr').get(
                 'confidence_level')
+            self.sqr_q = cfg.get('uncertainty').get('sqr').get('tau')
         except:
             self.confidence_level = 0.95
             self.sqr_factor = 12
-        # we always use all quantiles for training
-        self.sqr_q = 'all'
+            self.sqr_q = 'all'        
         
         ######################################################################
         ######  define loss function (heteroscedastic/homoscedastic)  ########
@@ -382,6 +383,7 @@ class DALSTM_train_evaluate ():
                                 num_epochs=self.max_epochs,
                                 early_patience=self.early_stop_patience,
                                 min_delta=self.early_stop_min_delta, 
+                                early_stop=self.early_stop,
                                 processed_data_path=self.result_path,
                                 report_path=self.report_path,
                                 data_split='holdout',
@@ -427,6 +429,7 @@ class DALSTM_train_evaluate ():
                                     num_epochs=self.max_epochs,
                                     early_patience=self.early_stop_patience,
                                     min_delta=self.early_stop_min_delta, 
+                                    early_stop=self.early_stop,
                                     processed_data_path=self.result_path,
                                     report_path=self.report_path,
                                     data_split='holdout',
@@ -532,6 +535,7 @@ class DALSTM_train_evaluate ():
                                     num_epochs=self.max_epochs,
                                     early_patience=self.early_stop_patience,
                                     min_delta=self.early_stop_min_delta, 
+                                    early_stop=self.early_stop,
                                     processed_data_path=self.result_path,
                                     report_path=self.report_path,
                                     data_split='cv',
@@ -580,7 +584,8 @@ class DALSTM_train_evaluate ():
                                         device=self.device,
                                         num_epochs=self.max_epochs,
                                         early_patience=self.early_stop_patience,
-                                        min_delta=self.early_stop_min_delta, 
+                                        min_delta=self.early_stop_min_delta,
+                                        early_stop=self.early_stop,
                                         processed_data_path=self.result_path,
                                         report_path=self.report_path,
                                         data_split='cv',
