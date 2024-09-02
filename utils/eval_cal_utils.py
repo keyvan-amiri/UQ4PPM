@@ -782,11 +782,11 @@ def recalibration_evaluation (args=None, calibrated_test_def=None,
         file.write(f"Mean Prediction Interval Width (MPIW): {mpiw}\n")
         file.write(f"Quantile Interval Coverage Error (QICE): {qice}\n")
         file.write(
-            f"We have {y_b_0} true remaining times smaller than min of "
-            f"generated remaining time predictions.\n")
+            f"We have {y_b_0} true remaining times smaller than predicted"
+            f"lower bound.\n")
         file.write(
-            f"We have {y_a_100} true remaining times greater than max of "
-            f"generated remaining time predictions.\n") 
+            f"We have {y_a_100} true remaining times greater than predicted"
+            f"upper bound.\n") 
 
     # Get all uncertainty quantification metrics for std_rms_cal
     uq_metrics = uct.metrics.get_all_metrics(pred_mean, pred_std_rms_cal, y_true)
@@ -806,11 +806,11 @@ def recalibration_evaluation (args=None, calibrated_test_def=None,
         file.write(f"Mean Prediction Interval Width (MPIW): {mpiw}\n")
         file.write(f"Quantile Interval Coverage Error (QICE): {qice}\n")
         file.write(
-            f"We have {y_b_0} true remaining times smaller than min of "
-            f"generated remaining time predictions.\n")
+            f"We have {y_b_0} true remaining times smaller than predicted"
+            f"lower bound.\n")
         file.write(
-            f"We have {y_a_100} true remaining times greater than max of "
-            f"generated remaining time predictions.\n") 
+            f"We have {y_a_100} true remaining times greater than predicted"
+            f"upper bound.\n") 
 
     # Get all uncertainty quantification metrics for std_ma_cal
     uq_metrics = uct.metrics.get_all_metrics(pred_mean, pred_std_ma_cal, y_true)
@@ -830,11 +830,11 @@ def recalibration_evaluation (args=None, calibrated_test_def=None,
         file.write(f"Mean Prediction Interval Width (MPIW): {mpiw}\n")
         file.write(f"Quantile Interval Coverage Error (QICE): {qice}\n")
         file.write(
-            f"We have {y_b_0} true remaining times smaller than min of "
-            f"generated remaining time predictions.\n")
+            f"We have {y_b_0} true remaining times smaller than predicted"
+            f"lower bound.\n")
         file.write(
-            f"We have {y_a_100} true remaining times greater than max of "
-            f"generated remaining time predictions.\n")
+            f"We have {y_a_100} true remaining times greater than predicted"
+            f"upper bound.\n") 
 
 # Get prediction means, standard deviations, ground truth from inference result        
 def get_mean_std_truth (df=None, uq_method=None):

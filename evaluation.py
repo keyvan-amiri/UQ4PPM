@@ -186,6 +186,7 @@ def main():
             new_file_path = os.path.join(target_path, new_file_name)
             plt.savefig(new_file_path, format='pdf')
             plt.clf()
+            plt.close()
         except:
             print('Plotting sparsfication is not possible', prefix)       
             
@@ -197,6 +198,7 @@ def main():
             new_file_path = os.path.join(target_path, new_file_name)
             plt.savefig(new_file_path, format='pdf')
             plt.clf()
+            plt.close()
         except:
             print('Plotting the average calibration is not possible', prefix)
             
@@ -208,6 +210,7 @@ def main():
             new_file_path = os.path.join(target_path, new_file_name)
             plt.savefig(new_file_path, format='pdf')
             plt.clf()
+            plt.close()
         except:
             print('Plotting the adversarial group calibration is not possible',
                   prefix)
@@ -221,6 +224,7 @@ def main():
             new_file_path = os.path.join(target_path, new_file_name)
             plt.savefig(new_file_path, format='pdf')
             plt.clf()
+            plt.close()
         except:
             print('Plotting the ordered prediction intervals is not possible',
                   prefix)
@@ -318,11 +322,11 @@ def main():
             file.write(f"Mean Prediction Interval Width (MPIW): {mpiw}\n")
             file.write(f"Quantile Interval Coverage Error (QICE): {qice}\n")
             file.write(
-                f"We have {y_b_0} true remaining times smaller than min of "
-                f"generated remaining time predictions.\n")
+                f"We have {y_b_0} true remaining times smaller than predicted"
+                f"lower bound.\n")
             file.write(
-                f"We have {y_a_100} true remaining times greater than max of "
-                f"generated remaining time predictions.\n")         
+                f"We have {y_a_100} true remaining times greater than predicted"
+                f"upper bound.\n")         
 
 if __name__ == '__main__':
     main()
