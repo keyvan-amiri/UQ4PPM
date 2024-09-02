@@ -352,8 +352,10 @@ def train_model(model=None, uq_method=None, train_loader=None, val_loader=None,
                     taus = torch.rand(inputs.shape[0], 1)                    
                 else:
                     taus = torch.zeros(inputs.shape[0], 1).fill_(sqr_q)
-                outputs = model(augment(inputs, tau=taus, 
-                                        sqr_factor=sqr_factor, aug_type='RNN'))               
+                taus = taus.to(device)
+                outputs = model(
+                    augment(inputs, tau=taus, sqr_factor=sqr_factor,
+                            aug_type='RNN', device=device))               
                 loss = criterion(outputs, targets, taus)
             elif (uq_method == 'DA' or uq_method == 'CDA' or
                   uq_method == 'DA_A' or uq_method == 'CDA_A'):
@@ -387,8 +389,10 @@ def train_model(model=None, uq_method=None, train_loader=None, val_loader=None,
                         taus = torch.rand(inputs.shape[0], 1)                    
                     else:
                         taus = torch.zeros(inputs.shape[0], 1).fill_(sqr_q)
-                    outputs = model(augment(
-                        inputs, tau=taus, sqr_factor=sqr_factor, aug_type='RNN'))                 
+                    outputs = model(
+                        augment(inputs, tau=taus, sqr_factor=sqr_factor,
+                                aug_type='RNN', device=device)) 
+                    taus = taus.to(device)
                     valid_loss = criterion(outputs, targets, taus)
                 elif (uq_method == 'DA' or uq_method == 'CDA' or
                       uq_method == 'DA_A' or uq_method == 'CDA_A'):
@@ -545,10 +549,10 @@ def test_model(model=None, models=None, uq_method=None, num_mc_samples=None,
                 upper_taus = torch.zeros(batch_size, 1).fill_(upper_tau) 
                 upper_y_pred = model(
                     augment(inputs, tau=upper_taus, sqr_factor=sqr_factor,
-                            aug_type='RNN'))              
+                            aug_type='RNN', device=device))              
                 lower_y_pred = model(
                     augment(inputs, tau=lower_taus, sqr_factor=sqr_factor,
-                            aug_type='RNN'))
+                            aug_type='RNN', device=device))
                 _y_pred = (upper_y_pred+lower_y_pred)/2
                 aleatoric_std = (torch.abs(upper_y_pred-lower_y_pred)/
                                  (2*z_alpha_half))
@@ -662,7 +666,7 @@ def test_model(model=None, models=None, uq_method=None, num_mc_samples=None,
                         aleatoric_std.tolist())
                     all_results['Total_Uncertainty'].extend(
                         total_std.tolist()) 
-            elif uq_method == 'mve':
+            elif (uq_method == 'mve' or uq_method == 'SQR'):
                 aleatoric_std = aleatoric_std.detach().cpu().numpy()
                 all_results['Aleatoric_Uncertainty'].extend(
                     aleatoric_std.tolist())   
@@ -899,7 +903,7 @@ def str2bool(v):
         raise argparse.ArgumentTypeError('Boolean value expected.')
         
         
-def augment(x, tau=None, sqr_factor=12, aug_type=None):
+def augment(x, tau=None, sqr_factor=12, aug_type=None, device=None):
     """
     Augment the input tensor `x` with the quantile `tau` as additional feature.
 
@@ -921,7 +925,8 @@ def augment(x, tau=None, sqr_factor=12, aug_type=None):
         # (batch_size, sequence_length, 1)
         tau = tau.unsqueeze(1).repeat(1, sequence_length, 1) 
         # Center and scale tau
-        tau = (tau - 0.5) * sqr_factor  # (batch_size, sequence_length, 1)    
+        tau = (tau - 0.5) * sqr_factor  # (batch_size, sequence_length, 1)
+        tau = tau.to(device)
         # Concatenate tau with the input features
         # (batch_size, sequence_length, feature_size + 1)
         augmented_x = torch.cat((x, tau), dim=2)  
