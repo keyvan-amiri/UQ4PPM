@@ -11,7 +11,9 @@ from torch.utils.data import TensorDataset, DataLoader
 from models.dalstm import DALSTMModel, DALSTMModelMve
 from models.stochastic_dalstm import StochasticDALSTM
 from loss.loss_handler import set_loss
+from loss.QuantileLoss import QuantileLoss
 from evaluation import evaluate_coverage
+from utils.utils import augment, get_z_alpha_half
 
 
 
@@ -339,7 +341,9 @@ def get_model_and_loss(args=None, cfg=None, input_size=None, max_len=None,
     elif (args.UQ == 'DA_A' or args.UQ == 'CDA_A' or args.UQ == 'mve' or
         args.UQ == 'en_t_mve' or args.UQ == 'en_b_mve'):
         criterion = set_loss(loss_func=cfg.get('train').get('loss_function'),
-                             heteroscedastic=True)    
+                             heteroscedastic=True) 
+    elif args.UQ == 'SQR':
+        criterion = QuantileLoss()
 
     # define model(s) based on UQ method
     # an emtpy list for ensemble of models
@@ -350,6 +354,11 @@ def get_model_and_loss(args=None, cfg=None, input_size=None, max_len=None,
                 input_size=input_size, hidden_size=hidden_size,
                 n_layers=n_layers, max_len=max_len, dropout=dropout,
                 p_fix=dropout_prob).to(device)
+        elif args.UQ == 'SQR':
+            model = DALSTMModel(
+                input_size=input_size+1, hidden_size=hidden_size,
+                n_layers=n_layers, max_len=max_len, dropout=dropout,
+                p_fix=dropout_prob).to(device) 
         elif (args.UQ == 'DA' or args.UQ == 'CDA'):
             # hs (heteroscedastic) is set to False
             model = StochasticDALSTM(
@@ -386,12 +395,23 @@ def get_model_and_loss(args=None, cfg=None, input_size=None, max_len=None,
 
 
 # inference for validation for DA, CDA,DA_A, CDA_A, mve approaches
-def inference_on_validation(args=None, model=None, model_list=None,
+def inference_on_validation(args=None, cfg=None, model=None, model_list=None,
                             checkpoint_path=None, checkpoint_paths_list=None,
                             calibration_loader=None, num_mc_samples=None,
                             normalization=False, y_scaler=None, device=None,
                             report_path=None, recalibration_path=None,
                             ensemble_mode=False, num_models=None):
+    
+    # lower, upper taus as well as z-score for SQR method
+    try:
+        sqr_factor = cfg.get('uncertainty').get('sqr').get('scaling_factor')
+        confidence_level = cfg.get('uncertainty').get('sqr').get('confidence_level')
+    except:
+        confidence_level = 0.95
+        sqr_factor = 12
+    lower_tau = (1-confidence_level)/2
+    upper_tau = 1 - (1-confidence_level)/2
+    z_alpha_half = get_z_alpha_half(confidence_level)
         
     print('Now: start inference on validation set:')
     start=datetime.now()
@@ -406,7 +426,7 @@ def inference_on_validation(args=None, model=None, model_list=None,
         res_dict = {'GroundTruth': [], 'Prediction': [], 
                     'Epistemic_Uncertainty': [], 'Aleatoric_Uncertainty': [],
                     'Total_Uncertainty': []} 
-    elif args.UQ == 'mve':
+    elif (args.UQ == 'mve' or args.UQ == 'SQR'):
         res_dict = {'GroundTruth': [], 'Prediction': [],
                     'Aleatoric_Uncertainty': []}
     
@@ -466,6 +486,20 @@ def inference_on_validation(args=None, model=None, model_list=None,
                 # normalize aleatoric uncertainty if necessary
                 if normalization:
                     aleatoric_std = y_scaler * aleatoric_std 
+            elif args.UQ == 'SQR':          
+                lower_taus = torch.zeros(inputs.shape[0], 1).fill_(lower_tau)
+                upper_taus = torch.zeros(inputs.shape[0], 1).fill_(upper_tau) 
+                upper_y_pred = model(
+                    augment(inputs, tau=upper_taus, sqr_factor=sqr_factor,
+                            aug_type='RNN', device=device))              
+                lower_y_pred = model(
+                    augment(inputs, tau=lower_taus, sqr_factor=sqr_factor,
+                            aug_type='RNN', device=device))
+                _y_pred = (upper_y_pred+lower_y_pred)/2
+                aleatoric_std = (torch.abs(upper_y_pred-lower_y_pred)/
+                                 (2*z_alpha_half))
+                if normalization:
+                    aleatoric_std = y_scaler * aleatoric_std                  
             elif (args.UQ == 'en_t' or args.UQ == 'en_b'):
                 # empty list to collect predictions of all members of ensemble
                 prediction_list = []
@@ -523,7 +557,7 @@ def inference_on_validation(args=None, model=None, model_list=None,
                     total_std = total_std.detach().cpu().numpy()
                     res_dict['Aleatoric_Uncertainty'].extend(aleatoric_std.tolist())
                     res_dict['Total_Uncertainty'].extend(total_std.tolist()) 
-            elif args.UQ == 'mve':
+            elif (args.UQ == 'mve' or args.UQ == 'SQR'):
                 aleatoric_std = aleatoric_std.detach().cpu().numpy()
                 res_dict['Aleatoric_Uncertainty'].extend(aleatoric_std.tolist())
     validation_df = pd.DataFrame(res_dict)
@@ -565,7 +599,7 @@ def recalibration_evaluation (args=None, calibrated_test_def=None,
     if (args.UQ=='DA_A' or args.UQ=='CDA_A' or 
         args.UQ == 'en_t_mve' or args.UQ == 'en_b_mve'):
         pred_std = calibrated_test_def['Total_Uncertainty'].values 
-    elif (args.UQ=='CARD' or args.UQ=='mve'):
+    elif (args.UQ=='CARD' or args.UQ=='mve' or args.UQ=='SQR'):
         pred_std = calibrated_test_def['Aleatoric_Uncertainty'].values
     elif (args.UQ=='DA' or args.UQ=='CDA' or args.UQ == 'en_t' or 
           args.UQ == 'en_b' or args.UQ == 'RF' or args.UQ == 'LA'):
@@ -591,7 +625,7 @@ def recalibration_evaluation (args=None, calibrated_test_def=None,
     if (args.UQ=='DA_A' or args.UQ=='CDA_A' or 
         args.UQ == 'en_t_mve' or args.UQ == 'en_b_mve'):
         sorted_pred_std = sorted_df['Total_Uncertainty'].values 
-    elif (args.UQ=='CARD' or args.UQ=='mve'):
+    elif (args.UQ=='CARD' or args.UQ=='mve' or args.UQ=='SQR'):
         sorted_pred_std = sorted_df['Aleatoric_Uncertainty'].values
     elif (args.UQ=='DA' or args.UQ=='CDA' or args.UQ == 'en_t' or 
           args.UQ == 'en_b' or args.UQ == 'RF' or args.UQ == 'LA'):
@@ -626,7 +660,7 @@ def recalibration_evaluation (args=None, calibrated_test_def=None,
     if (args.UQ=='DA_A' or args.UQ=='CDA_A' or 
         args.UQ == 'en_t_mve' or args.UQ == 'en_b_mve'):
         sorted_pred_std = sorted_df['Total_Uncertainty'].values 
-    elif (args.UQ=='CARD' or args.UQ=='mve'):
+    elif (args.UQ=='CARD' or args.UQ=='mve' or args.UQ=='SQR'):
         sorted_pred_std = sorted_df['Aleatoric_Uncertainty'].values
     elif (args.UQ=='DA' or args.UQ=='CDA' or args.UQ == 'en_t' or
           args.UQ == 'en_b' or args.UQ == 'RF' or args.UQ == 'LA'):
@@ -661,7 +695,7 @@ def recalibration_evaluation (args=None, calibrated_test_def=None,
     if (args.UQ=='DA_A' or args.UQ=='CDA_A' or 
         args.UQ == 'en_t_mve' or args.UQ == 'en_b_mve'):
         sorted_pred_std = sorted_df['Total_Uncertainty'].values 
-    elif (args.UQ=='CARD' or args.UQ=='mve'):
+    elif (args.UQ=='CARD' or args.UQ=='mve' or args.UQ=='SQR'):
         sorted_pred_std = sorted_df['Aleatoric_Uncertainty'].values
     elif (args.UQ=='DA' or args.UQ=='CDA' or args.UQ == 'en_t' or 
           args.UQ == 'en_b' or args.UQ == 'RF' or args.UQ == 'LA'):
@@ -843,7 +877,7 @@ def get_mean_std_truth (df=None, uq_method=None):
     if (uq_method=='DA_A' or uq_method=='CDA_A' or
         uq_method == 'en_t_mve' or uq_method == 'en_b_mve'):
         pred_std = df['Total_Uncertainty'].values 
-    elif (uq_method=='CARD' or uq_method=='mve'):
+    elif (uq_method=='CARD' or uq_method=='mve' or uq_method=='SQR'):
         pred_std = df['Aleatoric_Uncertainty'].values
     elif (uq_method=='DA' or uq_method=='CDA' or uq_method == 'en_t' or
           uq_method == 'en_b' or uq_method == 'RF' or uq_method == 'LA'):

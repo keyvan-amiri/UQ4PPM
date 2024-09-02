@@ -234,7 +234,8 @@ def main():
                          num_models=num_models)            
                     # execute inference on validation set
                     calibration_df = inference_on_validation(
-                        args=args, model=model, checkpoint_path=checkpoint_path,
+                        args=args, cfg=cfg, model=model,
+                        checkpoint_path=checkpoint_path,
                         calibration_loader=calibration_loader,
                         num_mc_samples=num_mcmc, normalization=normalization,
                         y_scaler=max_train_val, device=device,
