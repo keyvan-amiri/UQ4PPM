@@ -13,16 +13,31 @@ BPIC15_1:
   event_numerical: []  
   case_categorical: ['caseStatus', 'last_phase', 'Responsible_actor', 'parts', 'termName', 'requestComplete', 'caseProcedure', 'Includes_subCases'] 
   case_numerical: ['SUMleges']
-BPIC20I:  
-  event_categorical: ['org:resource', 'org:role'] 
-  event_numerical: []  
-  case_categorical: ['Permit TaskNumber', 'Permit OrganizationalEntity', 'Permit BudgetNumber', 'Permit ActivityNumber'] 
-  case_numerical: ['Amount', 'RequestedAmount', 'Permit RequestedBudget','AdjustedAmount', 'OriginalAmount'] 
-BPIC20D:
+BPIC20DD:
   event_categorical: ['org:resource', 'org:role']
   event_numerical: []  
   case_categorical: [] 
   case_numerical: ['Amount']
+BPIC20ID:  
+  event_categorical: ['org:resource', 'org:role'] 
+  event_numerical: []  
+  case_categorical: ['Permit TaskNumber', 'Permit OrganizationalEntity', 'Permit BudgetNumber', 'Permit ActivityNumber'] 
+  case_numerical: ['Amount', 'RequestedAmount', 'Permit RequestedBudget','AdjustedAmount', 'OriginalAmount'] 
+BPIC20PTC:
+  event_categorical: ['org:resource', 'org:role']
+  event_numerical: []  
+  case_categorical: ['OrganizationalEntity', 'Permit OrganizationalEntity', 'Permit BudgetNumber'] 
+  case_numerical: ['RequestedAmount', Permit RequestedBudget]
+BPIC20RFP:
+  event_categorical: ['org:resource', 'org:role']
+  event_numerical: []  
+  case_categorical: ['Project', 'OrganizationalEntity'] 
+  case_numerical: ['RequestedAmount']
+BPIC20TPD:
+  event_categorical: ['org:resource', 'org:role']
+  event_numerical: []  
+  case_categorical: ['OrganizationalEntity', 'Overspent', 'BudgetNumber'] 
+  case_numerical: ['TotalDeclared', 'RequestedAmount_0', 'OverspentAmount']
 HelpDesk:
   event_categorical: ['org:resource', 'workgroup', 'seriousness_2', 'service_level' , 'service_type', 'customer']
   event_numerical: [] 
