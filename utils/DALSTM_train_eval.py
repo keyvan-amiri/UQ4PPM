@@ -623,9 +623,9 @@ class DALSTM_train_evaluate ():
             csv_filename = os.path.join(
                 self.result_path,
                 '{}_{}_seed_{}_hpo_result_.csv'.format(
-                    self.uq_method, self.data_split, self.seed))            
+                    self.uq_method, self.split, self.seed))            
             hpo_df.to_csv(csv_filename, index=False)
-            max_index = hpo_df[self.HPO_metric].idxmax()
+            max_index = hpo_df[self.HPO_metric].idxmin()
             for i, file_path in enumerate(self.all_val_results):
                 if i != max_index:
                     os.remove(file_path)
