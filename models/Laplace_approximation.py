@@ -209,7 +209,7 @@ def post_hoc_laplace(model=None, cfg=None,
         subnetwork_mask = ModuleNameSubnetMask(model,
                                                module_names=module_names)
         subnetwork_mask.select()
-        subnetwork_indices = subnetwork_mask.indices
+        subnetwork_indices = subnetwork_mask.indices.cpu()           
         la = Laplace(model, likelihood='regression',
              subset_of_weights=subset_of_weights,
              hessian_structure=hessian_structure,
@@ -217,6 +217,8 @@ def post_hoc_laplace(model=None, cfg=None,
              sigma_noise=sigma_noise,
              prior_precision=prior_precision,
              temperature=temperature)
+        raise NotImplementedError('Heteroscedastic regression is not supported\
+                                  for Laplace Approximation')
 
     # Fit the local Laplace approximation at the parameters of the model.
     # i.e., approximate the posterior of model's weight around MAP estimates.
