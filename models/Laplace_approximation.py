@@ -108,32 +108,38 @@ def post_hoc_laplace(model=None, cfg=None,
         file.write(str(cfg))
         file.write('\n')
         file.write('\n') 
-       
-    # Load deterministic pre-trained point estimate
-    # path to deterministic point estimate
-    if split == 'holdout':
-        deterministic_checkpoint_path = os.path.join(
-            result_path,
-            'deterministic_{}_seed_{}_best_model.pt'.format(split, seed))
+    if not heteroscedastic: 
+        backbone_name = 'deterministic'
     else:
-        deterministic_checkpoint_path = os.path.join(
+        backbone_name = 'mve'
+    # Load deterministic pre-trained point estimate or pretrained MVE model
+    if split == 'holdout':
+        model_checkpoint_path = os.path.join(
             result_path,
-            'deterministic_{}_fold{}_seed_{}_best_model.pt'.format(
-                split, fold, seed))
-    # check deterministic pre-trained model is available
-    if not os.path.isfile(deterministic_checkpoint_path):
-        raise FileNotFoundError('Deterministic model must be trained first')
+            '{}_{}_seed_{}_best_model.pt'.format(backbone_name, split, seed))
+    else:
+        model_checkpoint_path = os.path.join(
+            result_path,
+            '{}_{}_fold{}_seed_{}_best_model.pt'.format(
+                backbone_name, split, fold, seed))
+    # check whether pre-trained model is available
+    if not os.path.isfile(model_checkpoint_path):
+        if not heteroscedastic:
+            raise FileNotFoundError('Deterministic model must be trained first')
+        else:
+            raise FileNotFoundError(
+                'MVE model (Heteroscedastic regression) must be trained first')
     else:
         # load the checkpoint except the last layer
-        checkpoint = torch.load(deterministic_checkpoint_path)
+        checkpoint = torch.load(model_checkpoint_path)
         model.load_state_dict(checkpoint['model_state_dict'])
-        
+  
     # Path to Laplace model to be saved after training
-    deterministic_model_name = os.path.basename(deterministic_checkpoint_path)
+    model_name = os.path.basename(model_checkpoint_path)
     if not heteroscedastic:
-        la_name = deterministic_model_name.replace('deterministic_', 'LA_')
+        la_name = model_name.replace('deterministic_', 'LA_')
     else:
-        la_name = deterministic_model_name.replace('deterministic_', 'LA_')
+        la_name = model_name.replace('mve_', 'LA_H_')
     # TODO: check type of the save and decide on following line:
     #la_name = la_name.replace('.pt', '.bin')
     la_path = os.path.join(result_path, la_name) 
