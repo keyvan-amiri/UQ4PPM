@@ -94,6 +94,7 @@ def main():
     # select the uncertainty quantification approach
     parser.add_argument('--UQ', default='deterministic',
                         help='Uncertainty quantification method to be used')
+    parser.add_argument('--cfg', help='configuration for training & inference')
     # five splits are used for cross-fold valiation by default
     parser.add_argument('--n_splits', type=int, default=5,
                         help='Number of splits that is used')
@@ -186,20 +187,9 @@ def main():
     parser.add_argument('-i', '--image_folder', type=str, default='images',
                         help='The folder name of samples')   
     
-    ##########################################################################
-    #######################    ensemble arguments    #########################
-    ##########################################################################
-    parser.add_argument('--num_models', type=int, default=5,
-                        help='Number of models that are used for ensembles')
-    parser.add_argument('--Bootstrapping_ratio', type=float, default=0.25,
-                        help='Proportion of training and validation data, that\
-                        is used by each ensemble member') 
-
     args = parser.parse_args()    
     root_path = os.getcwd()
-    
-    # TODO: a method to raise errors for not implemented UQ-ARCHITECTURE combinations
-    
+       
     # A separate execution route for CARD model    
     if args.UQ == 'CARD':
         
@@ -468,8 +458,12 @@ def main():
         # define device name
         device_name = f'cuda:{args.device}' if torch.cuda.is_available() else 'cpu'
         # read the relevant configuration file, and append
+        # TODO: resolve for all UQ techniques
+        """
         cfg_file = os.path.join(root_path, 'cfg',
                                 args.model+'_'+args.dataset+'.yaml')
+        """
+        cfg_file = os.path.join(root_path, 'cfg', args.cfg)
         with open(cfg_file, 'r') as f:
             cfg = yaml.safe_load(f)     
         # append the configuration file
@@ -480,9 +474,7 @@ def main():
         cfg['n_splits'] = args.n_splits
         cfg['device'] = device_name
         cfg['seed'] = args.seed
-        cfg['num_models'] = args.num_models 
-        cfg['Bootstrapping_ratio'] = args.Bootstrapping_ratio 
-        
+               
         if args.model == 'dalstm':
             DALSTM_train_evaluate(cfg=cfg)
         elif args.model == 'pgtnet':

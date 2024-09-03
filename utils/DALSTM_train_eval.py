@@ -53,9 +53,11 @@ class DALSTM_train_evaluate ():
         self.split = cfg.get('split')
         self.n_splits = cfg.get('n_splits') 
         # get the number of ensembles
-        self.num_models = cfg.get('num_models')
+        self.num_models = cfg.get('uncertainty').get('ensemble').get(
+            'num_models')
         # get Bootstrapping ratio which is used by each ensemble member
-        self.Bootstrapping_ratio = cfg.get('Bootstrapping_ratio')
+        self.Bootstrapping_ratio = cfg.get('uncertainty').get('ensemble').get(
+            'Bootstrapping_ratio')       
         # Define important size and dimensions for DALSTM model
         (self.input_size, self.max_len, self.max_train_val
          ) = self.load_dimensions()
