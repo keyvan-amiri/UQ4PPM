@@ -137,13 +137,16 @@ class DALSTM_preprocessing ():
         # We need this to make a split that is equal for every dataset
         pd_log[XES_Fields.CASE_COLUMN] = pd.Categorical(
             pd_log[XES_Fields.CASE_COLUMN])
-        pd_log[XES_Fields.CASE_COLUMN] = pd_log[XES_Fields.CASE_COLUMN].cat.codes    
-        # lifecycle_trick: ACTIVITY NAME + LIFECYCLE-TRANSITION
-        unique_lifecycle = pd_log[XES_Fields.LIFECYCLE_COLUMN].unique()
-        if len(unique_lifecycle) > 1 and self.perform_lifecycle_trick:
-            pd_log[XES_Fields.ACTIVITY_COLUMN] = pd_log[
-                XES_Fields.ACTIVITY_COLUMN].astype(str) + "+" + pd_log[
-                    XES_Fields.LIFECYCLE_COLUMN]       
+        pd_log[XES_Fields.CASE_COLUMN] = pd_log[XES_Fields.CASE_COLUMN].cat.codes 
+        try:
+            unique_lifecycle = pd_log[XES_Fields.LIFECYCLE_COLUMN].unique()
+            # lifecycle_trick: ACTIVITY NAME + LIFECYCLE-TRANSITION
+            if len(unique_lifecycle) > 1 and self.perform_lifecycle_trick:
+                pd_log[XES_Fields.ACTIVITY_COLUMN] = pd_log[
+                    XES_Fields.ACTIVITY_COLUMN].astype(str) + "+" + pd_log[
+                        XES_Fields.LIFECYCLE_COLUMN]  
+        except:
+            print('there is no lifecycle column in the log!')         
         pd_log.to_csv(csv_path, encoding="utf-8")
 
         return csv_file, csv_path
