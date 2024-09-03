@@ -21,6 +21,7 @@ uncertainty:
   laplace:
     empirical_bayes: False # whether to estimate the prior precision and observation noise using empirical Bayes after training or not
     last_layer_name: linear1
+    module_names: ['linear_mu', 'linear_logvar']
     hessian_structure: full # full kron diag gp       
     n_samples: 100 # number of MC samples for approximating the predictive distribution
     sigma_noise: 1.0 # observation noise [0, 1]
@@ -31,10 +32,15 @@ uncertainty:
     grid_size: 100            
     epochs: 100
     lr: 0.01
+  sqr:
+    scaling_factor: 40
+    confidence_level: 0.95
+    tau: [0.025, 0.975] # a list, a single number, or all
 train:
   loss_function: mae   
-  max_epochs: 100
+  max_epochs: 200
   batch_size: 64
+  early_stop: True
   early_stop.patience: 50
   early_stop.min_delta: 0
 optimizer:

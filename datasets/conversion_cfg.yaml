@@ -1,8 +1,3 @@
-env_permit:
-  event_categorical: ['org:group', 'org:resource'] 
-  event_numerical: []
-  case_categorical: ['responsible', 'department', 'channel', 'group'] # without 'case:' string
-  case_numerical: []
 HelpDesk:
   event_categorical: ['org:resource', 'workgroup', 'seriousness_2', 'service_level' , 'service_type', 'customer']
   event_numerical: [] 
@@ -18,6 +13,11 @@ BPIC20I:
   event_numerical: []  
   case_categorical: ['Permit TaskNumber', 'Permit OrganizationalEntity', 'Permit BudgetNumber', 'Permit ActivityNumber'] 
   case_numerical: ['Amount', 'RequestedAmount', 'Permit RequestedBudget','AdjustedAmount', 'OriginalAmount'] 
+BPIC20D:
+  event_categorical: ['org:resource', 'org:role']
+  event_numerical: []  
+  case_categorical: [] 
+  case_numerical: ['Amount']
 BPIC13I:
   event_categorical: ['org:role', 'organization involved', 'organization country', 'resource country', 'impact', "org:group", "product", "org:resource"]
   event_numerical: []  
