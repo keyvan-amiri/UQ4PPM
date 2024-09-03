@@ -1,13 +1,18 @@
-HelpDesk:
-  event_categorical: ['org:resource', 'workgroup', 'seriousness_2', 'service_level' , 'service_type', 'customer']
-  event_numerical: [] 
-  case_categorical: ['responsible_section', 'support_section', 'product'] 
-  case_numerical: []
 BPIC12:
   event_categorical: ['org:resource'] 
   event_numerical: []  
   case_categorical: [] 
   case_numerical: ['AMOUNT_REQ']
+BPIC13I:
+  event_categorical: ['org:role', 'organization involved', 'organization country', 'resource country', 'impact', 'org:group', 'product', 'org:resource']
+  event_numerical: []  
+  case_categorical: [] 
+  case_numerical: []
+BPIC15_1:
+  event_categorical: ['org:resource', 'monitoringResource']
+  event_numerical: []  
+  case_categorical: ['caseStatus', 'last_phase', 'Responsible_actor', 'parts', 'termName', 'requestComplete', 'caseProcedure', 'Includes_subCases'] 
+  case_numerical: ['SUMleges']
 BPIC20I:  
   event_categorical: ['org:resource', 'org:role'] 
   event_numerical: []  
@@ -18,10 +23,10 @@ BPIC20D:
   event_numerical: []  
   case_categorical: [] 
   case_numerical: ['Amount']
-BPIC13I:
-  event_categorical: ['org:role', 'organization involved', 'organization country', 'resource country', 'impact', "org:group", "product", "org:resource"]
-  event_numerical: []  
-  case_categorical: [] 
+HelpDesk:
+  event_categorical: ['org:resource', 'workgroup', 'seriousness_2', 'service_level' , 'service_type', 'customer']
+  event_numerical: [] 
+  case_categorical: ['responsible_section', 'support_section', 'product'] 
   case_numerical: []
 Sepsis:
   event_categorical: ['InfectionSuspected', 'org:group', 'DiagnosticBlood', 'DisfuncOrg', 'SIRSCritTachypnea', 'Hypotensie', 'SIRSCritHeartRate', 'Infusion', 'DiagnosticArtAstrup', 'DiagnosticIC', 'DiagnosticSputum', 'DiagnosticLiquor', 'DiagnosticOther', 'SIRSCriteria2OrMore', 'DiagnosticXthorax', 'SIRSCritTemperature', 'DiagnosticUrinaryCulture', 'SIRSCritLeucos', 'Oligurie', 'DiagnosticLacticAcid', 'Diagnose', 'Hypoxie', 'DiagnosticUrinarySediment', 'DiagnosticECG'] 
