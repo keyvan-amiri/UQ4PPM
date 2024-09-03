@@ -1,17 +1,14 @@
 import torch
 from torch.utils.data import TensorDataset, DataLoader
-import torch.optim as optim
 import os
 import pickle
-from models.dalstm import DALSTMModel, DALSTMModelMve, dalstm_init_weights
-from models.stochastic_dalstm import StochasticDALSTM
 from models.Laplace_approximation import post_hoc_laplace
 from models.Random_Forest import fit_rf, predict_rf
 from models.Train import train_model
 from models.Test import test_model
 from loss.loss_handler import set_loss
 from loss.QuantileLoss import QuantileLoss
-from utils.utils import get_model, get_optimizer_scheduler, set_random_seed, set_optimizer
+from utils.utils import get_model, get_optimizer_scheduler, set_random_seed
 
 
 # A generic class for training and evaluation of DALSTM model
@@ -77,6 +74,9 @@ class DALSTM_train_evaluate ():
             self.hpo1 = cfg.get('uncertainty').get('ensemble').get('num_models')
             if isinstance(self.hpo1, list):
                 self.exp_count = len(self.hpo1)
+                self.exp_dict = []
+                for n_model in self.hpo1:
+                    self.exp_dict.append({'num_models':n_model})
             elif isinstance(self.hpo1, int):
                 self.exp_count = 1
                 self.num_models = self.hpo1
@@ -115,9 +115,12 @@ class DALSTM_train_evaluate ():
         else:
             # necessary to use the same execution path
             self.num_mcmc = None 
+            self.concrete_dropout = None
+            self.weight_regularizer = None
+            self.dropout_regularizer = None
+            self.Bayes = None
         
 
-        
         # set relevant parameters for embedding-based UQ
         if self.uq_method == 'RF':
             self.union_mode = True
@@ -243,21 +246,25 @@ class DALSTM_train_evaluate ():
                     models=self.models, cfg=self.cfg, ensemble_mode=True,
                     num_models=max(self.hpo1)) 
                 
-            
-        
+      
         # execute training and evaluation loop
         for execution_seed in seeds:            
             # set random seed
             self.seed = int(execution_seed) 
             set_random_seed(self.seed)
+            self.all_checkpoints = []
+            self.all_val_results = []
+            self.all_reports = []
             for exp_id in range (1, self.exp_count+1):
+                
                 # train-test pipeline for holdout data split
                 if self.split == 'holdout':
                     # define the report path
                     self.report_path = os.path.join(
                         self.result_path,
                         '{}_{}_seed_{}_exp_{}_report_.txt'.format(
-                            self.uq_method, self.split, self.seed, exp_id))  
+                            self.uq_method, self.split, self.seed, exp_id)) 
+                    self.all_reports.append(self.report_path)
                     # get paths for processed data
                     (self.X_train_path, self.X_val_path, self.X_test_path,
                      self.y_train_path, self.y_val_path, self.y_test_path,
@@ -318,48 +325,53 @@ class DALSTM_train_evaluate ():
                                  self.test_loader, self.test_lengths
                                  ) = self.load_data()                           
                             # train a member of ensemble    
-                            train_model(model=self.models[i-1],
-                                        uq_method=self.uq_method,
-                                        train_loader=self.train_loader,
-                                        val_loader=self.val_loader,
-                                        criterion=self.criterion,
-                                        optimizer=self.optimizers[i-1],
-                                        scheduler=self.schedulers[i-1],
-                                        device=self.device,
-                                        num_epochs=self.max_epochs,
-                                        early_patience=self.early_stop_patience,
-                                        min_delta=self.early_stop_min_delta, 
-                                        early_stop=self.early_stop,
-                                        processed_data_path=self.result_path,
-                                        report_path=self.report_path,
-                                        data_split='holdout',
-                                        cfg=self.cfg,
-                                        seed=self.seed,
-                                        model_idx=i,
-                                        ensemble_mode=self.ensemble_mode,
-                                        sqr_q=self.sqr_q,
-                                        sqr_factor=self.sqr_factor,
-                                        exp_id=exp_id)
+                            res_model = train_model(
+                                model=self.models[i-1],
+                                uq_method=self.uq_method,
+                                train_loader=self.train_loader,
+                                val_loader=self.val_loader,
+                                criterion=self.criterion,
+                                optimizer=self.optimizers[i-1],
+                                scheduler=self.schedulers[i-1],
+                                device=self.device,
+                                num_epochs=self.max_epochs,
+                                early_patience=self.early_stop_patience,
+                                min_delta=self.early_stop_min_delta, 
+                                early_stop=self.early_stop,
+                                processed_data_path=self.result_path,
+                                report_path=self.report_path,
+                                data_split='holdout',
+                                cfg=self.cfg,
+                                seed=self.seed,
+                                model_idx=i,
+                                ensemble_mode=self.ensemble_mode,
+                                sqr_q=self.sqr_q,
+                                sqr_factor=self.sqr_factor,
+                                exp_id=exp_id)
+                            self.all_checkpoints.append(res_model)
                         # Restore the original random state
                         torch.set_rng_state(original_rng_state)
                         # inference with all ensemble members
-                        test_model(models=self.models,
-                                   uq_method=self.uq_method,
-                                   num_mc_samples=self.num_mcmc,              
-                                   test_loader=self.test_loader,
-                                   test_original_lengths=self.test_lengths,
-                                   y_scaler=self.max_train_val,
-                                   processed_data_path= self.result_path,
-                                   report_path=self.report_path,
-                                   data_split = 'holdout',
-                                   seed=self.seed,
-                                   device=self.device,
-                                   normalization=self.normalization,
-                                   ensemble_mode=self.ensemble_mode,
-                                   ensemble_size=self.num_models,
-                                   confidence_level=self.confidence_level,
-                                   sqr_factor=self.sqr_factor,
-                                   exp_id=exp_id)  
+                        res_df = test_model(
+                            models=self.models,
+                            uq_method=self.uq_method,
+                            num_mc_samples=self.num_mcmc,              
+                            test_loader=self.test_loader,
+                            test_original_lengths=self.test_lengths,
+                            y_scaler=self.max_train_val,
+                            processed_data_path= self.result_path,
+                            report_path=self.report_path,
+                            data_split = 'holdout',
+                            seed=self.seed,
+                            device=self.device,
+                            normalization=self.normalization,
+                            ensemble_mode=self.ensemble_mode,
+                            ensemble_size=self.num_models,
+                            confidence_level=self.confidence_level,
+                            sqr_factor=self.sqr_factor,
+                            exp_id=exp_id) 
+                        self.all_val_results.append(res_df)
+                        
                     elif self.union_mode:                    
                         self.model, self.aux_model = fit_rf(
                             model=self.model, cfg=self.cfg,
@@ -579,7 +591,19 @@ class DALSTM_train_evaluate ():
                                 result_path=self.result_path,
                                 split=self.split, fold = split_key+1,
                                 seed=self.seed, device=self.device)                        
-                    
+                self.select_best()   
+    
+    # A method to collect all
+    def select_best(self):
+        if self.split == 'holdout':
+            print(self.all_val_results)
+            print(self.all_checkpoints)
+            print(self.all_reports)
+            print(self.exp_dict)
+        else:
+            #TODO: implement best parameter selection for cross-fold validation
+            print('not implemented!')
+        return None
     # A method to load important dimensions
     def load_dimensions(self):        
         scaler_path = os.path.join(

@@ -197,3 +197,4 @@ def train_model(model=None, uq_method=None, train_loader=None, val_loader=None,
             training_time)) 
         file.write('#######################################################\n')
         file.write('#######################################################\n')
+    return checkpoint_path

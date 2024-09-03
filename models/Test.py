@@ -273,11 +273,13 @@ def test_model(model=None, models=None, uq_method=None, num_mc_samples=None,
     results_df = pd.DataFrame(all_results)
     if data_split=='holdout':
         csv_filename = os.path.join(
-            processed_data_path,'{}_{}_seed_{}_inference_result_.csv'.format(
-                uq_method,data_split,seed))
+            processed_data_path,
+            '{}_{}_seed_{}_exp_{}_inference_result_.csv'.format(
+                uq_method,data_split,seed, exp_id))
     else:
         csv_filename = os.path.join(
             processed_data_path,
-            '{}_{}_fold{}_seed_{}_inference_result_.csv'.format(
-                uq_method, data_split, fold, seed))         
+            '{}_{}_fold{}_seed_{}_exp_{}_inference_result_.csv'.format(
+                uq_method, data_split, fold, seed, exp_id))         
     results_df.to_csv(csv_filename, index=False)
+    return csv_filename
