@@ -1,7 +1,9 @@
 import os
 import pickle
 import torch
+import pandas as pd
 from torch.utils.data import TensorDataset, DataLoader
+import uncertainty_toolbox as uct
 from models.Laplace_approximation import post_hoc_laplace
 from models.Random_Forest import fit_rf, predict_rf
 from models.Train import train_model
@@ -47,6 +49,8 @@ class DALSTM_train_evaluate ():
         self.normalization = cfg.get('data').get('normalization')
         # get the specific uncertainty quanitification defined in command line
         self.uq_method = cfg.get('uq_method')
+        # metric that is used for hyper-parameter optimization
+        self.HPO_metric = cfg.get('HPO_metric')
         # get the type of data split, and possibly number of splits for CV        
         self.split = cfg.get('split')
         self.n_splits = cfg.get('n_splits')     
@@ -454,11 +458,11 @@ class DALSTM_train_evaluate ():
                                        confidence_level=self.confidence_level,
                                        sqr_factor=self.sqr_factor) 
                         elif self.ensemble_mode:
-                            # if there are ensemble of models to train
+                            self.num_models = experiment.get('num_models')
+                            self.Bootstrapping_ratio = experiment.get(
+                                'Bootstrapping_ratio')
                             # get random state 
                             # before subset selction Bootstrapping
-                            if self.exp_count > 1:
-                                self.num_models = self.hpo1[exp_id-1]
                             original_rng_state = torch.get_rng_state()
                             for i in range(1, self.num_models+1):
                                 # load relevant data for Bootstrapping ensemble
@@ -566,14 +570,71 @@ class DALSTM_train_evaluate ():
                                 result_path=self.result_path,
                                 split=self.split, fold = split_key+1,
                                 seed=self.seed, device=self.device)                        
-                self.select_best()   
+            self.select_best()   
     
     # A method to collect all
     def select_best(self):
         if self.split == 'holdout':
-            print(self.all_val_results)
-            print(self.all_checkpoints)
-            print(self.all_reports)
+            # initilize a dictionary to collect results for all experiments
+            hpo_results = {'exp_id': []}
+            first_experiment = self.experiments[0]
+            extracted_keys = first_experiment.keys()
+            for key in extracted_keys:
+                hpo_results[key] = []
+            additional_keys = ['mae', 'rmse', 'nll', 'crps', 'sharp']
+            for key in additional_keys:
+                hpo_results[key] = []
+            for exp_id, experiment in enumerate(self.experiments):
+                hpo_results['exp_id'].append(exp_id+1)
+                for key in extracted_keys:
+                    hpo_results[key].append(experiment.get(key))                
+                df = pd.read_csv(self.all_val_results[exp_id])
+                pred_mean = df['Prediction'].values
+                y_true = df['GroundTruth'].values
+                if (self.uq_method=='DA_A' or self.uq_method=='CDA_A'
+                    or self.uq_method=='en_b_mve' or
+                    self.uq_method=='en_t_mve'):
+                    pred_std = df['Total_Uncertainty'].values 
+                elif (self.uq_method=='CARD' or self.uq_method=='mve' or 
+                      self.uq_method=='SQR'):
+                    pred_std = df['Aleatoric_Uncertainty'].values
+                elif (self.uq_method=='DA' or self.uq_method=='CDA' or 
+                      self.uq_method=='en_t' or self.uq_method=='en_b' or 
+                      self.uq_method=='RF' or self.uq_method=='LA'):
+                    pred_std = df['Epistemic_Uncertainty'].values
+                else:
+                    raise NotImplementedError(
+                        'Uncertainty quantification {} \
+                            not understood.'.format(self.uq_method))
+                # Get all uncertainty quantification metrics
+                uq_metrics = uct.metrics.get_all_metrics(
+                    pred_mean, pred_std, y_true)
+                hpo_results['mae'].append(
+                    uq_metrics.get('accuracy').get('mae'))
+                hpo_results['rmse'].append(
+                    uq_metrics.get('accuracy').get('rmse'))
+                hpo_results['nll'].append(
+                    uq_metrics.get('scoring_rule').get('nll'))
+                hpo_results['crps'].append(
+                    uq_metrics.get('scoring_rule').get('crps'))
+                hpo_results['sharp'].append(
+                    uq_metrics.get('sharpness').get('sharp'))
+            hpo_df = pd.DataFrame(hpo_results)
+            csv_filename = os.path.join(
+                self.result_path,
+                '{}_{}_seed_{}_hpo_result_.csv'.format(
+                    self.uq_method, self.data_split, self.seed))            
+            hpo_df.to_csv(csv_filename, index=False)
+            max_index = hpo_df[self.HPO_metric].idxmax()
+            for i, file_path in enumerate(self.all_val_results):
+                if i != max_index:
+                    os.remove(file_path)
+            for i, file_path in enumerate(self.all_checkpoints):
+                if i != max_index:
+                    os.remove(file_path)
+            for i, file_path in enumerate(self.all_reports):
+                if i != max_index:
+                    os.remove(file_path)           
         else:
             #TODO: implement best parameter selection for cross-fold validation
             print('not implemented!')
