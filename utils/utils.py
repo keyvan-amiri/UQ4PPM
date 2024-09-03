@@ -5,6 +5,7 @@ import sys
 import logging
 import random
 import shutil
+import itertools
 import numpy as np
 import torch
 import torch.optim as optim
@@ -17,6 +18,28 @@ from models.stochastic_dalstm import StochasticDALSTM
 ##############################################################################
 # Utlility functions for training and inference
 ##############################################################################
+# a method to define exeriments for hyper-parameter tuning
+def get_exp(uq_method=None, cfg=None, random=False):
+    if (uq_method == 'en_b' or uq_method == 'en_b_mve' or
+        uq_method == 'en_t' or uq_method == 'en_t_mve'): 
+        num_model_lst = cfg.get('uncertainty').get('ensemble').get('num_models')
+        if not isinstance(num_model_lst, list):
+            raise ValueError('number of models should be a list.')
+        else:
+            max_model_num = max(num_model_lst)
+        boot_ratio_lst = cfg.get('uncertainty').get('ensemble'
+                                                    ).get('Bootstrapping_ratio')
+        if not isinstance(boot_ratio_lst, list):
+            raise ValueError('Bootstrapping ratio should be a list.')
+        hyperparameters = {'num_models': num_model_lst, 
+                           'Bootstrapping_ratio': boot_ratio_lst}
+        keys = hyperparameters.keys()
+        values = hyperparameters.values()
+        combinations = list(itertools.product(*values))
+        experiments = [dict(zip(keys, combination)) 
+                       for combination in combinations]
+    return experiments, max_model_num
+
 
 # a method to get model based on UQ technique selected for experiment
 def get_model(uq_method=None, input_size=None, hidden_size=None, n_layers=None,

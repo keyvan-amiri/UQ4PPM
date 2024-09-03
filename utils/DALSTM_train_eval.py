@@ -1,14 +1,15 @@
-import torch
-from torch.utils.data import TensorDataset, DataLoader
 import os
 import pickle
+import torch
+from torch.utils.data import TensorDataset, DataLoader
 from models.Laplace_approximation import post_hoc_laplace
 from models.Random_Forest import fit_rf, predict_rf
 from models.Train import train_model
 from models.Test import test_model
 from loss.loss_handler import set_loss
 from loss.QuantileLoss import QuantileLoss
-from utils.utils import get_model, get_optimizer_scheduler, set_random_seed
+from utils.utils import (get_model, get_optimizer_scheduler, set_random_seed,
+                         get_exp)
 
 
 # A generic class for training and evaluation of DALSTM model
@@ -70,21 +71,8 @@ class DALSTM_train_evaluate ():
         if (self.uq_method == 'en_b' or self.uq_method == 'en_b_mve' or
             self.uq_method == 'en_t' or self.uq_method == 'en_t_mve'):
             self.ensemble_mode = True
-            # get number of ensembles: list for HPO, otherwise an ineger
-            self.hpo1 = cfg.get('uncertainty').get('ensemble').get('num_models')
-            if isinstance(self.hpo1, list):
-                self.exp_count = len(self.hpo1)
-                self.exp_dict = []
-                for n_model in self.hpo1:
-                    self.exp_dict.append({'num_models':n_model})
-            elif isinstance(self.hpo1, int):
-                self.exp_count = 1
-                self.num_models = self.hpo1
-            else:
-                raise ValueError('number of models should be integer or list')
-            # get Bootstrapping ratio which is used by each ensemble member
-            self.Bootstrapping_ratio = cfg.get('uncertainty').get(
-                'ensemble').get('Bootstrapping_ratio')
+            self.experiments, self.max_model_num = get_exp(
+                uq_method=self.uq_method, cfg=cfg)
             if (self.uq_method == 'en_b' or self.uq_method == 'en_b_mve'):
                 self.bootstrapping = True
             else:
@@ -219,33 +207,18 @@ class DALSTM_train_evaluate ():
                 self.optimizer, self.scheduler = get_optimizer_scheduler(
                     model=self.model, cfg=self.cfg) 
         else:
-            if self.exp_count == 1:
-                self.models = get_model(
-                    uq_method=self.uq_method, input_size=self.input_size,
-                    hidden_size=self.hidden_size, n_layers=self.n_layers,
-                    max_len=self.max_len, dropout=self.dropout,
-                    dropout_prob=self.dropout_prob, num_models=self.num_models,
-                    concrete_dropout=self.concrete_dropout,
-                    weight_regularizer=self.weight_regularizer,
-                    dropout_regularizer=self.dropout_regularizer,
-                    Bayes=self.Bayes, device=self.device)
-                self.optimizers, self.schedulers = get_optimizer_scheduler(
-                    models=self.models, cfg=self.cfg, ensemble_mode=True,
-                    num_models=self.num_models) 
-            else:
-                self.models = get_model(
-                    uq_method=self.uq_method, input_size=self.input_size,
-                    hidden_size=self.hidden_size, n_layers=self.n_layers,
-                    max_len=self.max_len, dropout=self.dropout,
-                    dropout_prob=self.dropout_prob, num_models=max(self.hpo1),
-                    concrete_dropout=self.concrete_dropout,
-                    weight_regularizer=self.weight_regularizer,
-                    dropout_regularizer=self.dropout_regularizer,
-                    Bayes=self.Bayes, device=self.device)
-                self.optimizers, self.schedulers = get_optimizer_scheduler(
-                    models=self.models, cfg=self.cfg, ensemble_mode=True,
-                    num_models=max(self.hpo1)) 
-                
+            self.models = get_model(
+                uq_method=self.uq_method, input_size=self.input_size,
+                hidden_size=self.hidden_size, n_layers=self.n_layers,
+                max_len=self.max_len, dropout=self.dropout,
+                dropout_prob=self.dropout_prob, num_models=self.max_model_num,
+                concrete_dropout=self.concrete_dropout,
+                weight_regularizer=self.weight_regularizer,
+                dropout_regularizer=self.dropout_regularizer,
+                Bayes=self.Bayes, device=self.device)                
+            self.optimizers, self.schedulers = get_optimizer_scheduler(
+                models=self.models, cfg=self.cfg, ensemble_mode=True,
+                num_models=self.max_model_num)                 
       
         # execute training and evaluation loop
         for execution_seed in seeds:            
@@ -255,7 +228,8 @@ class DALSTM_train_evaluate ():
             self.all_checkpoints = []
             self.all_val_results = []
             self.all_reports = []
-            for exp_id in range (1, self.exp_count+1):
+            
+            for exp_id, experiment in enumerate(self.experiments):
                 
                 # train-test pipeline for holdout data split
                 if self.split == 'holdout':
@@ -263,7 +237,7 @@ class DALSTM_train_evaluate ():
                     self.report_path = os.path.join(
                         self.result_path,
                         '{}_{}_seed_{}_exp_{}_report_.txt'.format(
-                            self.uq_method, self.split, self.seed, exp_id)) 
+                            self.uq_method, self.split, self.seed, exp_id+1)) 
                     self.all_reports.append(self.report_path)
                     # get paths for processed data
                     (self.X_train_path, self.X_val_path, self.X_test_path,
@@ -310,11 +284,12 @@ class DALSTM_train_evaluate ():
                                    confidence_level=self.confidence_level,
                                    sqr_factor=self.sqr_factor)
                     elif self.ensemble_mode:
+                        self.num_models = experiment.get('num_models')
+                        self.Bootstrapping_ratio = experiment.get(
+                            'Bootstrapping_ratio')
                         # if there are ensemble of models to train
                         # get random state (before subset selction for Bootstrapping)
-                        original_rng_state = torch.get_rng_state()
-                        if self.exp_count > 1:
-                            self.num_models = self.hpo1[exp_id-1]
+                        original_rng_state = torch.get_rng_state()                       
                         for i in range(1, self.num_models+1):
                             # load relevant data for Bootstrapping ensemble
                             if self.bootstrapping:
@@ -347,7 +322,7 @@ class DALSTM_train_evaluate ():
                                 ensemble_mode=self.ensemble_mode,
                                 sqr_q=self.sqr_q,
                                 sqr_factor=self.sqr_factor,
-                                exp_id=exp_id)
+                                exp_id=exp_id+1)
                             self.all_checkpoints.append(res_model)
                         # Restore the original random state
                         torch.set_rng_state(original_rng_state)
@@ -369,7 +344,7 @@ class DALSTM_train_evaluate ():
                             ensemble_size=self.num_models,
                             confidence_level=self.confidence_level,
                             sqr_factor=self.sqr_factor,
-                            exp_id=exp_id) 
+                            exp_id=exp_id+1) 
                         self.all_val_results.append(res_df)
                         
                     elif self.union_mode:                    
@@ -430,7 +405,7 @@ class DALSTM_train_evaluate ():
                             self.result_path,
                             '{}_{}_fold{}_seed_{}_exp_{}_report_.txt'.format(
                                 self.uq_method, self.split, split_key+1,
-                                self.seed, exp_id))
+                                self.seed, exp_id+1))
                         # load train, validation, and test data loaders
                         (self.X_train_path, self.X_val_path, self.X_test_path,
                          self.y_train_path, self.y_val_path, self.y_test_path,
@@ -517,7 +492,7 @@ class DALSTM_train_evaluate ():
                                             ensemble_mode=self.ensemble_mode,
                                             sqr_q=self.sqr_q,
                                             sqr_factor=self.sqr_factor,
-                                            exp_id=exp_id)
+                                            exp_id=exp_id+1)
                             # Restore the original random state
                             torch.set_rng_state(original_rng_state)
                             # inference with all ensemble members
@@ -538,7 +513,7 @@ class DALSTM_train_evaluate ():
                                        ensemble_size=self.num_models,
                                        confidence_level=self.confidence_level,
                                        sqr_factor=self.sqr_factor,
-                                       exp_id=exp_id)
+                                       exp_id=exp_id+1)
                         elif self.union_mode:
                             self.model, self.aux_model = fit_rf(
                                 model=self.model, cfg=self.cfg,
@@ -599,7 +574,6 @@ class DALSTM_train_evaluate ():
             print(self.all_val_results)
             print(self.all_checkpoints)
             print(self.all_reports)
-            print(self.exp_dict)
         else:
             #TODO: implement best parameter selection for cross-fold validation
             print('not implemented!')
