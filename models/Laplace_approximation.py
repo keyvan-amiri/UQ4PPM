@@ -22,7 +22,8 @@ from torch.utils.data import TensorDataset, DataLoader, ConcatDataset
 import torch.nn.functional as F
 from loss.mape import mape
 from laplace import Laplace
-from laplace import (LLLaplace, FullLLLaplace, KronLLLaplace, DiagLLLaplace)
+#from laplace import (LLLaplace, FullLLLaplace, KronLLLaplace, DiagLLLaplace)
+from laplace.utils import ModuleNameSubnetMask
 from utils.eval_cal_utils import (get_validation_data_and_model_size,
                                   replace_suffix)
 from models.dalstm import DALSTMModel
@@ -39,11 +40,11 @@ def post_hoc_laplace(model=None, cfg=None,
                      subset_of_weights=None, hessian_structure='kron', 
                      empirical_bayes=False,
                      method=None, grid_size=None,
-                     last_layer_name=None,
+                     last_layer_name=None, module_names=None,
                      sigma_noise=None, stat_noise=False, 
                      prior_precision=None, temperature=None,                      
                      n_samples=None, link_approx=None, pred_type=None,
-                     la_epochs=None, la_lr=None,
+                     la_epochs=None, la_lr=None, heteroscedastic=False,
                      report_path=None, result_path=None,
                      split=None, fold=None, seed=None, device=None):    
     """
@@ -85,6 +86,8 @@ def post_hoc_laplace(model=None, cfg=None,
     pred_type : We only use glm prediction in our setting (see Laplace library)
     la_epochs : Number of epochs that is used for prior precision optimization.
     la_lr : Learning rate that is used for prior precision optimization.
+    heteroscedastic: whether heteroscedastic regression is integrated into
+    Laplace approximation or not.
     report_path : Path to log important insights.
     result_path : Path to the directory in which important results are saved.
     split : Type of the split (holout/cv)
@@ -127,7 +130,10 @@ def post_hoc_laplace(model=None, cfg=None,
         
     # Path to Laplace model to be saved after training
     deterministic_model_name = os.path.basename(deterministic_checkpoint_path)
-    la_name = deterministic_model_name.replace('deterministic_', 'LA_')
+    if not heteroscedastic:
+        la_name = deterministic_model_name.replace('deterministic_', 'LA_')
+    else:
+        la_name = deterministic_model_name.replace('deterministic_', 'LA_')
     # TODO: check type of the save and decide on following line:
     #la_name = la_name.replace('.pt', '.bin')
     la_path = os.path.join(result_path, la_name) 
@@ -183,22 +189,28 @@ def post_hoc_laplace(model=None, cfg=None,
     ##########################################################################
     ##########  Laplace model, fitting it in a post-hoc fashion   ###########
     ##########################################################################
-    optional_args = dict() #empty dict for optional args in Laplace model
-    optional_args['last_layer_name'] = last_layer_name 
-    la = Laplace(model, likelihood='regression',
-                 subset_of_weights=subset_of_weights,
-                 hessian_structure=hessian_structure,
-                 sigma_noise=sigma_noise,
-                 prior_precision=prior_precision,
-                 temperature=temperature,
-                 **optional_args) 
-    """
-    la = FullLLLaplace(model, likelihood='regression',
-                 sigma_noise=sigma_noise,
-                 prior_precision=prior_precision,
-                 temperature=temperature,
-                 **optional_args) 
-    """
+    if not heteroscedastic:
+        optional_args = dict() #empty dict for optional args in Laplace model
+        optional_args['last_layer_name'] = last_layer_name 
+        la = Laplace(model, likelihood='regression',
+                     subset_of_weights=subset_of_weights,
+                     hessian_structure=hessian_structure,
+                     sigma_noise=sigma_noise,
+                     prior_precision=prior_precision,
+                     temperature=temperature,
+                     **optional_args) 
+    else:
+        subnetwork_mask = ModuleNameSubnetMask(model,
+                                               module_names=module_names)
+        subnetwork_mask.select()
+        subnetwork_indices = subnetwork_mask.indices
+        la = Laplace(model, likelihood='regression',
+             subset_of_weights=subset_of_weights,
+             hessian_structure=hessian_structure,
+             subnetwork_indices=subnetwork_indices,
+             sigma_noise=sigma_noise,
+             prior_precision=prior_precision,
+             temperature=temperature)
 
     # Fit the local Laplace approximation at the parameters of the model.
     # i.e., approximate the posterior of model's weight around MAP estimates.
@@ -282,9 +294,18 @@ def post_hoc_laplace(model=None, cfg=None,
     
     start=datetime.now()
     # empty dictionary to collect inference result in a dataframe
-    all_results = {'GroundTruth': [], 'Prediction': [],
-                   'Epistemic_Uncertainty': [], 'Prefix_length': [],
-                   'Absolute_error': [], 'Absolute_percentage_error': []}   
+    if not heteroscedastic:
+        # only capture Epistemic uncertainty by Laplace approximation
+        all_results = {'GroundTruth': [], 'Prediction': [],
+                       'Epistemic_Uncertainty': [], 'Prefix_length': [],
+                       'Absolute_error': [], 'Absolute_percentage_error': []} 
+    else:
+        # Epistemic, Aleatoric uncertainties by LA, heteroscedastic regression
+        all_results = {'GroundTruth': [], 'Prediction': [],
+                       'Epistemic_Uncertainty': [], 'Aleatoric_Uncertainty': [],
+                       'Prefix_length': [], 'Absolute_error': [],
+                       'Absolute_percentage_error': []} 
+        
     # set variabls to zero to collect loss values and length ids
     absolute_error = 0
     absolute_percentage_error = 0
@@ -297,6 +318,9 @@ def post_hoc_laplace(model=None, cfg=None,
             _y_truth = test_batch[1].to(device)
             batch_size = inputs.shape[0] 
             _y_pred, f_var = la(inputs, pred_type=pred_type) 
+            if heteroscedastic:            
+                _, log_var = model(inputs)
+                aleatoric_std = torch.sqrt(torch.exp(log_var))
             #_y_pred = _y_pred.squeeze()  
             # Remove the dimension of size 1 along axis 2
             #f_var = f_var.squeeze()
@@ -309,6 +333,8 @@ def post_hoc_laplace(model=None, cfg=None,
                 _y_truth = y_scaler * _y_truth
                 _y_pred = y_scaler * _y_pred  
                 epistemic_std = y_scaler * epistemic_std
+                if heteroscedastic:
+                    aleatoric_std = y_scaler * aleatoric_std
             # Compute batch loss
             #_y_pred = _y_pred.squeeze(dim=1)
             absolute_error += F.l1_loss(_y_pred, _y_truth).item()
@@ -331,7 +357,9 @@ def post_hoc_laplace(model=None, cfg=None,
             epistemic_std = epistemic_std.detach().cpu().numpy()
             all_results['Epistemic_Uncertainty'].extend(
                 epistemic_std.tolist())
-        
+            if heteroscedastic:
+                all_results['Aleatoric_Uncertainty'].extend(
+                    aleatoric_std.tolist())            
         num_test_batches = len(test_loader)    
         absolute_error /= num_test_batches    
         absolute_percentage_error /= num_test_batches
@@ -370,13 +398,33 @@ def post_hoc_laplace(model=None, cfg=None,
                       for item in sublist]
     all_results['Epistemic_Uncertainty'] = flattened_list    
     results_df = pd.DataFrame(all_results)
+    if heteroscedastic:
+        flattened_list = [item 
+                          for sublist in all_results['Aleatoric_Uncertainty'] 
+                          for item in sublist]
+        all_results['Aleatoric_Uncertainty'] = flattened_list    
+    results_df = pd.DataFrame(all_results)
+        
     if split=='holdout':
-        csv_filename = os.path.join(
-            result_path,'LA_{}_seed_{}_inference_result_.csv'.format(split,seed))
+        if not heteroscedastic:
+            csv_filename = os.path.join(
+                result_path,
+                'LA_{}_seed_{}_inference_result_.csv'.format(split,seed))
+        else:
+            csv_filename = os.path.join(
+                result_path,
+                'LA_H_{}_seed_{}_inference_result_.csv'.format(split,seed))
     else:
-        csv_filename = os.path.join(
-            result_path,'LA_{}_fold{}_seed_{}_inference_result_.csv'.format(
-                split, fold, seed))         
+        if not heteroscedastic:
+            csv_filename = os.path.join(
+                result_path,
+                'LA_{}_fold{}_seed_{}_inference_result_.csv'.format(
+                    split, fold, seed))  
+        else:
+            csv_filename = os.path.join(
+                result_path,
+                'LA_H_{}_fold{}_seed_{}_inference_result_.csv'.format(
+                    split, fold, seed)) 
     results_df.to_csv(csv_filename, index=False)
     
     

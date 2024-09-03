@@ -60,7 +60,7 @@ class DALSTMModel(nn.Module):
 
 class DALSTMModelMve(nn.Module):
     def __init__(self, input_size=None, hidden_size=None, n_layers=None,
-                 max_len=None, dropout=True, p_fix=0.2):
+                 max_len=None, dropout=True, p_fix=0.2, return_squeezed=True):
         '''
         ARGUMENTS:
         input_size: number of features
@@ -82,6 +82,7 @@ class DALSTMModelMve(nn.Module):
         # Linear layers for mean and variance
         self.linear_mu = nn.Linear(hidden_size, 1)
         self.linear_logvar = nn.Linear(hidden_size, 1)
+        self.return_squeezed = return_squeezed
         
     def forward(self, x):
         x = x.float() # if tensors are saved in a different format
@@ -101,9 +102,12 @@ class DALSTMModelMve(nn.Module):
         mu = self.linear_mu(x[:, -1, :]) # mean prediction       
         logvar = self.linear_logvar(x[:, -1, :]) # log-variance prediction
         
-        return mu.squeeze(dim=1), logvar.squeeze(dim=1)
-  
-    
+        if self.return_squeezed:
+            return mu.squeeze(dim=1), logvar.squeeze(dim=1)
+        else:
+            return mu, logvar
+        
+
 # Custom weight initialization function for ensembles
 def dalstm_init_weights(m):
     if isinstance(m, nn.Linear):

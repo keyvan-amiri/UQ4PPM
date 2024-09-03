@@ -109,21 +109,32 @@ class DALSTM_train_evaluate ():
             self.union_mode = False
             
         # set necessary parameters for Laplace approximation
-        if self.uq_method == 'LA':
+        if (self.uq_method == 'LA' or self.uq_method == 'LA_H'):
             self.laplace = True
-            # We only use Laplace approximation which can be applied in 
-            # an architecture-agnostic fashion.
-            self.subset_of_weights= 'last_layer'
             self.link_approx = 'mc'
             self.pred_type = 'glm'
+            if self.uq_method == 'LA':
+                # We only use Laplace approximation which can be applied in 
+                # an architecture-agnostic fashion.
+                self.subset_of_weights= 'last_layer'
+                self.last_layer_name = cfg.get('uncertainty').get(
+                    'laplace').get('last_layer_name')
+                self.module_names=None
+                self.heteroscedastic = False
+            else:
+                # In case of Heteroscedastic regression, we apply Laplace
+                # approximation to last linear layers for mean, log variance
+                self.subset_of_weights= 'subnetwork' 
+                self.last_layer_name = None
+                self.module_names = cfg.get('uncertainty').get(
+                                    'laplace').get('module_names')
+                self.heteroscedastic = True
             # whether to estimate the prior precision and observation noise 
             # using empirical Bayes after training or not
             self.empirical_bayes = cfg.get('uncertainty').get('laplace').get(
                 'empirical_bayes')
             self.la_epochs = cfg.get('uncertainty').get('laplace').get('epochs')
             self.la_lr = cfg.get('uncertainty').get('laplace').get('lr')
-            self.last_layer_name = cfg.get('uncertainty').get('laplace').get(
-                'last_layer_name')
             self.hessian_structure = cfg.get('uncertainty').get(
                 'laplace').get('hessian_structure')
             self.n_samples = cfg.get('uncertainty').get('laplace').get(
@@ -222,7 +233,16 @@ class DALSTM_train_evaluate ():
                     max_len=self.max_len,
                     dropout=self.dropout,
                     p_fix=self.dropout_prob,
-                    return_squeezed=False).to(self.device)                
+                    return_squeezed=False).to(self.device)
+            elif self.uq_method == 'LA_H':  
+                self.model = DALSTMModelMve(
+                    input_size=self.input_size,
+                    hidden_size=self.hidden_size,
+                    n_layers=self.n_layers,
+                    max_len=self.max_len,
+                    dropout=self.dropout,
+                    p_fix=self.dropout_prob,
+                    return_squeezed=False).to(self.device)
             # dropout approximation
             elif (self.uq_method == 'DA' or self.uq_method == 'CDA'):
                 self.model = StochasticDALSTM(
@@ -495,6 +515,7 @@ class DALSTM_train_evaluate ():
                         empirical_bayes=self.empirical_bayes,
                         method=self.method, grid_size=self.grid_size,
                         last_layer_name=self.last_layer_name,
+                        module_names=self.module_names,
                         sigma_noise=self.sigma_noise, 
                         stat_noise=self.stat_noise,
                         prior_precision=self.prior_precision,
@@ -502,6 +523,7 @@ class DALSTM_train_evaluate ():
                         n_samples=self.n_samples, link_approx=self.link_approx,
                         pred_type=self.pred_type,
                         la_epochs=self.la_epochs, la_lr=self.la_lr,
+                        heteroscedastic=self.heteroscedastic,
                         report_path=self.report_path,
                         result_path=self.result_path,
                         split=self.split, seed=self.seed, device=self.device)
