@@ -10,11 +10,176 @@ import torch
 import torch.optim as optim
 import torch.utils.tensorboard as tb
 from scipy.stats import norm
+from models.dalstm import DALSTMModel, DALSTMModelMve, dalstm_init_weights
+from models.stochastic_dalstm import StochasticDALSTM
 
 
 ##############################################################################
 # Utlility functions for training and inference
 ##############################################################################
+
+# a method to get model based on UQ technique selected for experiment
+def get_model(uq_method=None, input_size=None, hidden_size=None, n_layers=None,
+              max_len=None, dropout=None, dropout_prob=None, num_models=None,
+              concrete_dropout=None, weight_regularizer=None,
+              dropout_regularizer=None, Bayes=None, device=None):    
+
+    # deterministic model 
+    if uq_method == 'deterministic':
+        model = DALSTMModel(input_size=input_size, hidden_size=hidden_size,
+                            n_layers=n_layers, max_len=max_len, dropout=dropout,
+                            p_fix=dropout_prob).to(device) 
+        return model
+    elif uq_method == 'SQR':
+        model = DALSTMModel(input_size=input_size+1, hidden_size=hidden_size,
+                            n_layers=n_layers, max_len=max_len, dropout=dropout,
+                            p_fix=dropout_prob).to(device) 
+        return model
+    elif uq_method == 'RF':
+        model = DALSTMModel(input_size=input_size, hidden_size=hidden_size,
+                            n_layers=n_layers, max_len=max_len, dropout=dropout,
+                            p_fix=dropout_prob, exclude_last_layer=True).to(device) 
+        return model
+    elif (uq_method == 'LA' or uq_method == 'LA_H'):
+        model = DALSTMModel(input_size=input_size, hidden_size=hidden_size,
+                            n_layers=n_layers, max_len=max_len, dropout=dropout,
+                            p_fix=dropout_prob, return_squeezed=False).to(device)
+        return model
+    # Stochastic model
+    elif (uq_method == 'DA' or uq_method == 'CDA'):
+        model = StochasticDALSTM(
+            input_size=input_size,
+            hidden_size=hidden_size,
+            n_layers=n_layers,
+            max_len=max_len,
+            dropout=dropout,
+            concrete=concrete_dropout,
+            p_fix=dropout_prob,
+            weight_regularizer=weight_regularizer,
+            dropout_regularizer=dropout_regularizer,
+            hs=False,
+            Bayes=Bayes,
+            device=device).to(device)
+        return model
+    # dropout approximation with heteroscedastic regression
+    elif (uq_method == 'DA_A' or uq_method == 'CDA_A'):
+        model = StochasticDALSTM(
+            input_size=input_size,
+            hidden_size=hidden_size,
+            n_layers=n_layers,
+            max_len=max_len,
+            dropout=dropout,
+            concrete=concrete_dropout,
+            p_fix=dropout_prob,
+            weight_regularizer=weight_regularizer,
+            dropout_regularizer=dropout_regularizer,
+            hs=True,
+            Bayes=Bayes,
+            device=device).to(device)
+        return model
+    # heteroscedastic regression also known as mean variance estimation
+    elif uq_method == 'mve':                
+        model = DALSTMModelMve(input_size=input_size, hidden_size=hidden_size,
+                               n_layers=n_layers, max_len=max_len,
+                               dropout=dropout, p_fix=dropout_prob).to(device)
+        return model
+    
+    # b: Bootstrapping ensemble: multiple models, same initialization.            
+    elif (uq_method == 'en_b' or uq_method == 'en_b_mve'):
+        # empty lists (ensemble of) models, optimizers, schedulers
+        models = []
+        for i in range(num_models):
+            if uq_method == 'en_b':
+                # each ensemble member is a deterministic model
+                model = DALSTMModel(
+                            input_size=input_size,
+                            hidden_size=hidden_size,
+                            n_layers=n_layers,
+                            max_len=max_len,
+                            dropout=dropout,
+                            p_fix=dropout_prob).to(device)
+            else:
+                # last layer include log variance estimation
+                model = DALSTMModelMve(
+                            input_size=input_size,
+                            hidden_size=hidden_size,
+                            n_layers=n_layers,
+                            max_len=max_len,
+                            dropout=dropout,
+                            p_fix=dropout_prob).to(device)
+            models.append(model) 
+        return models
+    # t: Traditional ensemble: multiple models, different initialization.
+    elif (uq_method == 'en_t' or uq_method == 'en_t_mve'):
+        # empty lists (ensemble of) models, optimizers, schedulers
+        models = []      
+        # Original random state (before initializing models)
+        original_rng_state = torch.get_rng_state()
+        for i in range(num_models):
+            # Set a unique seed for each model's initialization
+            unique_seed = i + 100  
+            torch.manual_seed(unique_seed)
+            if uq_method == 'en_t':
+                # each ensemble member is a deterministic model
+                model = DALSTMModel(
+                            input_size=input_size,
+                            hidden_size=hidden_size,
+                            n_layers=n_layers,
+                            max_len=max_len,
+                            dropout=dropout,
+                            p_fix=dropout_prob).to(device)
+            else:
+                # last layer include log variance estimation
+                model = DALSTMModelMve(
+                            input_size=input_size,
+                            hidden_size=hidden_size,
+                            n_layers=n_layers,
+                            max_len=max_len,
+                            dropout=dropout,
+                            p_fix=dropout_prob).to(device)                    
+                # Apply weight initialization function
+                model.apply(dalstm_init_weights)
+            models.append(model)
+        # Restore the original random state
+        torch.set_rng_state(original_rng_state)
+        return models
+
+# a method to get optimizer and scheduler
+def get_optimizer_scheduler(model=None, models=None, cfg=None,
+                            ensemble_mode=False, num_models=None): 
+    if not ensemble_mode:
+        # get number of model parameters
+        total_params = sum(p.numel() for p in model.parameters() 
+                           if p.requires_grad) 
+        # define optimizer
+        optimizer = set_optimizer(
+            model, cfg.get('optimizer').get('type'),
+            cfg.get('optimizer').get('base_lr'), 
+            cfg.get('optimizer').get('eps'), 
+            cfg.get('optimizer').get('weight_decay'))
+        # define scheduler
+        scheduler = optim.lr_scheduler.ReduceLROnPlateau(
+            optimizer, factor=0.5)  
+        print(f'Total model parameters: {total_params}')    
+        return optimizer, scheduler  
+    else:
+        # get number of parameters for the first model
+        total_params = sum(p.numel() for p in models[0].parameters()
+                           if p.requires_grad) 
+        # define list of optimizeers and schedulers
+        optimizers, schedulers = [], []
+        for i in range(num_models):
+            current_optimizer = set_optimizer(
+                models[i], cfg.get('optimizer').get('type'),
+                cfg.get('optimizer').get('base_lr'),
+                cfg.get('optimizer').get('eps'),
+                cfg.get('optimizer').get('weight_decay'))
+            optimizers.append(current_optimizer)
+            current_scheduler = optim.lr_scheduler.ReduceLROnPlateau(
+                optimizers[i], factor=0.5)
+            schedulers.append(current_scheduler)                
+        print(f'Total model parameters: {total_params}') 
+        return optimizers, schedulers
 
 def set_random_seed(seed):
     random.seed(seed)

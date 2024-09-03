@@ -13,7 +13,7 @@ def test_model(model=None, models=None, uq_method=None, num_mc_samples=None,
                processed_data_path=None, report_path=None,
                data_split=None, fold=None, seed=None, device=None,
                normalization=False, ensemble_mode=False, ensemble_size=None,
-               confidence_level=0.95, sqr_factor=None): 
+               confidence_level=0.95, sqr_factor=None, exp_id=None): 
     
     # lower, upper taus as well as z-score for SQR method
     lower_tau = (1-confidence_level)/2
@@ -22,38 +22,41 @@ def test_model(model=None, models=None, uq_method=None, num_mc_samples=None,
     
     start=datetime.now()
     if data_split=='holdout':
-        print(f'Now: start inference- data split: {data_split}.')
+        print(f'Now: start inference experiment number: {exp_id}, \
+              data split: {data_split}.')
         # define a list of checkpoint paths if we have ensemble mode
         if ensemble_mode:
             checkpoint_path_list = []
             for model_idx in range(1, ensemble_size+1):
                 checkpoint_path = os.path.join(
                     processed_data_path,
-                    '{}_{}_seed_{}_member_{}_best_model.pt'.format(
-                        uq_method, data_split, seed, model_idx))
+                    '{}_{}_seed_{}_exp_{}_member_{}_best_model.pt'.format(
+                        uq_method, data_split, seed, exp_id, model_idx))
                 checkpoint_path_list.append(checkpoint_path)
         # otherwise: define a single checkpoint path
         else:                
             checkpoint_path = os.path.join(
-                processed_data_path,'{}_{}_seed_{}_best_model.pt'.format(
-                    uq_method, data_split, seed)) 
+                processed_data_path,
+                '{}_{}_seed_{}_exp_{}_best_model.pt'.format(
+                    uq_method, data_split, seed, exp_id)) 
     else:
-        print(f'Now: start inference- data split: {data_split} ,  fold: {fold}.')
+        print(f'Now: start inference experiment number: {exp_id}, \
+              data split: {data_split} ,  fold: {fold}.')
         # define a list of checkpoint paths if we have ensemble mode
         if ensemble_mode:
             checkpoint_path_list = []
             for model_idx in range(1, ensemble_size+1):
                 checkpoint_path = os.path.join(
                     processed_data_path,
-                    '{}_{}_fold{}_seed_{}_member_{}_best_model.pt'.format(
-                        uq_method, data_split, fold, seed, model_idx))
+                    '{}_{}_fold{}_seed_{}_exp_{}_member_{}_best_model.pt'.format(
+                        uq_method, data_split, fold, seed, exp_id, model_idx))
                 checkpoint_path_list.append(checkpoint_path)
         # otherwise: define a single checkpoint path
         else:       
             checkpoint_path = os.path.join(
                 processed_data_path,
-                '{}_{}_fold{}_seed_{}_best_model.pt'.format(
-                    uq_method, data_split, fold, seed)) 
+                '{}_{}_fold{}_seed_{}_exp_{}_best_model.pt'.format(
+                    uq_method, data_split, fold, seed, exp_id)) 
         
     # define the structure of result dataframe based on UQ method   
     if uq_method == 'deterministic':

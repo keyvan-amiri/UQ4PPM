@@ -6,7 +6,7 @@ tmux attach-session -t uq4ppm
 
 Pre-processing
 python preprocess.py --datasets HelpDesk Sepsis BPIC12 BPIC13I BPIC15_1 BPIC20DD BPIC20ID BPIC20PTC BPIC20RFP BPIC20TPD --model dalstm
-python preprocess.py --datasets BPIC20PTC BPIC20RFP BPIC20TPD --model dalstm  
+
 
 train and test:
 bash bash_scripts/CARD_train_test.sh

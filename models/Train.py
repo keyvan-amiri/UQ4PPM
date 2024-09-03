@@ -13,14 +13,15 @@ def train_model(model=None, uq_method=None, train_loader=None, val_loader=None,
                 processed_data_path=None, report_path =None,
                 data_split='holdout', fold=None, cfg=None, seed=None,
                 model_idx=None, ensemble_mode=False, sqr_q='all',
-                sqr_factor=None):
+                sqr_factor=None, exp_id=None):
     
     # get current time (as start) to compute training time
     start=datetime.now()
     
     # if training is not part of an ensemble
     if not ensemble_mode:  
-        print(f'Training for data split: {data_split} , {fold}.')
+        print(f'Training for experiment number: {exp_id}, \
+              data split: {data_split} , {fold}.')
         # Write the configurations in the report
         with open(report_path, 'w') as file:
             file.write('Configurations:\n')
@@ -31,16 +32,19 @@ def train_model(model=None, uq_method=None, train_loader=None, val_loader=None,
         # set the checkpoint path      
         if data_split=='holdout':
             checkpoint_path = os.path.join(
-                processed_data_path,'{}_{}_seed_{}_best_model.pt'.format(
-                    uq_method, data_split, seed)) 
+                processed_data_path,
+                '{}_{}_seed_{}_exp_{}_best_model.pt'.format(
+                    uq_method, data_split, seed, exp_id)) 
         else:
             checkpoint_path = os.path.join(
-                processed_data_path, '{}_{}_fold{}_seed_{}_best_model.pt'.format(
-                    uq_method, data_split, fold, seed))   
+                processed_data_path,
+                '{}_{}_fold{}_seed_{}_exp_{}_best_model.pt'.format(
+                    uq_method, data_split, fold, seed, exp_id))   
     else:
         # if we are training a member of an ensemble
-        print(f'Training for data split: {data_split} , {fold}, \
-              model number:{model_idx} in the ensemble')
+        print(f'Training for experiment number: {exp_id}, \
+              data split: {data_split} , {fold}, \
+              model number:{model_idx} in the ensemble.')
         # Write the configurations in the report
         if model_idx== 1:
             # Write the configurations in the report
@@ -60,13 +64,13 @@ def train_model(model=None, uq_method=None, train_loader=None, val_loader=None,
         # set the checkpoint path
         if data_split=='holdout':
             checkpoint_path = os.path.join(
-                processed_data_path,'{}_{}_seed_{}_member_{}_best_model.pt'.format(
-                    uq_method, data_split, seed, model_idx))
+                processed_data_path,'{}_{}_seed_{}_exp_{}_member_{}_best_model.pt'.format(
+                    uq_method, data_split, seed, exp_id, model_idx))
         else:
             checkpoint_path = os.path.join(
                 processed_data_path,
-                '{}_{}_fold{}_seed_{}_member_{}_best_model.pt'.format(
-                    uq_method, data_split, fold, seed, model_idx))               
+                '{}_{}_fold{}_seed_{}_exp_{}_member_{}_best_model.pt'.format(
+                    uq_method, data_split, fold, seed, exp_id, model_idx))               
     print(f'Training will be done for {num_epochs} epochs.')     
 
     #Training loop
