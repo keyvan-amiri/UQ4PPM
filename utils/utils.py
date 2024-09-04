@@ -474,3 +474,13 @@ def get_z_alpha_half(confidence_level):
     # Calculate the critical value z_alpha/2
     z_alpha_half = norm.ppf(1 - alpha / 2)    
     return z_alpha_half
+
+# A method to add a customized suffix to a csv file name.
+def add_suffix_to_csv(csv_file, added_suffix=None):
+    # Check if the file name ends with .csv
+    if csv_file.endswith('.csv'):
+        # Insert the suffix before the .csv extension
+        new_csv_file = csv_file[:-4] + added_suffix + '.csv'
+        return new_csv_file
+    else:
+        raise ValueError("The file name does not end with .csv")

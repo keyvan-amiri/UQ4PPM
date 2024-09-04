@@ -229,29 +229,31 @@ class DALSTM_train_evaluate ():
             # set random seed
             self.seed = int(execution_seed) 
             set_random_seed(self.seed)
-            self.all_checkpoints = []
-            self.all_val_results = []
-            self.all_reports = []
-            
+            self.all_checkpoints, self.all_reports = [], []
+            self.all_val_results, self.all_test_results = [], []
+
             for exp_id, experiment in enumerate(self.experiments):
                 
                 # train-test pipeline for holdout data split
                 if self.split == 'holdout':
+                    
                     # define the report path
                     self.report_path = os.path.join(
                         self.result_path,
                         '{}_{}_seed_{}_exp_{}_report_.txt'.format(
                             self.uq_method, self.split, self.seed, exp_id+1)) 
                     self.all_reports.append(self.report_path)
+                    
                     # get paths for processed data
                     (self.X_train_path, self.X_val_path, self.X_test_path,
                      self.y_train_path, self.y_val_path, self.y_test_path,
                      self.test_lengths_path) = self.holdout_paths()
                     # load train, validation, and test data loaders
                     if not self.bootstrapping:
-                        #except for Bootstrapping ensemble
+                        # except for Bootstrapping ensemble
                         (self.train_loader, self.val_loader, self.test_loader,
                          self.test_lengths) = self.load_data()
+                        
                     # execution path for dropout and heteroscedastic
                     if ((not self.ensemble_mode) and (not self.union_mode) and
                         (not self.laplace)):         
@@ -287,17 +289,18 @@ class DALSTM_train_evaluate ():
                                    normalization=self.normalization,
                                    confidence_level=self.confidence_level,
                                    sqr_factor=self.sqr_factor)
+                        
                     elif self.ensemble_mode:
+                        # get number of ensemble models, and bootstrpping ratio
                         self.num_models = experiment.get('num_models')
                         self.Bootstrapping_ratio = experiment.get(
-                            'Bootstrapping_ratio')
-                        # if there are ensemble of models to train
+                            'Bootstrapping_ratio')                        
                         # get random state (before subset selction for Bootstrapping)
                         original_rng_state = torch.get_rng_state()                       
                         for i in range(1, self.num_models+1):
                             # load relevant data for Bootstrapping ensemble
                             if self.bootstrapping:
-                                # Set a unique seed for selection of subset data
+                                # Set a unique seed to select a subset of data
                                 unique_seed = i + 100  
                                 torch.manual_seed(unique_seed)
                                 (self.train_loader,self.val_loader,
@@ -330,26 +333,42 @@ class DALSTM_train_evaluate ():
                             self.all_checkpoints.append(res_model)
                         # Restore the original random state
                         torch.set_rng_state(original_rng_state)
-                        # inference with all ensemble members
+                        # inference on validation set with all ensemble members
                         res_df = test_model(
                             models=self.models,
-                            uq_method=self.uq_method,
-                            num_mc_samples=self.num_mcmc,              
-                            test_loader=self.test_loader,
-                            test_original_lengths=self.test_lengths,
+                            uq_method=self.uq_method,           
+                            test_loader=self.val_loader,
                             y_scaler=self.max_train_val,
                             processed_data_path= self.result_path,
                             report_path=self.report_path,
+                            val_mode=True,
                             data_split = 'holdout',
                             seed=self.seed,
                             device=self.device,
                             normalization=self.normalization,
-                            ensemble_mode=self.ensemble_mode,
+                            ensemble_mode=True,
                             ensemble_size=self.num_models,
-                            confidence_level=self.confidence_level,
-                            sqr_factor=self.sqr_factor,
                             exp_id=exp_id+1) 
                         self.all_val_results.append(res_df)
+                        # in case of bootstrapping inference should be executed
+                        # on test set right here, as loaders change in the loop
+                        if self.bootstrapping:
+                            res_df = test_model(
+                                models=self.models,
+                                uq_method=self.uq_method,           
+                                test_loader=self.test_loader,
+                                test_original_lengths=self.test_lengths,
+                                y_scaler=self.max_train_val,
+                                processed_data_path= self.result_path,
+                                report_path=self.report_path,
+                                data_split = 'holdout',
+                                seed=self.seed,
+                                device=self.device,
+                                normalization=self.normalization,
+                                ensemble_mode=True,
+                                ensemble_size=self.num_models,
+                                exp_id=exp_id+1)
+                            self.all_test_results.append(res_df)
                         
                     elif self.union_mode:                    
                         self.model, self.aux_model = fit_rf(
@@ -518,6 +537,8 @@ class DALSTM_train_evaluate ():
                                        confidence_level=self.confidence_level,
                                        sqr_factor=self.sqr_factor,
                                        exp_id=exp_id+1)
+                        
+                        # execution path for embedding based random forest
                         elif self.union_mode:
                             self.model, self.aux_model = fit_rf(
                                 model=self.model, cfg=self.cfg,
@@ -627,15 +648,43 @@ class DALSTM_train_evaluate ():
             hpo_df.to_csv(csv_filename, index=False)
             min_exp_id = hpo_df[self.HPO_metric].idxmin()
             best_exp_str = f'_exp_{min_exp_id+1}_'
-            for i, file_path in enumerate(self.all_val_results):
-                if i != min_exp_id:
-                    os.remove(file_path)
+            print('Best hyper-parameter configuration is selected.')
             for i, file_path in enumerate(self.all_reports):
                 if i != min_exp_id:
                     os.remove(file_path) 
             for file_path in self.all_checkpoints:
                 if best_exp_str not in file_path:
                     os.remove(file_path)
+            for i, file_path in enumerate(self.all_val_results):
+                if i != min_exp_id:
+                    os.remove(file_path)
+            if self.bootstrapping:
+                # remove results for test sets on inferior experiments
+                for i, file_path in enumerate(self.all_test_results):
+                    if i != min_exp_id:
+                        os.remove(file_path)
+            else:
+                if self.ensemble_mode:
+                    # inferece on test for best hyper-parameter configuration
+                    report_path = os.path.join(
+                        self.result_path,
+                        '{}_{}_seed_{}_exp_{}_report_.txt'.format(
+                            self.uq_method, self.split, self.seed, min_exp_id+1))                     
+                    _ = test_model(
+                        models=self.models,
+                        uq_method=self.uq_method,           
+                        test_loader=self.test_loader,
+                        test_original_lengths=self.test_lengths,
+                        y_scaler=self.max_train_val,
+                        processed_data_path= self.result_path,                        
+                        report_path=report_path,
+                        data_split = 'holdout',
+                        seed=self.seed,
+                        device=self.device,
+                        normalization=self.normalization,
+                        ensemble_mode=True,
+                        ensemble_size=self.num_models,
+                        exp_id=min_exp_id+1)                
         else:
             #TODO: implement best parameter selection for cross-fold validation
             print('not implemented!')

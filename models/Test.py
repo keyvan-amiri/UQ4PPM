@@ -5,12 +5,12 @@ import pandas as pd
 import torch
 import torch.nn.functional as F
 from loss.mape import mape
-from utils.utils import augment, get_z_alpha_half
+from utils.utils import augment, get_z_alpha_half, add_suffix_to_csv
 
 # function to handle inference with trained model(s)
 def test_model(model=None, models=None, uq_method=None, num_mc_samples=None,
                test_loader=None, test_original_lengths=None, y_scaler=None, 
-               processed_data_path=None, report_path=None,
+               processed_data_path=None, report_path=None, val_mode=False,
                data_split=None, fold=None, seed=None, device=None,
                normalization=False, ensemble_mode=False, ensemble_size=None,
                confidence_level=0.95, sqr_factor=None, exp_id=None): 
@@ -60,27 +60,29 @@ def test_model(model=None, models=None, uq_method=None, num_mc_samples=None,
         
     # define the structure of result dataframe based on UQ method   
     if uq_method == 'deterministic':
-        all_results = {'GroundTruth': [], 'Prediction': [],
-                       'Prefix_length': [], 'Absolute_error': [],
-                       'Absolute_percentage_error': []}
+        all_results = {'GroundTruth': [], 'Prediction': [], 
+                       'Absolute_error': [], 'Absolute_percentage_error': []}
     # UQ methods capturing Epistemic Uncertainty
     elif (uq_method == 'DA' or uq_method == 'CDA' or uq_method == 'en_t' or
           uq_method =='en_b'):
         all_results = {'GroundTruth': [], 'Prediction': [],
-                       'Epistemic_Uncertainty': [], 'Prefix_length': [],
-                       'Absolute_error': [], 'Absolute_percentage_error': []}
+                       'Epistemic_Uncertainty': [], 'Absolute_error': [],
+                       'Absolute_percentage_error': []}
     # UQ methods capturing Aleatoric Uncertainty
     elif (uq_method == 'mve' or uq_method == 'SQR'):
         all_results = {'GroundTruth': [], 'Prediction': [],
-                       'Aleatoric_Uncertainty': [], 'Prefix_length': [],
-                       'Absolute_error': [], 'Absolute_percentage_error': []}
+                       'Aleatoric_Uncertainty': [], 'Absolute_error': [],
+                       'Absolute_percentage_error': []}
     # UQ methods capturing both Epistemic & Aleatoric Uncertainties    
     elif (uq_method == 'DA_A' or uq_method == 'CDA_A' or 
           uq_method == 'en_t_mve' or uq_method == 'en_b_mve'):
         all_results = {'GroundTruth': [], 'Prediction': [],
                        'Epistemic_Uncertainty': [], 'Aleatoric_Uncertainty': [],
-                       'Total_Uncertainty': [], 'Prefix_length': [],
-                       'Absolute_error': [], 'Absolute_percentage_error': []} 
+                       'Total_Uncertainty': [], 'Absolute_error': [],
+                       'Absolute_percentage_error': []} 
+    # on test set, prefix length is added for earliness analysis
+    if not val_mode:
+        all_results['Prefix_length'] = []
     
     # set variabls to zero to collect loss values and length ids
     absolute_error = 0
@@ -207,11 +209,13 @@ def test_model(model=None, models=None, uq_method=None, num_mc_samples=None,
             # collect inference result in all_result dict.
             all_results['GroundTruth'].extend(_y_truth.tolist())
             all_results['Prediction'].extend(_y_pred.tolist())
-            pre_lengths = \
-                test_original_lengths[length_idx:length_idx+batch_size]
-            length_idx+=batch_size
-            prefix_lengths = (np.array(pre_lengths).reshape(-1, 1)).tolist()
-            all_results['Prefix_length'].extend(prefix_lengths)
+            # for test set we collect prefix lengths
+            if not val_mode:
+                pre_lengths = test_original_lengths[
+                    length_idx:length_idx+batch_size]
+                length_idx+=batch_size
+                prefix_lengths = (np.array(pre_lengths).reshape(-1, 1)).tolist()
+                all_results['Prefix_length'].extend(prefix_lengths)
             all_results['Absolute_error'].extend(mae_batch.tolist())
             all_results['Absolute_percentage_error'].extend(mape_batch.tolist()) 
             
@@ -255,31 +259,33 @@ def test_model(model=None, models=None, uq_method=None, num_mc_samples=None,
                       round(absolute_error, 3),
                       round(absolute_percentage_error, 3))) 
     inference_time = (datetime.now()-start).total_seconds() 
-    # inference time is reported in milliseconds.
-    instance_t = inference_time/len(test_original_lengths)*1000
-    with open(report_path, 'a') as file:
-        file.write('Inference time- in seconds: {}\n'.format(inference_time))
-        file.write(
-            'Inference time for each instance- in miliseconds: {}\n'.format(
-                instance_t))
-        file.write('Test - MAE: {:.3f}, '
-                      'MAPE: {:.3f}'.format(
-                          round(absolute_error, 3),
-                          round(absolute_percentage_error, 3)))
     
-    flattened_list = [item for sublist in all_results['Prefix_length'] 
-                      for item in sublist]
-    all_results['Prefix_length'] = flattened_list
+    if not val_mode:
+        # inference time is reported in milliseconds.
+        instance_t = inference_time/len(test_original_lengths)*1000
+        with open(report_path, 'a') as file:
+            file.write('Inference time- in seconds: {}\n'.format(inference_time))
+            file.write(
+                'Inference time for each instance- in miliseconds: {}\n'.format(
+                    instance_t))
+            file.write('Test - MAE: {:.3f}, '
+                       'MAPE: {:.3f}'.format(
+                           round(absolute_error, 3),
+                           round(absolute_percentage_error, 3)))
+    
+        flattened_list = [item for sublist in all_results['Prefix_length'] 
+                          for item in sublist]
+        all_results['Prefix_length'] = flattened_list
+        
     results_df = pd.DataFrame(all_results)
     if data_split=='holdout':
-        csv_filename = os.path.join(
-            processed_data_path,
-            '{}_{}_seed_{}_exp_{}_inference_result_.csv'.format(
-                uq_method,data_split,seed, exp_id))
+        csv_filename = '{}_{}_seed_{}_exp_{}_inference_result_.csv'.format(
+            uq_method,data_split,seed, exp_id)
     else:
-        csv_filename = os.path.join(
-            processed_data_path,
-            '{}_{}_fold{}_seed_{}_exp_{}_inference_result_.csv'.format(
-                uq_method, data_split, fold, seed, exp_id))         
-    results_df.to_csv(csv_filename, index=False)
-    return csv_filename
+        csv_filename = '{}_{}_fold{}_seed_{}_exp_{}_inference_result_.csv'.format(
+            uq_method, data_split, fold, seed, exp_id)
+    if val_mode:
+        csv_filename = add_suffix_to_csv(csv_filename, added_suffix='validation_')
+    csv_filepath = os.path.join(processed_data_path, csv_filename)        
+    results_df.to_csv(csv_filepath, index=False)
+    return csv_filepath
