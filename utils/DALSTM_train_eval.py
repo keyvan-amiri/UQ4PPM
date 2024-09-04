@@ -3,7 +3,6 @@ import pickle
 import torch
 import pandas as pd
 from torch.utils.data import TensorDataset, DataLoader
-import uncertainty_toolbox as uct
 from models.Laplace_approximation import post_hoc_laplace
 from models.Random_Forest import fit_rf, predict_rf
 from models.Train import train_model
@@ -11,7 +10,8 @@ from models.Test import test_model
 from loss.loss_handler import set_loss
 from loss.QuantileLoss import QuantileLoss
 from utils.utils import (get_model, get_optimizer_scheduler, set_random_seed,
-                         get_exp)
+                         get_exp, add_suffix_to_csv)
+from utils.evaluation import uq_eval
 
 
 # A generic class for training and evaluation of DALSTM model
@@ -291,84 +291,7 @@ class DALSTM_train_evaluate ():
                                    sqr_factor=self.sqr_factor)
                         
                     elif self.ensemble_mode:
-                        # get number of ensemble models, and bootstrpping ratio
-                        self.num_models = experiment.get('num_models')
-                        self.Bootstrapping_ratio = experiment.get(
-                            'Bootstrapping_ratio')                        
-                        # get random state (before subset selction for Bootstrapping)
-                        original_rng_state = torch.get_rng_state()                       
-                        for i in range(1, self.num_models+1):
-                            # load relevant data for Bootstrapping ensemble
-                            if self.bootstrapping:
-                                # Set a unique seed to select a subset of data
-                                unique_seed = i + 100  
-                                torch.manual_seed(unique_seed)
-                                (self.train_loader,self.val_loader,
-                                 self.test_loader, self.test_lengths
-                                 ) = self.load_data()                           
-                            # train a member of ensemble    
-                            res_model = train_model(
-                                model=self.models[i-1],
-                                uq_method=self.uq_method,
-                                train_loader=self.train_loader,
-                                val_loader=self.val_loader,
-                                criterion=self.criterion,
-                                optimizer=self.optimizers[i-1],
-                                scheduler=self.schedulers[i-1],
-                                device=self.device,
-                                num_epochs=self.max_epochs,
-                                early_patience=self.early_stop_patience,
-                                min_delta=self.early_stop_min_delta, 
-                                early_stop=self.early_stop,
-                                processed_data_path=self.result_path,
-                                report_path=self.report_path,
-                                data_split='holdout',
-                                cfg=self.cfg,
-                                seed=self.seed,
-                                model_idx=i,
-                                ensemble_mode=self.ensemble_mode,
-                                sqr_q=self.sqr_q,
-                                sqr_factor=self.sqr_factor,
-                                exp_id=exp_id+1)
-                            self.all_checkpoints.append(res_model)
-                        # Restore the original random state
-                        torch.set_rng_state(original_rng_state)
-                        # inference on validation set with all ensemble members
-                        res_df = test_model(
-                            models=self.models,
-                            uq_method=self.uq_method,           
-                            test_loader=self.val_loader,
-                            y_scaler=self.max_train_val,
-                            processed_data_path= self.result_path,
-                            report_path=self.report_path,
-                            val_mode=True,
-                            data_split = 'holdout',
-                            seed=self.seed,
-                            device=self.device,
-                            normalization=self.normalization,
-                            ensemble_mode=True,
-                            ensemble_size=self.num_models,
-                            exp_id=exp_id+1) 
-                        self.all_val_results.append(res_df)
-                        # in case of bootstrapping inference should be executed
-                        # on test set right here, as loaders change in the loop
-                        if self.bootstrapping:
-                            res_df = test_model(
-                                models=self.models,
-                                uq_method=self.uq_method,           
-                                test_loader=self.test_loader,
-                                test_original_lengths=self.test_lengths,
-                                y_scaler=self.max_train_val,
-                                processed_data_path= self.result_path,
-                                report_path=self.report_path,
-                                data_split = 'holdout',
-                                seed=self.seed,
-                                device=self.device,
-                                normalization=self.normalization,
-                                ensemble_mode=True,
-                                ensemble_size=self.num_models,
-                                exp_id=exp_id+1)
-                            self.all_test_results.append(res_df)
+                        self.ensemble(exp_id, experiment)                        
                         
                     elif self.union_mode:                    
                         self.model, self.aux_model = fit_rf(
@@ -590,10 +513,14 @@ class DALSTM_train_evaluate ():
                                 report_path=self.report_path,
                                 result_path=self.result_path,
                                 split=self.split, fold = split_key+1,
-                                seed=self.seed, device=self.device)                        
-            self.select_best()   
+                                seed=self.seed, device=self.device)  
+                            
+            self.final_result, self.final_val = self.select_best() 
+            # get uq_metrics for predictions of the best model
+            self.uq_metric = uq_eval(self.final_result, self.uq_method,
+                                     report=True, verbose=True)   
     
-    # A method to collect all
+    # A method to select best experiment, and get its associated predictions
     def select_best(self):
         if self.split == 'holdout':
             # initilize a dictionary to collect results for all experiments
@@ -608,28 +535,10 @@ class DALSTM_train_evaluate ():
             for exp_id, experiment in enumerate(self.experiments):
                 hpo_results['exp_id'].append(exp_id+1)
                 for key in extracted_keys:
-                    hpo_results[key].append(experiment.get(key))                
-                df = pd.read_csv(self.all_val_results[exp_id])
-                pred_mean = df['Prediction'].values
-                y_true = df['GroundTruth'].values
-                if (self.uq_method=='DA_A' or self.uq_method=='CDA_A'
-                    or self.uq_method=='en_b_mve' or
-                    self.uq_method=='en_t_mve'):
-                    pred_std = df['Total_Uncertainty'].values 
-                elif (self.uq_method=='CARD' or self.uq_method=='mve' or 
-                      self.uq_method=='SQR'):
-                    pred_std = df['Aleatoric_Uncertainty'].values
-                elif (self.uq_method=='DA' or self.uq_method=='CDA' or 
-                      self.uq_method=='en_t' or self.uq_method=='en_b' or 
-                      self.uq_method=='RF' or self.uq_method=='LA'):
-                    pred_std = df['Epistemic_Uncertainty'].values
-                else:
-                    raise NotImplementedError(
-                        'Uncertainty quantification {} \
-                            not understood.'.format(self.uq_method))
-                # Get all uncertainty quantification metrics
-                uq_metrics = uct.metrics.get_all_metrics(
-                    pred_mean, pred_std, y_true)
+                    hpo_results[key].append(experiment.get(key))
+                # call UQ evaluation without report option.
+                uq_metrics = uq_eval(self.all_val_results[exp_id],
+                                     self.uq_method)                
                 hpo_results['mae'].append(
                     uq_metrics.get('accuracy').get('mae'))
                 hpo_results['rmse'].append(
@@ -646,31 +555,33 @@ class DALSTM_train_evaluate ():
                 '{}_{}_seed_{}_hpo_result_.csv'.format(
                     self.uq_method, self.split, self.seed))            
             hpo_df.to_csv(csv_filename, index=False)
-            min_exp_id = hpo_df[self.HPO_metric].idxmin()
-            best_exp_str = f'_exp_{min_exp_id+1}_'
+            self.min_exp_id = hpo_df[self.HPO_metric].idxmin()
+            best_exp_str = f'_exp_{self.min_exp_id+1}_'
             print('Best hyper-parameter configuration is selected.')
             for i, file_path in enumerate(self.all_reports):
-                if i != min_exp_id:
+                if i != self.min_exp_id:
                     os.remove(file_path) 
             for file_path in self.all_checkpoints:
                 if best_exp_str not in file_path:
                     os.remove(file_path)
             for i, file_path in enumerate(self.all_val_results):
-                if i != min_exp_id:
+                if i != self.min_exp_id:
                     os.remove(file_path)
             if self.bootstrapping:
                 # remove results for test sets on inferior experiments
                 for i, file_path in enumerate(self.all_test_results):
-                    if i != min_exp_id:
+                    if i != self.min_exp_id:
                         os.remove(file_path)
+                final_result = self.all_test_results[self.min_exp_id]
             else:
                 if self.ensemble_mode:
                     # inferece on test for best hyper-parameter configuration
                     report_path = os.path.join(
                         self.result_path,
                         '{}_{}_seed_{}_exp_{}_report_.txt'.format(
-                            self.uq_method, self.split, self.seed, min_exp_id+1))                     
-                    _ = test_model(
+                            self.uq_method, self.split, self.seed,
+                            self.min_exp_id+1))                     
+                    final_result = test_model(
                         models=self.models,
                         uq_method=self.uq_method,           
                         test_loader=self.test_loader,
@@ -684,11 +595,98 @@ class DALSTM_train_evaluate ():
                         normalization=self.normalization,
                         ensemble_mode=True,
                         ensemble_size=self.num_models,
-                        exp_id=min_exp_id+1)                
+                        exp_id=self.min_exp_id+1)
+                    
         else:
             #TODO: implement best parameter selection for cross-fold validation
             print('not implemented!')
-        return None
+            
+        final_name = os.path.basename(final_result)
+        final_val_name = add_suffix_to_csv(final_name, added_suffix='validation_')
+        final_val_path = os.path.join(self.result_path, final_val_name)
+        return final_result, final_val_path
+    
+    # A method to conduct train and inference with ensembles
+    def ensemble(self, exp_id, experiment):
+        # get number of ensemble models, and bootstrpping ratio
+        self.num_models = experiment.get('num_models')
+        self.Bootstrapping_ratio = experiment.get(
+            'Bootstrapping_ratio')                        
+        # get random state (before subset selction for Bootstrapping)
+        original_rng_state = torch.get_rng_state()                       
+        for i in range(1, self.num_models+1):
+            # load relevant data for Bootstrapping ensemble
+            if self.bootstrapping:
+                # Set a unique seed to select a subset of data
+                unique_seed = i + 100  
+                torch.manual_seed(unique_seed)
+                (self.train_loader,self.val_loader,
+                 self.test_loader, self.test_lengths
+                 ) = self.load_data()                           
+            # train a member of ensemble    
+            res_model = train_model(
+                model=self.models[i-1],
+                uq_method=self.uq_method,
+                train_loader=self.train_loader,
+                val_loader=self.val_loader,
+                criterion=self.criterion,
+                optimizer=self.optimizers[i-1],
+                scheduler=self.schedulers[i-1],
+                device=self.device,
+                num_epochs=self.max_epochs,
+                early_patience=self.early_stop_patience,
+                min_delta=self.early_stop_min_delta, 
+                early_stop=self.early_stop,
+                processed_data_path=self.result_path,
+                report_path=self.report_path,
+                data_split='holdout',
+                cfg=self.cfg,
+                seed=self.seed,
+                model_idx=i,
+                ensemble_mode=self.ensemble_mode,
+                sqr_q=self.sqr_q,
+                sqr_factor=self.sqr_factor,
+                exp_id=exp_id+1)
+            self.all_checkpoints.append(res_model)
+        # Restore the original random state
+        torch.set_rng_state(original_rng_state)
+        # inference on validation set with all ensemble members
+        res_df = test_model(
+            models=self.models,
+            uq_method=self.uq_method,           
+            test_loader=self.val_loader,
+            y_scaler=self.max_train_val,
+            processed_data_path= self.result_path,
+            report_path=self.report_path,
+            val_mode=True,
+            data_split = 'holdout',
+            seed=self.seed,
+            device=self.device,
+            normalization=self.normalization,
+            ensemble_mode=True,
+            ensemble_size=self.num_models,
+            exp_id=exp_id+1) 
+        self.all_val_results.append(res_df)
+        # in case of bootstrapping inference should be executed
+        # on test set right here, as loaders change in the loop
+        if self.bootstrapping:
+            res_df = test_model(
+                models=self.models,
+                uq_method=self.uq_method,           
+                test_loader=self.test_loader,
+                test_original_lengths=self.test_lengths,
+                y_scaler=self.max_train_val,
+                processed_data_path= self.result_path,
+                report_path=self.report_path,
+                data_split = 'holdout',
+                seed=self.seed,
+                device=self.device,
+                normalization=self.normalization,
+                ensemble_mode=True,
+                ensemble_size=self.num_models,
+                exp_id=exp_id+1)
+            self.all_test_results.append(res_df)
+    
     # A method to load important dimensions
     def load_dimensions(self):        
         scaler_path = os.path.join(
@@ -727,6 +725,7 @@ class DALSTM_train_evaluate ():
             self.dataset_path, "DALSTM_test_length_list_"+self.dataset+".pkl")            
         return (X_train_path, X_val_path, X_test_path, y_train_path,
                 y_val_path, y_test_path, test_length_path)
+    
         
     # A method to create list of path for holdout data split
     def cv_paths(self, split_key=None):
