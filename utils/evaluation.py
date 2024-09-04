@@ -497,7 +497,6 @@ def uq_eval(csv_file, prefix, report=False, verbose=False,
                 # Iterate over the dictionary items and write them to the file
                 for key, value in uq_metrics.items():
                     file.write(f"{key}: {value}\n") 
-            return uq_metrics
         else:
             if (calibration_type == 'miscal' or calibration_type == 'all'):
                 with open(report_path1, 'w') as file:
@@ -514,7 +513,9 @@ def uq_eval(csv_file, prefix, report=False, verbose=False,
             if (calibration_type == 'isotonic' or calibration_type == 'all'):
                 with open(report_path4, 'w') as file:
                     for key, value in uq_metrics4.items():
-                        file.write(f"{key}: {value}\n")                
+                        file.write(f"{key}: {value}\n") 
+    if not calibration_mode:
+        return uq_metrics
           
 
 # A helper function for sparsification plot (computes MAE)

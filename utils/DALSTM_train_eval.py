@@ -12,7 +12,7 @@ from loss.QuantileLoss import QuantileLoss
 from utils.utils import (get_model, get_optimizer_scheduler, set_random_seed,
                          get_exp, add_suffix_to_csv)
 from utils.evaluation import uq_eval
-from utils.cailibration import calibrated_regression
+from utils.calibration import calibrated_regression
 
 
 # A generic class for training and evaluation of DALSTM model
@@ -56,6 +56,8 @@ class DALSTM_train_evaluate ():
         self.uq_method = cfg.get('uq_method')
         # metric that is used for hyper-parameter optimization
         self.HPO_metric = cfg.get('HPO_metric')
+        # type of calibration used
+        self.calibration_type = cfg.get('calibration_type')
         # get the type of data split, and possibly number of splits for CV        
         self.split = cfg.get('split')
         self.n_splits = cfg.get('n_splits')     
@@ -532,7 +534,8 @@ class DALSTM_train_evaluate ():
                 report_path=self.all_reports[0],
                 recalibration_path=self.recalibration_path)
             uq_eval(self.calibrated_result, self.uq_method, report=True, 
-                    verbose=True, calibration_mode=True, calibration_type='all',
+                    verbose=True, calibration_mode=True, 
+                    calibration_type=self.calibration_type,
                     recal_model=self.recal_model)
     
     # A method to select best experiment, and get its associated predictions
