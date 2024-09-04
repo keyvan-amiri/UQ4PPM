@@ -625,16 +625,17 @@ class DALSTM_train_evaluate ():
                 '{}_{}_seed_{}_hpo_result_.csv'.format(
                     self.uq_method, self.split, self.seed))            
             hpo_df.to_csv(csv_filename, index=False)
-            max_index = hpo_df[self.HPO_metric].idxmin()
+            min_exp_id = hpo_df[self.HPO_metric].idxmin()
+            best_exp_str = f'_exp_{min_exp_id+1}_'
             for i, file_path in enumerate(self.all_val_results):
-                if i != max_index:
-                    os.remove(file_path)
-            for i, file_path in enumerate(self.all_checkpoints):
-                if i != max_index:
+                if i != min_exp_id:
                     os.remove(file_path)
             for i, file_path in enumerate(self.all_reports):
-                if i != max_index:
-                    os.remove(file_path)           
+                if i != min_exp_id:
+                    os.remove(file_path) 
+            for file_path in self.all_checkpoints:
+                if best_exp_str not in file_path:
+                    os.remove(file_path)
         else:
             #TODO: implement best parameter selection for cross-fold validation
             print('not implemented!')
