@@ -484,3 +484,20 @@ def add_suffix_to_csv(csv_file, added_suffix=None):
         return new_csv_file
     else:
         raise ValueError("The file name does not end with .csv")
+        
+# Get prediction means, standard deviations, ground truth from inference result        
+def get_mean_std_truth (df=None, uq_method=None):
+    pred_mean = df['Prediction'].values 
+    y_true = df['GroundTruth'].values
+    if (uq_method=='DA_A' or uq_method=='CDA_A' or
+        uq_method == 'en_t_mve' or uq_method == 'en_b_mve'):
+        pred_std = df['Total_Uncertainty'].values 
+    elif (uq_method=='CARD' or uq_method=='mve' or uq_method=='SQR'):
+        pred_std = df['Aleatoric_Uncertainty'].values
+    elif (uq_method=='DA' or uq_method=='CDA' or uq_method == 'en_t' or
+          uq_method == 'en_b' or uq_method == 'RF' or uq_method == 'LA'):
+        pred_std = df['Epistemic_Uncertainty'].values
+    else:
+        raise NotImplementedError(
+            'Uncertainty quantification {} not understood.'.format(uq_method))
+    return (pred_mean, pred_std, y_true)

@@ -12,6 +12,7 @@ from loss.QuantileLoss import QuantileLoss
 from utils.utils import (get_model, get_optimizer_scheduler, set_random_seed,
                          get_exp, add_suffix_to_csv)
 from utils.evaluation import uq_eval
+from utils.cailibration import calibrated_regression
 
 
 # A generic class for training and evaluation of DALSTM model
@@ -45,6 +46,10 @@ class DALSTM_train_evaluate ():
         # create the output address (i.e., 'results') if not in root directory.
         if not os.path.exists(self.result_path):
             os.makedirs(self.result_path)
+        # set the address for calibration on final results
+        self.recalibration_path = os.path.join(self.result_path, 'recalibration')
+        if not os.path.exists(self.recalibration_path):
+            os.makedirs(self.recalibration_path)            
         # set normalization status
         self.normalization = cfg.get('data').get('normalization')
         # get the specific uncertainty quanitification defined in command line
@@ -518,7 +523,17 @@ class DALSTM_train_evaluate ():
             self.final_result, self.final_val = self.select_best() 
             # get uq_metrics for predictions of the best model
             self.uq_metric = uq_eval(self.final_result, self.uq_method,
-                                     report=True, verbose=True)   
+                                     report=True, verbose=True)  
+            self.calibrated_result, self.recal_model = calibrated_regression(
+                calibration_df_path=self.final_val,
+                test_df_path=self.final_result,
+                uq_method=self.uq_method,
+                confidence_level=0.95,
+                report_path=self.all_reports[0],
+                recalibration_path=self.recalibration_path)
+            uq_eval(self.calibrated_result, self.uq_method, report=True, 
+                    verbose=True, calibration_mode=True, calibration_type='all',
+                    recal_model=self.recal_model)
     
     # A method to select best experiment, and get its associated predictions
     def select_best(self):
@@ -561,9 +576,17 @@ class DALSTM_train_evaluate ():
             for i, file_path in enumerate(self.all_reports):
                 if i != self.min_exp_id:
                     os.remove(file_path) 
+            # update list of remaining checkpoints
+            self.all_reports = [
+                file_path for file_path in self.all_reports 
+                if best_exp_str in file_path]
             for file_path in self.all_checkpoints:
                 if best_exp_str not in file_path:
                     os.remove(file_path)
+            # update list of remaining checkpoints
+            self.all_checkpoints = [
+                file_path for file_path in self.all_checkpoints 
+                if best_exp_str in file_path]
             for i, file_path in enumerate(self.all_val_results):
                 if i != self.min_exp_id:
                     os.remove(file_path)
