@@ -10,8 +10,7 @@ import pandas as pd
 import numpy as np
 import uncertainty_toolbox as uct
 import matplotlib.pyplot as plt
-from scipy.stats import spearmanr, pearsonr
-from sklearn.feature_selection import mutual_info_regression
+import pickle
 from utils.utils import get_mean_std_truth, uq_label_plot, get_statistics
 
 
@@ -79,16 +78,26 @@ def uq_eval(csv_file, prefix, report=False, verbose=False,
         result_path = os.path.dirname(csv_file)
         if not calibration_mode:
             report_name = base_name + 'uq_metrics' + '.txt'
+            uq_dict_name = base_name + 'uq_metrics' + '.pkl'
             report_path = os.path.join(result_path, report_name)
+            uq_dict_path = os.path.join(result_path, uq_dict_name)
         else:
             report_name1 = base_name + 'uq_metrics_std_miscal' + '.txt'
             report_name2 = base_name + 'uq_metrics_std_rms_cal' + '.txt'
             report_name3 = base_name + 'uq_metrics_std_ma_cal' + '.txt'
             report_name4 = base_name + 'pcip_mpiw_isotonic_regression' + '.txt'
+            uq_dict_name1 = base_name + 'uq_metrics_std_miscal' + '.pkl'
+            uq_dict_name2 = base_name + 'uq_metrics_std_rms_cal' + '.pkl'
+            uq_dict_name3 = base_name + 'uq_metrics_std_ma_cal' + '.pkl'
+            uq_dict_name4 = base_name + 'pcip_mpiw_isotonic_regression' + '.pkl'
             report_path1 = os.path.join(result_path, report_name1)
             report_path2 = os.path.join(result_path, report_name2)
             report_path3 = os.path.join(result_path, report_name3)
             report_path4 = os.path.join(result_path, report_name4)
+            uq_dict_path1 = os.path.join(result_path, uq_dict_name1)
+            uq_dict_path2 = os.path.join(result_path, uq_dict_name2)
+            uq_dict_path3 = os.path.join(result_path, uq_dict_name3)
+            uq_dict_path4 = os.path.join(result_path, uq_dict_name4)
                 
         # UQ method name as text in plots.
         plot_label = uq_label_plot(uq_method=prefix)
@@ -528,23 +537,33 @@ def uq_eval(csv_file, prefix, report=False, verbose=False,
                 # Iterate over the dictionary items and write them to the file
                 for key, value in uq_metrics.items():
                     file.write(f"{key}: {value}\n") 
+            with open(uq_dict_path, 'wb') as file:
+                pickle.dump(uq_metrics, file)         
         else:
             if (calibration_type == 'miscal' or calibration_type == 'all'):
                 with open(report_path1, 'w') as file:
                     for key, value in uq_metrics1.items():
                         file.write(f"{key}: {value}\n")
+                with open(uq_dict_path1, 'wb') as file:
+                    pickle.dump(uq_metrics1, file)   
             if (calibration_type == 'rms' or calibration_type == 'all'):
                 with open(report_path2, 'w') as file:
                     for key, value in uq_metrics2.items():
-                        file.write(f"{key}: {value}\n") 
+                        file.write(f"{key}: {value}\n")
+                with open(uq_dict_path2, 'wb') as file:
+                    pickle.dump(uq_metrics2, file)   
             if (calibration_type == 'ma' or calibration_type == 'all'):
                 with open(report_path3, 'w') as file:
                     for key, value in uq_metrics3.items():
-                        file.write(f"{key}: {value}\n") 
+                        file.write(f"{key}: {value}\n")
+                with open(uq_dict_path3, 'wb') as file:
+                    pickle.dump(uq_metrics3, file)   
             if (calibration_type == 'isotonic' or calibration_type == 'all'):
                 with open(report_path4, 'w') as file:
                     for key, value in uq_metrics4.items():
                         file.write(f"{key}: {value}\n") 
+                with open(uq_dict_path4, 'wb') as file:
+                    pickle.dump(uq_metrics4, file)   
     if not calibration_mode:
         return uq_metrics
           
