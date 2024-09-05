@@ -69,21 +69,37 @@ class DALSTM_train_evaluate ():
         # whether to use drop-out or not
         self.dropout = cfg.get('model').get('lstm').get('dropout')
         # the probabibility that is used for dropout
-        self.dropout_prob = cfg.get('model').get('lstm').get('dropout_prob')  
+        self.dropout_prob = cfg.get('model').get('lstm').get('dropout_prob')
         # define training hyperparameters
         self.max_epochs = cfg.get('train').get('max_epochs')
-        self.early_stop = cfg.get('train').get('early_stop')
         self.early_stop_patience = cfg.get('train').get('early_stop.patience')
-        self.early_stop_min_delta = cfg.get('train').get('early_stop.min_delta')
-        
+        self.early_stop_min_delta = cfg.get('train').get('early_stop.min_delta')        
+        if not (self.uq_method == 'DA' or self.uq_method == 'CDA' or
+                self.uq_method == 'DA_A' or self.uq_method == 'CDA_A' or 
+                self.uq_method == 'mve'):
+            self.early_stop = cfg.get('train').get('early_stop')
+            self.num_mcmc = None
+            # in case of of these methods is chosen, we get these values
+            # as parameters for HPO. it means we only test True, and False
+            # for early stopping for dropout methods. For mve, we only have
+            # one experiment.
+
+        # set experiments for hyperparameter optimization
+        if (self.uq_method == 'en_b' or self.uq_method == 'en_b_mve' or
+            self.uq_method == 'en_t' or self.uq_method == 'en_t_mve'):
+            # set the experiments considering grid search over parameters
+            self.experiments, self.max_model_num = get_exp(
+                uq_method=self.uq_method, cfg=cfg)
+        else:
+            # set the experiments considering grid search over parameters
+            self.experiments = get_exp(uq_method=self.uq_method, cfg=cfg)
+            
         ######################################################################
-        ########################   ensemble setting   ########################
+        ########################   Ensemble setting   ########################
         ######################################################################
         if (self.uq_method == 'en_b' or self.uq_method == 'en_b_mve' or
             self.uq_method == 'en_t' or self.uq_method == 'en_t_mve'):
             self.ensemble_mode = True
-            self.experiments, self.max_model_num = get_exp(
-                uq_method=self.uq_method, cfg=cfg)
             if (self.uq_method == 'en_b' or self.uq_method == 'en_b_mve'):
                 self.bootstrapping = True
             else:
@@ -92,12 +108,12 @@ class DALSTM_train_evaluate ():
             self.ensemble_mode = False
             self.bootstrapping = False
 
-        
+        ######################################################################
+        ########################   Dropout setting   ########################
+        ######################################################################
         # define parameters required for dropout approximation
         if (self.uq_method == 'DA' or self.uq_method == 'CDA' or
               self.uq_method == 'DA_A' or self.uq_method == 'CDA_A'):
-            self.num_mcmc = cfg.get('uncertainty').get(
-                'dropout_approximation').get('num_stochastic_forward_path')
             # hard-coded parameters since we have separate deterministic model
             self.dropout = True
             self.Bayes = True
@@ -113,12 +129,11 @@ class DALSTM_train_evaluate ():
                 self.concrete_dropout = True
         else:
             # necessary to use the same execution path
-            self.num_mcmc = None 
             self.concrete_dropout = None
             self.weight_regularizer = None
             self.dropout_regularizer = None
             self.Bayes = None
-        
+             
 
         # set relevant parameters for embedding-based UQ
         if self.uq_method == 'RF':
@@ -263,40 +278,9 @@ class DALSTM_train_evaluate ():
                         
                     # execution path for dropout and heteroscedastic
                     if ((not self.ensemble_mode) and (not self.union_mode) and
-                        (not self.laplace)):         
-                        train_model(model=self.model, uq_method=self.uq_method,
-                                    train_loader=self.train_loader,
-                                    val_loader=self.val_loader,
-                                    criterion=self.criterion,
-                                    optimizer=self.optimizer,
-                                    scheduler=self.scheduler,
-                                    device=self.device,
-                                    num_epochs=self.max_epochs,
-                                    early_patience=self.early_stop_patience,
-                                    min_delta=self.early_stop_min_delta, 
-                                    early_stop=self.early_stop,
-                                    processed_data_path=self.result_path,
-                                    report_path=self.report_path,
-                                    data_split='holdout',
-                                    cfg=self.cfg,
-                                    seed=self.seed,
-                                    ensemble_mode=self.ensemble_mode,
-                                    sqr_q=self.sqr_q,
-                                    sqr_factor=self.sqr_factor)   
-                        test_model(model=self.model, uq_method=self.uq_method,
-                                   num_mc_samples=self.num_mcmc,              
-                                   test_loader=self.test_loader,
-                                   test_original_lengths=self.test_lengths,
-                                   y_scaler=self.max_train_val,
-                                   processed_data_path= self.result_path,
-                                   report_path=self.report_path,
-                                   data_split = 'holdout',
-                                   seed=self.seed,
-                                   device=self.device,
-                                   normalization=self.normalization,
-                                   confidence_level=self.confidence_level,
-                                   sqr_factor=self.sqr_factor)
-                        
+                        (not self.laplace)):    
+                        #TODO: check the piepline for SQR!!!
+                        self.drop_mve(exp_id, experiment)
                     elif self.ensemble_mode:
                         self.ensemble(exp_id, experiment)                        
                         
@@ -600,13 +584,12 @@ class DALSTM_train_evaluate ():
                         os.remove(file_path)
                 final_result = self.all_test_results[self.min_exp_id]
             else:
-                if self.ensemble_mode:
-                    # inferece on test for best hyper-parameter configuration
-                    report_path = os.path.join(
-                        self.result_path,
-                        '{}_{}_seed_{}_exp_{}_report_.txt'.format(
-                            self.uq_method, self.split, self.seed,
-                            self.min_exp_id+1))                     
+                # inferece on test for best hyper-parameter configuration
+                report_path = os.path.join(
+                    self.result_path,
+                    '{}_{}_seed_{}_exp_{}_report_.txt'.format(
+                    self.uq_method, self.split, self.seed, self.min_exp_id+1))   
+                if self.ensemble_mode:                  
                     final_result = test_model(
                         models=self.models,
                         uq_method=self.uq_method,           
@@ -622,7 +605,20 @@ class DALSTM_train_evaluate ():
                         ensemble_mode=True,
                         ensemble_size=self.num_models,
                         exp_id=self.min_exp_id+1)
-                    
+                elif (self.uq_method == 'DA' or self.uq_method == 'DA_A' or 
+                      self.uq_method == 'CDA' or self.uq_method == 'CDA_A' or 
+                      self.uq_method == 'mve'):
+                    final_result = test_model(
+                        model=self.model, uq_method=self.uq_method, 
+                        num_mc_samples=self.num_mcmc, 
+                        test_loader=self.test_loader,
+                        test_original_lengths=self.test_lengths,
+                        y_scaler=self.max_train_val,
+                        processed_data_path= self.result_path,
+                        report_path=report_path, data_split = 'holdout',
+                        seed=self.seed, device=self.device, 
+                        normalization=self.normalization,
+                        exp_id=self.min_exp_id+1)                    
         else:
             #TODO: implement best parameter selection for cross-fold validation
             print('not implemented!')
@@ -631,6 +627,34 @@ class DALSTM_train_evaluate ():
         final_val_name = add_suffix_to_csv(final_name, added_suffix='validation_')
         final_val_path = os.path.join(self.result_path, final_val_name)
         return final_result, final_val_path
+    
+    def drop_mve(self, exp_id, experiment):
+        # get early-stopping condition, and number of Monte Carlo samples
+        self.early_stop = experiment.get('early_stop')
+        self.num_mcmc = experiment.get('num_mcmc') 
+        res_model = train_model(
+            model=self.model, uq_method=self.uq_method,
+            train_loader=self.train_loader, val_loader=self.val_loader,
+            criterion=self.criterion, optimizer=self.optimizer,
+            scheduler=self.scheduler,
+            device=self.device, num_epochs=self.max_epochs,
+            early_patience=self.early_stop_patience, 
+            min_delta=self.early_stop_min_delta, early_stop=self.early_stop,
+            processed_data_path=self.result_path, report_path=self.report_path,
+            data_split='holdout', cfg=self.cfg, seed=self.seed,
+            ensemble_mode=self.ensemble_mode, sqr_q=self.sqr_q,
+            sqr_factor=self.sqr_factor, exp_id=exp_id+1)
+        self.all_checkpoints.append(res_model)
+        # inference on validation set
+        res_df = test_model(
+            model=self.model, uq_method=self.uq_method, 
+            num_mc_samples=self.num_mcmc, test_loader=self.val_loader,
+            y_scaler=self.max_train_val, processed_data_path= self.result_path,
+            report_path=self.report_path, val_mode=True, data_split = 'holdout',
+            seed=self.seed, device=self.device, normalization=self.normalization,
+            exp_id=exp_id+1)
+        self.all_val_results.append(res_df)
+    
     
     # A method to conduct train and inference with ensembles
     def ensemble(self, exp_id, experiment):

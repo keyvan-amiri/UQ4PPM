@@ -21,6 +21,7 @@ from models.stochastic_dalstm import StochasticDALSTM
 ##############################################################################
 # a method to define exeriments for hyper-parameter tuning
 def get_exp(uq_method=None, cfg=None, random=False):
+    
     if (uq_method == 'en_b' or uq_method == 'en_b_mve' or
         uq_method == 'en_t' or uq_method == 'en_t_mve'): 
         num_model_lst = cfg.get('uncertainty').get('ensemble').get('num_models')
@@ -34,12 +35,31 @@ def get_exp(uq_method=None, cfg=None, random=False):
             raise ValueError('Bootstrapping ratio should be a list.')
         hyperparameters = {'num_models': num_model_lst, 
                            'Bootstrapping_ratio': boot_ratio_lst}
-        keys = hyperparameters.keys()
-        values = hyperparameters.values()
-        combinations = list(itertools.product(*values))
-        experiments = [dict(zip(keys, combination)) 
-                       for combination in combinations]
-    return experiments, max_model_num
+
+    elif (uq_method == 'DA' or uq_method == 'DA_A' or uq_method == 'CDA'
+          or uq_method == 'CDA_A' or uq_method == 'mve'):
+        num_mc_lst = cfg.get('model').get('lstm').get('num_stochastic_forward_path')
+        if not isinstance(num_mc_lst, list):
+            raise ValueError('Monte Carlo Samples should be packed in a list.')
+        early_stop_lst = cfg.get('train').get('early_stop')
+        if not isinstance(early_stop_lst, list):
+            raise ValueError('Early stop possibilities should be packed in a list.')
+        hyperparameters = {'num_mcmc': num_mc_lst, 
+                           'early_stop': early_stop_lst}            
+        
+    keys = hyperparameters.keys()
+    values = hyperparameters.values()
+    combinations = list(itertools.product(*values))
+    experiments = [dict(zip(keys, combination)) for combination in combinations]
+    
+    if (uq_method == 'en_b' or uq_method == 'en_b_mve' or
+        uq_method == 'en_t' or uq_method == 'en_t_mve'): 
+        return experiments, max_model_num
+    else:
+        return experiments
+        
+
+    
 
 
 # a method to get model based on UQ technique selected for experiment
