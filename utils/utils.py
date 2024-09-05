@@ -38,14 +38,21 @@ def get_exp(uq_method=None, cfg=None, random=False):
 
     elif (uq_method == 'DA' or uq_method == 'DA_A' or uq_method == 'CDA'
           or uq_method == 'CDA_A' or uq_method == 'mve'):
-        num_mc_lst = cfg.get('model').get('lstm').get('num_stochastic_forward_path')
+        num_mc_lst = cfg.get('uncertainty').get('dropout_approximation').get(
+            'num_stochastic_forward_path')
+        print(type(num_mc_lst))
         if not isinstance(num_mc_lst, list):
             raise ValueError('Monte Carlo Samples should be packed in a list.')
         early_stop_lst = cfg.get('train').get('early_stop')
         if not isinstance(early_stop_lst, list):
             raise ValueError('Early stop possibilities should be packed in a list.')
         hyperparameters = {'num_mcmc': num_mc_lst, 
-                           'early_stop': early_stop_lst}            
+                           'early_stop': early_stop_lst} 
+    if uq_method == 'deterministic':         
+        deterministc_lst = [True] 
+        early_stop_lst = [True]
+        hyperparameters = {'deterministic': deterministc_lst, 
+                           'early_stop': early_stop_lst} 
         
     keys = hyperparameters.keys()
     values = hyperparameters.values()
@@ -58,9 +65,6 @@ def get_exp(uq_method=None, cfg=None, random=False):
     else:
         return experiments
         
-
-    
-
 
 # a method to get model based on UQ technique selected for experiment
 def get_model(uq_method=None, input_size=None, hidden_size=None, n_layers=None,
@@ -511,7 +515,8 @@ def get_mean_std_truth (df=None, uq_method=None):
     pred_mean = df['Prediction'].values 
     y_true = df['GroundTruth'].values
     if (uq_method=='DA_A' or uq_method=='CDA_A' or
-        uq_method == 'en_t_mve' or uq_method == 'en_b_mve'):
+        uq_method == 'en_t_mve' or uq_method == 'en_b_mve' or
+        uq_method=='deterministic'):
         pred_std = df['Total_Uncertainty'].values 
     elif (uq_method=='CARD' or uq_method=='mve' or uq_method=='SQR'):
         pred_std = df['Aleatoric_Uncertainty'].values
@@ -551,6 +556,8 @@ def uq_label_plot (uq_method=None):
         uq_label = 'CARD Model'
     elif uq_method == 'SQR':
         uq_label = 'Simultaneous Quantile Regression'
+    elif uq_method == 'deterministic':
+        uq_label = 'deterministic'
     return uq_label
 
 def get_statistics(df=None, error_col=None, uncertainty_col=None):

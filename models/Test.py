@@ -13,7 +13,8 @@ def test_model(model=None, models=None, uq_method=None, num_mc_samples=None,
                processed_data_path=None, report_path=None, val_mode=False,
                data_split=None, fold=None, seed=None, device=None,
                normalization=False, ensemble_mode=False, ensemble_size=None,
-               confidence_level=0.95, sqr_factor=None, exp_id=None): 
+               confidence_level=0.95, sqr_factor=None, exp_id=None,
+               deterministic=False, std_mean_ratio=None): 
     
     # lower, upper taus as well as z-score for SQR method
     lower_tau = (1-confidence_level)/2
@@ -278,6 +279,9 @@ def test_model(model=None, models=None, uq_method=None, num_mc_samples=None,
         all_results['Prefix_length'] = flattened_list
         
     results_df = pd.DataFrame(all_results)
+    if deterministic:
+        results_df['Total_Uncertainty']=results_df['Prediction']*std_mean_ratio
+        
     if data_split=='holdout':
         csv_filename = '{}_{}_seed_{}_exp_{}_inference_result_.csv'.format(
             uq_method,data_split,seed, exp_id)

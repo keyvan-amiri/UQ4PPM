@@ -237,7 +237,8 @@ def uq_eval(csv_file, prefix, report=False, verbose=False,
             sorted_pred_mean = sorted_df['Prediction'].values           
             sorted_errors = sorted_df['Absolute_error'].values
             if (prefix=='DA_A' or prefix=='CDA_A' or 
-                prefix == 'en_t_mve' or prefix == 'en_b_mve'):
+                prefix == 'en_t_mve' or prefix == 'en_b_mve' or
+                prefix=='deterministic'):
                 sorted_pred_std = sorted_df['Total_Uncertainty'].values 
             elif (prefix=='CARD' or prefix=='mve' or prefix=='SQR'):
                 sorted_pred_std = sorted_df['Aleatoric_Uncertainty'].values
@@ -275,7 +276,8 @@ def uq_eval(csv_file, prefix, report=False, verbose=False,
             sorted_pred_mean = sorted_df['Prediction'].values
             sorted_lengths = sorted_df['Prefix_length'].values
             if (prefix=='DA_A' or prefix=='CDA_A' or 
-                prefix == 'en_t_mve' or prefix == 'en_b_mve'):
+                prefix == 'en_t_mve' or prefix == 'en_b_mve' or 
+                prefix=='deterministic'):
                 sorted_pred_std = sorted_df['Total_Uncertainty'].values 
             elif (prefix=='CARD' or prefix=='mve' or prefix=='SQR'):
                 sorted_pred_std = sorted_df['Aleatoric_Uncertainty'].values
@@ -313,7 +315,8 @@ def uq_eval(csv_file, prefix, report=False, verbose=False,
             sorted_pred_mean = sorted_df['Prediction'].values
             sorted_rem_time = sorted_df['GroundTruth'].values
             if (prefix=='DA_A' or prefix=='CDA_A' or 
-                prefix == 'en_t_mve' or prefix == 'en_b_mve'):
+                prefix == 'en_t_mve' or prefix == 'en_b_mve' or 
+                prefix=='deterministic'):
                 sorted_pred_std = sorted_df['Total_Uncertainty'].values 
             elif (prefix=='CARD' or prefix=='mve' or prefix=='SQR'):
                 sorted_pred_std = sorted_df['Aleatoric_Uncertainty'].values
@@ -636,7 +639,7 @@ def correlation_stats (df, prefix, uq_dict, calibration_mode=False,
                        calibration_type=None):
     if not calibration_mode:
         if (prefix=='DA_A' or prefix=='CDA_A' or prefix=='en_b_mve' or
-            prefix=='en_t_mve'):
+            prefix=='en_t_mve' or prefix=='deterministic'):
             uncertainty_col = 'Total_Uncertainty'
         elif (prefix=='DA' or prefix=='CDA' or prefix=='en_t' or 
               prefix=='en_b' or prefix=='RF' or prefix=='LA'):

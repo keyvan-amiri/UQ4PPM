@@ -1,5 +1,6 @@
 import os
 import pickle
+import shutil
 import torch
 import pandas as pd
 from torch.utils.data import TensorDataset, DataLoader
@@ -77,12 +78,12 @@ class DALSTM_train_evaluate ():
         if not (self.uq_method == 'DA' or self.uq_method == 'CDA' or
                 self.uq_method == 'DA_A' or self.uq_method == 'CDA_A' or 
                 self.uq_method == 'mve'):
-            self.early_stop = cfg.get('train').get('early_stop')
-            self.num_mcmc = None
             # in case of of these methods is chosen, we get these values
             # as parameters for HPO. it means we only test True, and False
             # for early stopping for dropout methods. For mve, we only have
             # one experiment.
+            self.num_mcmc = None      
+            self.early_stop = cfg.get('train').get('early_stop')
 
         # set experiments for hyperparameter optimization
         if (self.uq_method == 'en_b' or self.uq_method == 'en_b_mve' or
@@ -280,9 +281,10 @@ class DALSTM_train_evaluate ():
                     if ((not self.ensemble_mode) and (not self.union_mode) and
                         (not self.laplace)):    
                         #TODO: check the piepline for SQR!!!
-                        self.drop_mve(exp_id, experiment)
+                        self.baseline_approach(exp_id, experiment)
                     elif self.ensemble_mode:
-                        self.ensemble(exp_id, experiment)                        
+                        self.ensemble(exp_id, experiment)                     
+
                         
                     elif self.union_mode:                    
                         self.model, self.aux_model = fit_rf(
@@ -506,6 +508,8 @@ class DALSTM_train_evaluate ():
                                 split=self.split, fold = split_key+1,
                                 seed=self.seed, device=self.device)  
                             
+            if self.uq_method == 'deterministic':
+                self.experiments=self.expanded_experiments
             self.final_result, self.final_val = self.select_best() 
             # get uq_metrics for predictions of the best model
             self.uq_metric = uq_eval(self.final_result, self.uq_method,
@@ -628,10 +632,16 @@ class DALSTM_train_evaluate ():
         final_val_path = os.path.join(self.result_path, final_val_name)
         return final_result, final_val_path
     
-    def drop_mve(self, exp_id, experiment):
-        # get early-stopping condition, and number of Monte Carlo samples
-        self.early_stop = experiment.get('early_stop')
-        self.num_mcmc = experiment.get('num_mcmc') 
+    def baseline_approach(self, exp_id, experiment):
+        if (self.uq_method == 'DA' or self.uq_method == 'DA_A' or 
+            self.uq_method == 'CDA' or self.uq_method == 'CDA_A' or 
+            self.uq_method == 'mve'):
+            # get early-stopping condition, and number of Monte Carlo samples
+            self.num_mcmc = experiment.get('num_mcmc') 
+            self.early_stop = experiment.get('early_stop')
+        elif self.uq_method == 'deterministic':
+            self.deterministic = experiment.get('deterministic')
+            self.early_stop = experiment.get('early_stop')
         res_model = train_model(
             model=self.model, uq_method=self.uq_method,
             train_loader=self.train_loader, val_loader=self.val_loader,
@@ -645,16 +655,53 @@ class DALSTM_train_evaluate ():
             ensemble_mode=self.ensemble_mode, sqr_q=self.sqr_q,
             sqr_factor=self.sqr_factor, exp_id=exp_id+1)
         self.all_checkpoints.append(res_model)
-        # inference on validation set
-        res_df = test_model(
-            model=self.model, uq_method=self.uq_method, 
-            num_mc_samples=self.num_mcmc, test_loader=self.val_loader,
-            y_scaler=self.max_train_val, processed_data_path= self.result_path,
-            report_path=self.report_path, val_mode=True, data_split = 'holdout',
-            seed=self.seed, device=self.device, normalization=self.normalization,
-            exp_id=exp_id+1)
-        self.all_val_results.append(res_df)
-    
+        if self.uq_method != 'deterministic':
+            # inference on validation set
+            res_df = test_model(
+                model=self.model, uq_method=self.uq_method, 
+                num_mc_samples=self.num_mcmc, test_loader=self.val_loader,
+                y_scaler=self.max_train_val,
+                processed_data_path= self.result_path,
+                report_path=self.report_path, val_mode=True,
+                data_split = 'holdout', seed=self.seed, device=self.device,
+                normalization=self.normalization, exp_id=exp_id+1)
+            self.all_val_results.append(res_df)
+        else:
+            ratio_exp = self.cfg.get('std_mean_ratio')
+            num_ratio_exp = len(self.cfg.get('std_mean_ratio'))
+            # create multiple copies from the only report, and checkpoint
+            lists_to_update = [self.all_reports, self.all_checkpoints]
+            for any_list in lists_to_update:          
+                original_file = any_list[0]
+                directory = os.path.dirname(original_file)
+                base_filename = os.path.basename(original_file)
+                base_name, extension = base_filename.split('exp_1')  
+                for j in range(2, num_ratio_exp + 1):
+                    new_filename = f"{base_name}exp_{j}{extension}"
+                    new_path = os.path.join(directory, new_filename)
+                    shutil.copy(original_file, new_path)
+                    any_list.append(new_path)
+            # update self.experiment dictionary
+            self.expanded_experiments = []
+            for current_exp in self.experiments:
+                for current_ratio in ratio_exp:
+                    # Create a new experiment with 'sted_mean_ratio' added
+                    new_exp = current_exp.copy()
+                    new_exp['sted_mean_ratio'] = current_ratio
+                    self.expanded_experiments.append(new_exp)
+            for experiment_id, new_experiment in enumerate(
+                    self.expanded_experiments):
+                res_df = test_model(
+                    model=self.model, uq_method=self.uq_method, 
+                    num_mc_samples=self.num_mcmc, test_loader=self.val_loader,
+                    y_scaler=self.max_train_val,
+                    processed_data_path= self.result_path,
+                    report_path=self.report_path, val_mode=True,
+                    data_split = 'holdout', seed=self.seed, device=self.device,
+                    normalization=self.normalization, exp_id=experiment_id+1,
+                    deterministic=True, 
+                    std_mean_ratio=new_experiment.get('sted_mean_ratio'))
+                self.all_val_results.append(res_df)
     
     # A method to conduct train and inference with ensembles
     def ensemble(self, exp_id, experiment):
