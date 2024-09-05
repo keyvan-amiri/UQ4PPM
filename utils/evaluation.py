@@ -12,6 +12,7 @@ import uncertainty_toolbox as uct
 import matplotlib.pyplot as plt
 from scipy.stats import spearmanr, pearsonr
 from sklearn.feature_selection import mutual_info_regression
+from utils.utils import get_mean_std_truth, uq_label_plot, get_statistics
 
 
 # A method to conduct evaluation on prediction dataframe
@@ -40,34 +41,16 @@ def uq_eval(csv_file, prefix, report=False, verbose=False,
 
     """
     df = pd.read_csv(csv_file)    
-    # get ground truth as well as mean and std for predictions
-    pred_mean = df['Prediction'].values 
-    y_true = df['GroundTruth'].values
-    
-    if (prefix=='DA_A' or prefix=='CDA_A' or prefix=='en_b_mve' or
-        prefix=='en_t_mve'):
-        pred_std = df['Total_Uncertainty'].values 
-    
-    elif (prefix=='CARD' or prefix=='mve' or prefix=='SQR'):
-        pred_std = df['Aleatoric_Uncertainty'].values
-    
-    elif (prefix=='DA' or prefix=='CDA' or prefix=='en_t' or 
-          prefix=='en_b' or prefix=='RF' or prefix=='LA'):
-        pred_std = df['Epistemic_Uncertainty'].values
-    
-    else:
-        raise NotImplementedError(
-                'Uncertainty quantification {} not understood.'.format(prefix))
-    
+    # get ground truth, posterior mean and standard deviation (uncertainty)
+    pred_mean, pred_std, y_true = get_mean_std_truth(df=df, uq_method=prefix)    
     if calibration_mode:
         pred_std_miscal = df['calibrated_std_miscal'].values
         pred_std_rms_cal = df['calibrated_std_rms_cal'].values
         pred_std_ma_cal = df['calibrated_std_ma_cal'].values
         
     # Get all uncertainty quantification metrics
-    if not calibration_mode:
-        uq_metrics = uct.metrics.get_all_metrics(pred_mean, pred_std, y_true)
-    else:
+    if calibration_mode:
+        # if evaluation is done for calibrated predictions
         if (calibration_type == 'miscal' or calibration_type == 'all'):
             uq_metrics1 = uct.metrics.get_all_metrics(
                 pred_mean, pred_std_miscal, y_true)
@@ -79,14 +62,18 @@ def uq_eval(csv_file, prefix, report=False, verbose=False,
                 pred_mean, pred_std_ma_cal, y_true)
         if (calibration_type == 'isotonic' or calibration_type == 'all'):
             # Compute PICP and MPIW for isotonic regression calibration
+            # since this calibration is Non-Gaussian we only provide few
+            # unertainty quantification metrics
             uq_metrics4={}
             picp = calculate_picp(df)
             mpiw = calculate_mpiw(df)
             uq_metrics4['Mean Prediction Interval Width (MPIW)'] = mpiw
-            uq_metrics4['Prediction Interval Coverage Probability (PICP)-0.95'] = picp 
+            uq_metrics4['Prediction Interval Coverage Probability (PICP)-0.95'] = picp     
+    else:
+        # if evaluation is done before calibrated regression.
+        uq_metrics = uct.metrics.get_all_metrics(pred_mean, pred_std, y_true)
     
-    if report:
-        
+    if report:        
         # set the path to report UQ analysis in a .txt file
         base_name, _ = os.path.splitext(os.path.basename(csv_file))
         result_path = os.path.dirname(csv_file)
@@ -103,7 +90,12 @@ def uq_eval(csv_file, prefix, report=False, verbose=False,
             report_path3 = os.path.join(result_path, report_name3)
             report_path4 = os.path.join(result_path, report_name4)
                 
-        # Plot sparsification error
+        # UQ method name as text in plots.
+        plot_label = uq_label_plot(uq_method=prefix)
+        
+        # Plot sparsification error only before calibration. 
+        # Note that this plot is not affected by calibration, since Gaussian 
+        # valibration is simply scaling the standard deviation.
         if not calibration_mode:
             try:
                 n_samples = len(pred_mean)
@@ -140,7 +132,7 @@ def uq_eval(csv_file, prefix, report=False, verbose=False,
                 plt.figure(figsize=(10, 6))
                 plt.plot(x, mae_oracle, label='Oracle', color='gray')
                 plt.plot(x, mae_random, label='Random', color='red')
-                plt.plot(x, mae_uq, label=prefix, color='blue')
+                plt.plot(x, mae_uq, label=plot_label, color='blue')
                 plt.xlabel('Fraction of Removed Samples')
                 plt.ylabel('MAE')
                 plt.title('Sparsification Plot')
@@ -166,6 +158,8 @@ def uq_eval(csv_file, prefix, report=False, verbose=False,
             # Plot average calibration
             try:
                 uct.viz.plot_calibration(pred_mean, pred_std, y_true)
+                plt.text(x=0.95, y=0.03, s=plot_label, 
+                         fontsize='small', ha='right', va='bottom')            
                 plt.gcf().set_size_inches(10, 10)
                 new_file_name = base_name + 'miscalibrated_area' + '.pdf'
                 new_file_path = os.path.join(result_path, new_file_name)
@@ -178,6 +172,8 @@ def uq_eval(csv_file, prefix, report=False, verbose=False,
             # Now plot miscalibration for Gaussian calibrations
             if (calibration_type == 'miscal' or calibration_type == 'all'):
                 uct.viz.plot_calibration(pred_mean, pred_std_miscal, y_true)
+                plt.text(x=0.95, y=0.03, s=plot_label, 
+                         fontsize='small', ha='right', va='bottom')  
                 plt.gcf().set_size_inches(10, 10)
                 new_file_name = (
                     base_name + 'miscalibrated_area_std_miscal' + '.pdf')
@@ -187,6 +183,8 @@ def uq_eval(csv_file, prefix, report=False, verbose=False,
                 plt.close()
             elif (calibration_type == 'rms' or calibration_type == 'all'):
                 uct.viz.plot_calibration(pred_mean, pred_std_rms_cal, y_true)
+                plt.text(x=0.95, y=0.03, s=plot_label, 
+                         fontsize='small', ha='right', va='bottom')  
                 plt.gcf().set_size_inches(10, 10)
                 new_file_name = (
                     base_name + 'miscalibrated_area_std_rms_cal' + '.pdf')
@@ -196,6 +194,8 @@ def uq_eval(csv_file, prefix, report=False, verbose=False,
                 plt.close()
             elif (calibration_type == 'ma' or calibration_type == 'all'):
                 uct.viz.plot_calibration(pred_mean, pred_std_ma_cal, y_true)
+                plt.text(x=0.95, y=0.03, s=plot_label, 
+                         fontsize='small', ha='right', va='bottom')  
                 plt.gcf().set_size_inches(10, 10)
                 new_file_name = (
                     base_name + 'miscalibrated_area_std_ma_cal' + '.pdf')
@@ -213,15 +213,19 @@ def uq_eval(csv_file, prefix, report=False, verbose=False,
             uct.viz.plot_calibration(pred_mean, pred_std, y_true,
                                      exp_props=exp_props,
                                      obs_props=obs_props)
+            plt.text(x=0.95, y=0.03, s=plot_label, 
+                     fontsize='small', ha='right', va='bottom')  
             plt.gcf().set_size_inches(10, 10)
             new_file_name = (
                 base_name + 'miscalibrated_area_isotonic_regression' + '.pdf')
             new_file_path = os.path.join(result_path, new_file_name)
             plt.savefig(new_file_path, format='pdf')
             plt.clf()
+            plt.close()
+            
             # sort the calibrated predictions based on absolute error
             sorted_df = df.sort_values(by='Absolute_error')
-            sorted_pred_mean = sorted_df['Prediction'].values
+            sorted_pred_mean = sorted_df['Prediction'].values           
             sorted_errors = sorted_df['Absolute_error'].values
             if (prefix=='DA_A' or prefix=='CDA_A' or 
                 prefix == 'en_t_mve' or prefix == 'en_b_mve'):
@@ -245,6 +249,8 @@ def uq_eval(csv_file, prefix, report=False, verbose=False,
             plt.xlabel('Sorted Absolute Errors') 
             plt.ylabel('Confidence Intervals (95%)')    
             plt.legend()
+            plt.text(x=0.95, y=0.03, s=plot_label, 
+                     fontsize='small', ha='right', va='bottom')  
             plt.gcf().set_size_inches(10, 10)
             plt.title('95% Centered Prediction Interval')
             new_file_name = (base_name +
@@ -281,6 +287,8 @@ def uq_eval(csv_file, prefix, report=False, verbose=False,
             plt.xlabel('Sorted Prefix Lengths') 
             plt.ylabel('Confidence Intervals (95%)')    
             plt.legend()
+            plt.text(x=0.95, y=0.03, s=plot_label, 
+                     fontsize='small', ha='right', va='bottom')  
             plt.gcf().set_size_inches(10, 10)
             plt.title('95% Centered Prediction Interval')
             new_file_name = (base_name +
@@ -317,6 +325,8 @@ def uq_eval(csv_file, prefix, report=False, verbose=False,
             plt.xlabel('Sorted Remaining Times') 
             plt.ylabel('Confidence Intervals (95%)')    
             plt.legend()
+            plt.text(x=0.95, y=0.03, s=plot_label, 
+                     fontsize='small', ha='right', va='bottom')  
             plt.gcf().set_size_inches(10, 10)
             plt.title('95% Centered Prediction Interval')
             new_file_name = (base_name +
@@ -329,25 +339,30 @@ def uq_eval(csv_file, prefix, report=False, verbose=False,
                 
             
         if verbose:
-            # Plot adversarial group calibration
-            try:
-                uct.viz.plot_adversarial_group_calibration(
-                    pred_mean, pred_std, y_true)
-                plt.gcf().set_size_inches(10, 6)
-                new_file_name = (
-                    base_name + 'adversarial_group_calibration' + '.pdf')
-                new_file_path = os.path.join(result_path, new_file_name)
-                plt.savefig(new_file_path, format='pdf')
-                plt.clf()
-                plt.close()
-            except:
-                print('Plotting the adversarial group calibration is not possible',
-                      prefix)
-            if calibration_mode:
+            if not calibration_mode:
+                # Plot adversarial group calibration
+                try:
+                    uct.viz.plot_adversarial_group_calibration(
+                        pred_mean, pred_std, y_true)
+                    plt.text(x=0.95, y=0.03, s=plot_label, 
+                             fontsize='small', ha='right', va='bottom')  
+                    plt.gcf().set_size_inches(10, 6)
+                    new_file_name = (
+                        base_name + 'adversarial_group_calibration' + '.pdf')
+                    new_file_path = os.path.join(result_path, new_file_name)
+                    plt.savefig(new_file_path, format='pdf')
+                    plt.clf()
+                    plt.close()
+                except:
+                    print('Plotting the adversarial group calibration is not \
+                          possible', prefix)
+            else:
                 # Plot adversarial group calibration for Gaussian calibrations
                 if (calibration_type == 'miscal' or calibration_type == 'all'):
                     uct.viz.plot_adversarial_group_calibration(
                         pred_mean, pred_std_miscal, y_true)
+                    plt.text(x=0.95, y=0.03, s=plot_label, 
+                             fontsize='small', ha='right', va='bottom')  
                     plt.gcf().set_size_inches(10, 6)
                     new_file_name = (
                         base_name + 
@@ -359,6 +374,8 @@ def uq_eval(csv_file, prefix, report=False, verbose=False,
                 if (calibration_type == 'rms' or calibration_type == 'all'):                 
                     uct.viz.plot_adversarial_group_calibration(
                         pred_mean, pred_std_rms_cal, y_true)
+                    plt.text(x=0.95, y=0.03, s=plot_label, 
+                             fontsize='small', ha='right', va='bottom')  
                     plt.gcf().set_size_inches(10, 6)
                     new_file_name = (
                         base_name +
@@ -370,6 +387,8 @@ def uq_eval(csv_file, prefix, report=False, verbose=False,
                 if (calibration_type == 'ma' or calibration_type == 'all'):                    
                     uct.viz.plot_adversarial_group_calibration(
                         pred_mean, pred_std_ma_cal, y_true)
+                    plt.text(x=0.95, y=0.03, s=plot_label, 
+                             fontsize='small', ha='right', va='bottom')  
                     plt.gcf().set_size_inches(10, 6)
                     new_file_name = (
                         base_name + 
@@ -380,23 +399,29 @@ def uq_eval(csv_file, prefix, report=False, verbose=False,
                     plt.close()
             
             # Plot ordered prediction intervals
-            try:
-                uct.viz.plot_intervals_ordered(pred_mean, pred_std, y_true)
-                plt.gcf().set_size_inches(10, 10)
-                # define name of the plot to be saved
-                new_file_name = (
-                    base_name + 'ordered_prediction_intervals' + '.pdf')
-                new_file_path = os.path.join(result_path, new_file_name)
-                plt.savefig(new_file_path, format='pdf')
-                plt.clf()
-                plt.close()
-            except:
-                print('Plotting the ordered prediction intervals is not possible',
-                      prefix)
-            if calibration_mode:
+            if not calibration_mode:
+                try:
+                    uct.viz.plot_intervals_ordered(pred_mean, pred_std, y_true)
+                    plt.text(x=0.95, y=0.03, s=plot_label, 
+                             fontsize='small', ha='right', va='bottom')  
+                    plt.gcf().set_size_inches(10, 10)
+                    # define name of the plot to be saved
+                    new_file_name = (
+                        base_name + 'ordered_prediction_intervals' + '.pdf')
+                    new_file_path = os.path.join(result_path, new_file_name)
+                    plt.savefig(new_file_path, format='pdf')
+                    plt.clf()
+                    plt.close()
+                except:
+                    print('Plotting the ordered prediction intervals is not \
+                          possible', prefix)
+            else:
                 if (calibration_type == 'miscal' or calibration_type == 'all'):
                     # Plot ordered prediction intervals for Gaussian calibrations
-                    uct.viz.plot_intervals_ordered(pred_mean, pred_std_miscal, y_true)
+                    uct.viz.plot_intervals_ordered(
+                        pred_mean, pred_std_miscal, y_true)
+                    plt.text(x=0.95, y=0.03, s=plot_label, 
+                             fontsize='small', ha='right', va='bottom')  
                     plt.gcf().set_size_inches(10, 10)
                     # define name of the plot to be saved
                     new_file_name = (
@@ -407,7 +432,10 @@ def uq_eval(csv_file, prefix, report=False, verbose=False,
                     plt.clf()
                     plt.close()
                 if (calibration_type == 'rms' or calibration_type == 'all'):
-                    uct.viz.plot_intervals_ordered(pred_mean, pred_std_rms_cal, y_true)
+                    uct.viz.plot_intervals_ordered(
+                        pred_mean, pred_std_rms_cal, y_true)
+                    plt.text(x=0.95, y=0.03, s=plot_label, 
+                             fontsize='small', ha='right', va='bottom')  
                     plt.gcf().set_size_inches(10, 10)
                     # define name of the plot to be saved
                     new_file_name = (
@@ -418,7 +446,10 @@ def uq_eval(csv_file, prefix, report=False, verbose=False,
                     plt.clf()
                     plt.close()
                 if (calibration_type == 'ma' or calibration_type == 'all'):    
-                    uct.viz.plot_intervals_ordered(pred_mean, pred_std_ma_cal, y_true)
+                    uct.viz.plot_intervals_ordered(
+                        pred_mean, pred_std_ma_cal, y_true)
+                    plt.text(x=0.95, y=0.03, s=plot_label, 
+                             fontsize='small', ha='right', va='bottom')  
                     plt.gcf().set_size_inches(10, 10)
                     # define name of the plot to be saved
                     new_file_name = (
@@ -443,7 +474,7 @@ def uq_eval(csv_file, prefix, report=False, verbose=False,
         else:
             if (calibration_type == 'miscal' or calibration_type == 'all'):
                 picp, mpiw, qice, y_l, y_u = evaluate_coverage(
-                    y_true=y_true, pred_mean=pred_mean, pred_std=pred_std,
+                    y_true=y_true, pred_mean=pred_mean, pred_std=pred_std_miscal,
                     low_percentile=2.5, high_percentile=97.5, num_samples= 50,
                     n_bins=10)
                 uq_metrics1['Mean Prediction Interval Width (MPIW)'] = mpiw
@@ -453,7 +484,7 @@ def uq_eval(csv_file, prefix, report=False, verbose=False,
                 uq_metrics1['Test_instance_morethan_upper_bound'] = y_u
             if (calibration_type == 'rms' or calibration_type == 'all'):
                 picp, mpiw, qice, y_l, y_u = evaluate_coverage(
-                    y_true=y_true, pred_mean=pred_mean, pred_std=pred_std,
+                    y_true=y_true, pred_mean=pred_mean, pred_std=pred_std_rms_cal,
                     low_percentile=2.5, high_percentile=97.5, num_samples= 50,
                     n_bins=10)
                 uq_metrics2['Mean Prediction Interval Width (MPIW)'] = mpiw
@@ -463,7 +494,7 @@ def uq_eval(csv_file, prefix, report=False, verbose=False,
                 uq_metrics2['Test_instance_morethan_upper_bound'] = y_u           
             if (calibration_type == 'ma' or calibration_type == 'all'):
                 picp, mpiw, qice, y_l, y_u = evaluate_coverage(
-                    y_true=y_true, pred_mean=pred_mean, pred_std=pred_std,
+                    y_true=y_true, pred_mean=pred_mean, pred_std=pred_std_ma_cal,
                     low_percentile=2.5, high_percentile=97.5, num_samples= 50,
                     n_bins=10)
                 uq_metrics3['Mean Prediction Interval Width (MPIW)'] = mpiw
@@ -481,15 +512,15 @@ def uq_eval(csv_file, prefix, report=False, verbose=False,
                 if (calibration_type == 'miscal' or calibration_type == 'all'):
                     uq_metrics1 = correlation_stats(
                         df, prefix, uq_metrics1,calibration_mode=True,
-                        calibration_type=calibration_type)
+                        calibration_type='miscal')
                 if (calibration_type == 'rms' or calibration_type == 'all'):
                     uq_metrics2 = correlation_stats(
                         df, prefix, uq_metrics2,calibration_mode=True,
-                        calibration_type=calibration_type)
+                        calibration_type='rms')
                 if (calibration_type == 'ma' or calibration_type == 'all'):
                     uq_metrics3 = correlation_stats(
                         df, prefix, uq_metrics3,calibration_mode=True,
-                        calibration_type=calibration_type)
+                        calibration_type='ma')
                     
         if not calibration_mode:
             # write uq_metrics dictionary into a .txt file
@@ -584,64 +615,30 @@ def evaluate_coverage(y_true=None, pred_mean=None, pred_std=None,
 
 def correlation_stats (df, prefix, uq_dict, calibration_mode=False,
                        calibration_type=None):
-    
-    # Uncertainty vs. MAE
     if not calibration_mode:
         if (prefix=='DA_A' or prefix=='CDA_A' or prefix=='en_b_mve' or
             prefix=='en_t_mve'):
-            corr, p_value = spearmanr(
-                df['Absolute_error'], df['Total_Uncertainty'])
-            pear_corr, pear_p_value = pearsonr(
-                df['Absolute_error'], df['Total_Uncertainty'])
-            mi = mutual_info_regression(
-                df['Absolute_error'].to_numpy().reshape(-1, 1), 
-                df['Total_Uncertainty'].to_numpy())                
+            uncertainty_col = 'Total_Uncertainty'
         elif (prefix=='DA' or prefix=='CDA' or prefix=='en_t' or 
               prefix=='en_b' or prefix=='RF' or prefix=='LA'):
-            corr, p_value = spearmanr(
-                df['Absolute_error'], df['Epistemic_Uncertainty'])
-            pear_corr, pear_p_value = pearsonr(
-                df['Absolute_error'], df['Epistemic_Uncertainty'])
-            mi = mutual_info_regression(
-                df['Absolute_error'].to_numpy().reshape(-1, 1), 
-                df['Epistemic_Uncertainty'].to_numpy())
+            uncertainty_col = 'Epistemic_Uncertainty'
         elif (prefix=='CARD' or prefix=='mve' or prefix=='SQR'):
-            corr, p_value = spearmanr(
-                df['Absolute_error'], df['Aleatoric_Uncertainty'])
-            pear_corr, pear_p_value = pearsonr(
-                df['Absolute_error'], df['Aleatoric_Uncertainty'])
-            mi = mutual_info_regression(
-                df['Absolute_error'].to_numpy().reshape(-1, 1), 
-                df['Aleatoric_Uncertainty'].to_numpy())
+            uncertainty_col = 'Aleatoric_Uncertainty'
         else:
             raise NotImplementedError(
                 'Uncertainty quantification {} not understood.'.format(prefix)) 
     else:
-        if (calibration_type == 'miscal' or calibration_type == 'all'):
-            corr, p_value = spearmanr(
-                df['Absolute_error'], df['calibrated_std_miscal'])
-            pear_corr, pear_p_value = pearsonr(
-                df['Absolute_error'], df['calibrated_std_miscal'])
-            mi = mutual_info_regression(
-                df['Absolute_error'].to_numpy().reshape(-1, 1), 
-                df['calibrated_std_miscal'].to_numpy())
-        if (calibration_type == 'rms' or calibration_type == 'all'):
-            corr, p_value = spearmanr(
-                df['Absolute_error'], df['calibrated_std_rms_cal'])
-            pear_corr, pear_p_value = pearsonr(
-                df['Absolute_error'], df['calibrated_std_rms_cal'])
-            mi = mutual_info_regression(
-                df['Absolute_error'].to_numpy().reshape(-1, 1), 
-                df['calibrated_std_rms_cal'].to_numpy())
-        if (calibration_type == 'ma' or calibration_type == 'all'):
-            corr, p_value = spearmanr(
-                df['Absolute_error'], df['calibrated_std_ma_cal'])
-            pear_corr, pear_p_value = pearsonr(
-                df['Absolute_error'], df['calibrated_std_ma_cal'])
-            mi = mutual_info_regression(
-                df['Absolute_error'].to_numpy().reshape(-1, 1), 
-                df['calibrated_std_ma_cal'].to_numpy())
-        
+        if calibration_type == 'miscal':
+            uncertainty_col = 'calibrated_std_miscal'
+        elif calibration_type == 'rms':
+            uncertainty_col = 'calibrated_std_rms_cal'
+        elif calibration_type == 'ma':
+            uncertainty_col = 'calibrated_std_ma_cal'
+
+    # Uncertainty vs. MAE
+    error_col = 'Absolute_error'
+    (corr, p_value, pear_corr, pear_p_value, mi) = get_statistics(
+        df=df, error_col=error_col, uncertainty_col=uncertainty_col)        
     uq_dict['Spearman rank correlation coefficient: Uncertainty vs. MAE'] = corr
     uq_dict['Spearman rank correlation p_value: Uncertainty vs. MAE'] = p_value 
     uq_dict['Pearson Correlation Coefficient: Uncertainty vs. MAE'] = pear_corr
@@ -649,71 +646,17 @@ def correlation_stats (df, prefix, uq_dict, calibration_mode=False,
     uq_dict['Mutual Information: Uncertainty and MAE'] = mi
     
     # Uncertainty vs. MAPE
+    error_col = 'Absolute_percentage_error'
     if not 'Absolute_percentage_error' in df.columns:
         df['Absolute_percentage_error'] = (df['Absolute_error']/
                                            df['GroundTruth'])
-    if not calibration_mode:
-        if (prefix=='DA_A' or prefix=='CDA_A' or prefix=='en_b_mve' or
-            prefix=='en_t_mve'):
-            corr, p_value = spearmanr(
-                df['Absolute_percentage_error'], df['Total_Uncertainty'])
-            pear_corr, pear_p_value = pearsonr(
-                df['Absolute_percentage_error'], df['Total_Uncertainty'])
-            mi = mutual_info_regression(
-                df['Absolute_percentage_error'].to_numpy().reshape(-1, 1), 
-                df['Total_Uncertainty'].to_numpy())
-        elif (prefix=='DA' or prefix=='CDA' or prefix=='en_t' or 
-              prefix=='en_b' or prefix=='RF' or prefix=='LA'):
-            corr, p_value = spearmanr(
-                df['Absolute_percentage_error'], df['Epistemic_Uncertainty'])
-            pear_corr, pear_p_value = pearsonr(
-                df['Absolute_percentage_error'], df['Epistemic_Uncertainty'])
-            mi = mutual_info_regression(
-                df['Absolute_percentage_error'].to_numpy().reshape(-1, 1), 
-                df['Epistemic_Uncertainty'].to_numpy())
-        elif (prefix=='CARD' or prefix=='mve' or prefix=='SQR'):
-            corr, p_value = spearmanr(
-                df['Absolute_percentage_error'], df['Aleatoric_Uncertainty'])
-            pear_corr, pear_p_value = pearsonr(
-                df['Absolute_percentage_error'], df['Aleatoric_Uncertainty'])
-            mi = mutual_info_regression(
-                df['Absolute_percentage_error'].to_numpy().reshape(-1, 1), 
-                df['Aleatoric_Uncertainty'].to_numpy())
-        else:
-            raise NotImplementedError(
-                'Uncertainty quantification {} not understood.'.format(prefix))
-    else:
-        if (calibration_type == 'miscal' or calibration_type == 'all'):
-            corr, p_value = spearmanr(
-                df['Absolute_percentage_error'], df['calibrated_std_miscal'])
-            pear_corr, pear_p_value = pearsonr(
-                df['Absolute_percentage_error'], df['calibrated_std_miscal'])
-            mi = mutual_info_regression(
-                df['Absolute_percentage_error'].to_numpy().reshape(-1, 1), 
-                df['calibrated_std_miscal'].to_numpy())
-        if (calibration_type == 'rms' or calibration_type == 'all'):
-            corr, p_value = spearmanr(
-                df['Absolute_percentage_error'], df['calibrated_std_rms_cal'])
-            pear_corr, pear_p_value = pearsonr(
-                df['Absolute_percentage_error'], df['calibrated_std_rms_cal'])
-            mi = mutual_info_regression(
-                df['Absolute_percentage_error'].to_numpy().reshape(-1, 1), 
-                df['calibrated_std_rms_cal'].to_numpy())
-        if (calibration_type == 'ma' or calibration_type == 'all'):
-            corr, p_value = spearmanr(
-                df['Absolute_percentage_error'], df['calibrated_std_ma_cal'])
-            pear_corr, pear_p_value = pearsonr(
-                df['Absolute_percentage_error'], df['calibrated_std_ma_cal'])
-            mi = mutual_info_regression(
-                df['Absolute_percentage_error'].to_numpy().reshape(-1, 1), 
-                df['calibrated_std_ma_cal'].to_numpy())
-            
+    (corr, p_value, pear_corr, pear_p_value, mi) = get_statistics(
+        df=df, error_col=error_col, uncertainty_col=uncertainty_col)            
     uq_dict['Spearman rank correlation coefficient: Uncertainty vs. MAPE'] = corr
     uq_dict['Spearman rank correlation p_value: Uncertainty vs. MAPE'] = p_value 
     uq_dict['Pearson Correlation Coefficient: Uncertainty vs. MAPE'] = pear_corr
     uq_dict['Pearson Correlation p_value: Uncertainty vs. MAPE'] = pear_p_value 
     uq_dict['Mutual Information: Uncertainty and MAPE'] = mi
-    
     
     # Uncertainty vs. MAPE: 
         # excluding examples with short remaining times
@@ -729,149 +672,21 @@ def correlation_stats (df, prefix, uq_dict, calibration_mode=False,
     percentile2 = df['GroundTruth'].quantile(quantile_ratio2)
     filtered_df1 = df[df['GroundTruth'] >= percentile1]  
     filtered_df2 = df[df['GroundTruth'] >= percentile2]
-     
-    if not calibration_mode:
-        if (prefix=='DA_A' or prefix=='CDA_A' or prefix=='en_b_mve' or
-            prefix=='en_t_mve'):
-            corr1, p_value1 = spearmanr(
-                filtered_df1['Absolute_percentage_error'],
-                filtered_df1['Total_Uncertainty'])
-            pear_corr1, pear_p_value1 = pearsonr(
-                filtered_df1['Absolute_percentage_error'],
-                filtered_df1['Total_Uncertainty'])
-            mi1 = mutual_info_regression(
-                filtered_df1['Absolute_percentage_error'].to_numpy().reshape(-1, 1), 
-                filtered_df1['Total_Uncertainty'].to_numpy())
-            corr2, p_value2 = spearmanr(
-                filtered_df2['Absolute_percentage_error'],
-                filtered_df2['Total_Uncertainty'])
-            pear_corr2, pear_p_value2 = pearsonr(
-                filtered_df2['Absolute_percentage_error'],
-                filtered_df2['Total_Uncertainty'])
-            mi2 = mutual_info_regression(
-                filtered_df2['Absolute_percentage_error'].to_numpy().reshape(-1, 1), 
-                filtered_df2['Total_Uncertainty'].to_numpy())
-        elif (prefix=='DA' or prefix=='CDA' or prefix=='en_t' or 
-              prefix=='en_b' or prefix=='RF' or prefix=='LA'):
-            corr1, p_value1 = spearmanr(
-                filtered_df1['Absolute_percentage_error'],
-                filtered_df1['Epistemic_Uncertainty'])
-            pear_corr1, pear_p_value1 = pearsonr(
-                filtered_df1['Absolute_percentage_error'],
-                filtered_df1['Epistemic_Uncertainty'])
-            mi1 = mutual_info_regression(
-                filtered_df1['Absolute_percentage_error'].to_numpy().reshape(-1, 1), 
-                filtered_df1['Epistemic_Uncertainty'].to_numpy())
-            corr2, p_value2 = spearmanr(
-                filtered_df2['Absolute_percentage_error'],
-                filtered_df2['Epistemic_Uncertainty'])
-            pear_corr2, pear_p_value1 = pearsonr(
-                filtered_df2['Absolute_percentage_error'],
-                filtered_df2['Epistemic_Uncertainty'])
-            mi2 = mutual_info_regression(
-                filtered_df2['Absolute_percentage_error'].to_numpy().reshape(-1, 1), 
-                filtered_df2['Epistemic_Uncertainty'].to_numpy())
-        elif (prefix=='CARD' or prefix=='mve' or prefix=='SQR'):
-            corr1, p_value1 = spearmanr(
-                filtered_df1['Absolute_percentage_error'],
-                filtered_df1['Aleatoric_Uncertainty'])
-            pear_corr1, pear_p_value1 = pearsonr(
-                filtered_df1['Absolute_percentage_error'],
-                filtered_df1['Aleatoric_Uncertainty'])
-            mi1 = mutual_info_regression(
-                filtered_df1['Absolute_percentage_error'].to_numpy().reshape(-1, 1), 
-                filtered_df1['Aleatoric_Uncertainty'].to_numpy())
-            corr2, p_value2 = spearmanr(
-                filtered_df2['Absolute_percentage_error'],
-                filtered_df2['Aleatoric_Uncertainty'])
-            pear_corr2, pear_p_value2 = pearsonr(
-                filtered_df2['Absolute_percentage_error'], 
-                filtered_df2['Aleatoric_Uncertainty'])
-            mi2 = mutual_info_regression(
-                filtered_df2['Absolute_percentage_error'].to_numpy().reshape(-1, 1), 
-                filtered_df2['Aleatoric_Uncertainty'].to_numpy())
-        else:
-            raise NotImplementedError(
-                'Uncertainty quantification {} not understood.'.format(prefix))
-    else:
-        if (calibration_type == 'miscal' or calibration_type == 'all'):
-            corr1, p_value1 = spearmanr(
-                filtered_df1['Absolute_percentage_error'],
-                filtered_df1['calibrated_std_miscal'])
-            pear_corr1, pear_p_value1 = pearsonr(
-                filtered_df1['Absolute_percentage_error'],
-                filtered_df1['calibrated_std_miscal'])
-            mi1 = mutual_info_regression(
-                filtered_df1['Absolute_percentage_error'].to_numpy().reshape(-1, 1), 
-                filtered_df1['calibrated_std_miscal'].to_numpy())
-            corr2, p_value2 = spearmanr(
-                filtered_df2['Absolute_percentage_error'],
-                filtered_df2['calibrated_std_miscal'])
-            pear_corr2, pear_p_value2 = pearsonr(
-                filtered_df2['Absolute_percentage_error'],
-                filtered_df2['calibrated_std_miscal'])
-            mi2 = mutual_info_regression(
-                filtered_df2['Absolute_percentage_error'].to_numpy().reshape(-1, 1), 
-                filtered_df2['calibrated_std_miscal'].to_numpy())
-        if (calibration_type == 'rms' or calibration_type == 'all'):
-            corr1, p_value1 = spearmanr(
-                filtered_df1['Absolute_percentage_error'],
-                filtered_df1['calibrated_std_rms_cal'])
-            pear_corr1, pear_p_value1 = pearsonr(
-                filtered_df1['Absolute_percentage_error'],
-                filtered_df1['calibrated_std_rms_cal'])
-            mi1 = mutual_info_regression(
-                filtered_df1['Absolute_percentage_error'].to_numpy().reshape(-1, 1), 
-                filtered_df1['calibrated_std_rms_cal'].to_numpy())
-            corr2, p_value2 = spearmanr(
-                filtered_df2['Absolute_percentage_error'],
-                filtered_df2['calibrated_std_rms_cal'])
-            pear_corr2, pear_p_value2 = pearsonr(
-                filtered_df2['Absolute_percentage_error'],
-                filtered_df2['calibrated_std_rms_cal'])
-            mi2 = mutual_info_regression(
-                filtered_df2['Absolute_percentage_error'].to_numpy().reshape(-1, 1), 
-                filtered_df2['calibrated_std_rms_cal'].to_numpy())
-        if (calibration_type == 'ma' or calibration_type == 'all'):
-            corr1, p_value1 = spearmanr(
-                filtered_df1['Absolute_percentage_error'],
-                filtered_df1['calibrated_std_ma_cal'])
-            pear_corr1, pear_p_value1 = pearsonr(
-                filtered_df1['Absolute_percentage_error'],
-                filtered_df1['calibrated_std_ma_cal'])
-            mi1 = mutual_info_regression(
-                filtered_df1['Absolute_percentage_error'].to_numpy().reshape(-1, 1), 
-                filtered_df1['calibrated_std_ma_cal'].to_numpy())
-            corr2, p_value2 = spearmanr(
-                filtered_df2['Absolute_percentage_error'],
-                filtered_df2['calibrated_std_ma_cal'])
-            pear_corr2, pear_p_value2 = pearsonr(
-                filtered_df2['Absolute_percentage_error'],
-                filtered_df2['calibrated_std_ma_cal'])
-            mi2 = mutual_info_regression(
-                filtered_df2['Absolute_percentage_error'].to_numpy().reshape(-1, 1), 
-                filtered_df2['calibrated_std_ma_cal'].to_numpy())
     
-    uq_dict['Spearman rank correlation coefficient: Uncertainty vs. MAPE \
-            (excl. small remaining times)'] = corr1
-    uq_dict['Spearman rank correlation p_value: Uncertainty vs. MAPE \
-            (excl. small remaining times)'] = p_value1 
-    uq_dict['Pearson Correlation Coefficient: Uncertainty vs. MAPE \
-            (excl. small remaining times)'] = pear_corr1
-    uq_dict['Pearson Correlation p_value: Uncertainty vs. MAPE \
-            (excl. small remaining times)'] = pear_p_value1 
-    uq_dict['Mutual Information: Uncertainty and MAPE \
-            (excl. small remaining times)'] = mi1
-    uq_dict['Spearman rank correlation coefficient: Uncertainty vs. MAPE \
-            (only large remaining times)'] = corr2
-    uq_dict['Spearman rank correlation p_value: Uncertainty vs. MAPE \
-            (only large remaining times)'] = p_value2 
-    uq_dict['Pearson Correlation Coefficient: Uncertainty vs. MAPE \
-            (only large remaining times)'] = pear_corr2
-    uq_dict['Pearson Correlation p_value: Uncertainty vs. MAPE \
-            (only large remaining times)'] = pear_p_value1 
-    uq_dict['Mutual Information: Uncertainty and MAPE \
-            (only large remaining times)'] = mi2          
+    (corr1, p_value1, pear_corr1, pear_p_value1, mi1) = get_statistics(
+        df=filtered_df1, error_col=error_col, uncertainty_col=uncertainty_col)
+    (corr2, p_value2, pear_corr2, pear_p_value2, mi2) = get_statistics(
+        df=filtered_df2, error_col=error_col, uncertainty_col=uncertainty_col)    
+    uq_dict['Spearman coefficient: Uncertainty vs. MAPE (excl. small remaining times)'] = corr1
+    uq_dict['Spearman p_value: Uncertainty vs. MAPE (excl. small remaining times)'] = p_value1 
+    uq_dict['Pearson Coefficient: Uncertainty vs. MAPE (excl. small remaining times)'] = pear_corr1
+    uq_dict['Pearson p_value: Uncertainty vs. MAPE (excl. small remaining times)'] = pear_p_value1 
+    uq_dict['Mutual Information: Uncertainty and MAPE (excl. small remaining times)'] = mi1
+    uq_dict['Spearman coefficient: Uncertainty vs. MAPE (only large remaining times)'] = corr2
+    uq_dict['Spearman p_value: Uncertainty vs. MAPE (only large remaining times)'] = p_value2 
+    uq_dict['Pearson Coefficient: Uncertainty vs. MAPE (only large remaining times)'] = pear_corr2
+    uq_dict['Pearson p_value: Uncertainty vs. MAPE (only large remaining times)'] = pear_p_value1 
+    uq_dict['Mutual Information: Uncertainty and MAPE (only large remaining times)'] = mi2          
     return uq_dict
 
 # utility method to compute PICP for recalibration using isotonic regression

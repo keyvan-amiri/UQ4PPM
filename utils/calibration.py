@@ -10,8 +10,8 @@ from utils.utils import get_mean_std_truth, add_suffix_to_csv
 
 
 def calibrated_regression(calibration_df_path=None, test_df_path=None,
-                          uq_method=None,
-                          confidence_level=0.95, report_path=None,
+                          uq_method=None, confidence_level=0.95,
+                          report_path=None,
                           recalibration_path=None):
     """
     recalibration is done based on two approaches:
@@ -60,7 +60,8 @@ def calibrated_regression(calibration_df_path=None, test_df_path=None,
     test_df['confidence_lower'] = recal_bounds.lower
     test_df['confidence_upper'] = recal_bounds.upper
     
-    recal_name = add_suffix_to_csv(test_df_path, added_suffix='recalibrated_')
+    test_df_name = os.path.basename(test_df_path)
+    recal_name = add_suffix_to_csv(test_df_name, added_suffix='recalibrated_')
     recalibrated_test_path = os.path.join(recalibration_path, recal_name)
     test_df.to_csv(recalibrated_test_path, index=False)
     calibration_time = (datetime.now()-start).total_seconds()

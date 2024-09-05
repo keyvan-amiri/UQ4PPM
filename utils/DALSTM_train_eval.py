@@ -694,7 +694,7 @@ class DALSTM_train_evaluate ():
             exp_id=exp_id+1) 
         self.all_val_results.append(res_df)
         # in case of bootstrapping inference should be executed
-        # on test set right here, as loaders change in the loop
+        # on test set right here, as loaders change in the loop.
         if self.bootstrapping:
             res_df = test_model(
                 models=self.models,

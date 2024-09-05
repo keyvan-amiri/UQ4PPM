@@ -10,7 +10,8 @@ import numpy as np
 import torch
 import torch.optim as optim
 import torch.utils.tensorboard as tb
-from scipy.stats import norm
+from scipy.stats import norm, spearmanr, pearsonr
+from sklearn.feature_selection import mutual_info_regression
 from models.dalstm import DALSTMModel, DALSTMModelMve, dalstm_init_weights
 from models.stochastic_dalstm import StochasticDALSTM
 
@@ -501,3 +502,40 @@ def get_mean_std_truth (df=None, uq_method=None):
         raise NotImplementedError(
             'Uncertainty quantification {} not understood.'.format(uq_method))
     return (pred_mean, pred_std, y_true)
+
+# get label for plots
+def uq_label_plot (uq_method=None):
+    if uq_method=='DA_A':
+        uq_label = 'Dropout + Heteroscedastic'
+    elif uq_method=='CDA_A':
+        uq_label = 'Concrete Dropout + Heteroscedastic'
+    elif uq_method=='en_t_mve':
+        uq_label = 'Traditional Ensemble + Heteroscedastic'
+    elif uq_method == 'en_b_mve':
+        uq_label = 'Bootstrapping Ensemble + Heteroscedastic'
+    if uq_method=='DA':
+        uq_label = 'Dropout'
+    elif uq_method=='CDA':
+        uq_label = 'Concrete Dropout'
+    elif uq_method=='en_t':
+        uq_label = 'Traditional Ensemble'
+    elif uq_method == 'en_b':
+        uq_label = 'Bootstrapping Ensemble'
+    if uq_method=='RF':
+        uq_label = 'Random Forest On Embedding'
+    elif uq_method=='LA':
+        uq_label = 'Laplace Approximation'
+    elif uq_method=='mve':
+        uq_label = 'Heteroscedastic'
+    elif uq_method == 'CARD':
+        uq_label = 'CARD Model'
+    elif uq_method == 'SQR':
+        uq_label = 'Simultaneous Quantile Regression'
+    return uq_label
+
+def get_statistics(df=None, error_col=None, uncertainty_col=None):
+    corr, p_value = spearmanr(df[error_col], df[uncertainty_col])
+    pear_corr, pear_p_value = pearsonr(df[error_col], df[uncertainty_col])
+    mi = mutual_info_regression(df[error_col].to_numpy().reshape(-1, 1),
+                                df[uncertainty_col].to_numpy()) 
+    return (corr, p_value, pear_corr, pear_p_value, mi)
