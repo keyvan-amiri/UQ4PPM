@@ -225,9 +225,6 @@ def predict_rf(model=None, model_arch=None, aux_model=None, val_mode=False,
         flattened_list = [item for sublist in all_results['Prefix_length'] 
                           for item in sublist]
         all_results['Prefix_length'] = flattened_list
-        
-        for key, value in all_results.items():
-            print(f"Key: {key}, Length: {len(value)}")
     
     results_df = pd.DataFrame(all_results)
     

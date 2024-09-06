@@ -580,8 +580,8 @@ def uq_label_plot (uq_method=None):
 def get_statistics(df=None, error_col=None, uncertainty_col=None):
     corr, p_value = spearmanr(df[error_col], df[uncertainty_col])
     pear_corr, pear_p_value = pearsonr(df[error_col], df[uncertainty_col])
-    mi = mutual_info_regression(df[error_col].to_numpy().reshape(-1, 1),
-                                df[uncertainty_col].to_numpy()) 
+    mi = float(mutual_info_regression(df[error_col].to_numpy().reshape(-1, 1),
+                                      df[uncertainty_col].to_numpy())[0] )
     return (corr, p_value, pear_corr, pear_p_value, mi)
 
 def adjust_model_name(all_checkpoints=None):

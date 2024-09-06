@@ -177,6 +177,49 @@ def uq_eval(csv_file, prefix, report=False, verbose=False,
                 plt.close()
             except:
                 print('Plotting the average calibration is not possible', prefix)
+                
+            # create earliness analysis plot
+            if (prefix=='DA_A' or prefix=='CDA_A' or prefix == 'en_t_mve' or 
+                prefix == 'en_b_mve' or prefix=='deterministic'):
+                uncertainty_col = 'Total_Uncertainty'
+            elif (prefix=='CARD' or prefix=='mve' or prefix=='SQR'):
+                uncertainty_col = 'Aleatoric_Uncertainty'
+            elif (prefix=='DA' or prefix=='CDA' or prefix == 'en_t' or 
+                  prefix == 'en_b' or prefix == 'RF' or prefix == 'LA'):
+                uncertainty_col = 'Epistemic_Uncertainty'
+            
+            df_filtered = df[df['Prefix_length'] >= 2]
+            prefix_90_percentile = np.percentile(df_filtered['Prefix_length'], 
+                                                 90)
+            if prefix_90_percentile < 10:
+                df_limited = df_filtered
+            else:
+                df_limited = df_filtered[df_filtered['Prefix_length'] 
+                                         <= prefix_90_percentile]
+            mean_abs_error = df_limited.groupby('Prefix_length')['Absolute_error'].mean()
+            mean_std = df_limited.groupby('Prefix_length')[uncertainty_col].mean()
+            mean_pred = df_limited.groupby('Prefix_length')['Prediction'].mean()            
+            plt.figure(figsize=(10, 6))  
+            plt.plot(mean_abs_error.index, mean_abs_error.values, marker='o', 
+                     linestyle='-', color='b', label='Mean Absolute Error')
+            plt.plot(mean_pred.index, mean_pred.values, marker='^', 
+                     linestyle='--', color='g', 
+                     label='Mean Predicted Value')
+            plt.plot(mean_std.index, mean_std.values, marker='s', 
+                     linestyle=':', color='r', 
+                     label='Mean Posterior Standard Deviation')
+            plt.title('Mean Absolute Error and Mean Uncertainty vs Prefix Length')
+            plt.xlabel('Prefix Length')
+            plt.ylabel('MAE / Mean Uncertainty / Mean predictions')
+            plt.legend()
+            plt.text(0.95, 0.05, s=plot_label, 
+                     fontsize='small', ha='right', va='bottom',
+                     transform=plt.gca().transAxes)
+            new_file_name = (base_name + 'Earliness_analysis' + '.pdf')
+            new_file_path = os.path.join(result_path, new_file_name)
+            plt.savefig(new_file_path, format='pdf')
+            plt.clf()
+            plt.close()
         else:
             # Now plot miscalibration for Gaussian calibrations
             if (calibration_type == 'miscal' or calibration_type == 'all'):

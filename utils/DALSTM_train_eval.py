@@ -708,9 +708,10 @@ class DALSTM_train_evaluate ():
             ratio_exp = self.cfg.get('std_mean_ratio')
             num_ratio_exp = len(self.cfg.get('std_mean_ratio'))
             # create multiple copies from the only report, and checkpoint
+            copy_lists = [self.all_reports, self.all_checkpoints]
             lists_to_update = [self.all_reports, self.all_checkpoints]
-            for any_list in lists_to_update:          
-                original_file = any_list[0]
+            for list_id in range (2):
+                original_file = lists_to_update[list_id][0]
                 directory = os.path.dirname(original_file)
                 base_filename = os.path.basename(original_file)
                 base_name, extension = base_filename.split('exp_1')  
@@ -718,7 +719,10 @@ class DALSTM_train_evaluate ():
                     new_filename = f"{base_name}exp_{j}{extension}"
                     new_path = os.path.join(directory, new_filename)
                     shutil.copy(original_file, new_path)
-                    any_list.append(new_path)
+                    copy_lists[list_id].append(new_path)
+            self.all_reports = copy_lists[0]
+            self.all_checkpoints = copy_lists[1]
+                    
             # update self.experiment dictionary
             self.expanded_experiments = []
             for current_exp in self.experiments:
