@@ -1,0 +1,48 @@
+data:
+  normalization: False
+model:
+  lstm:
+    n_layers: 2
+    hidden_size: 150 
+    dropout: True
+    dropout_prob: 0.1
+uncertainty:
+  dropout_approximation:
+    weight_regularizer: 0.1
+    dropout_regularizer: 0.1
+    num_stochastic_forward_path: 50
+  union:
+    loss_function: squared_error # or absolute_error or friedman_mse or poisson
+    n_estimators: 100
+    depth_control: False # whether to use a maximum length for Random Forest or not
+    max_depth: 5 # if depth_control is True use this as the maximum depth in Random Forest
+    min_samples_split: 2
+    min_samples_leaf: 1
+  laplace:
+    empirical_bayes: False # whether to estimate the prior precision and observation noise using empirical Bayes after training or not
+    last_layer_name: linear1
+    hessian_structure: kron # full diag gp       
+    n_samples: 100 # number of MC samples for approximating the predictive distribution
+    sigma_noise: 1.0 # observation noise [0, 1]
+    stat_noise: False
+    prior_precision: 1.0 #prior precision of a Gaussian prior
+    temperature: 1.0 # to control sharpness of posterior
+    prior_opt: marglik # or gridsearch
+    grid_size: 100            
+    epochs: 100
+    lr: 0.01
+train:
+  loss_function: mae   
+  max_epochs: 100
+  batch_size: 64
+  early_stop: True
+  early_stop.patience: 50
+  early_stop.min_delta: 0
+optimizer:
+  type: NAdam
+  base_lr: 0.001 
+  eps: 1e-7  
+  weight_decay: 0.0 
+evaluation:
+  batch_size: 64
+    

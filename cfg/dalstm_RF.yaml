@@ -1,0 +1,33 @@
+data:
+  normalization: False
+HPO_metric: nll # nll mae rmse sharp crps
+calibration_type: all # all miscal rms ma isotonic
+model:
+  lstm:
+    n_layers: 2
+    hidden_size: 150 
+    dropout: True
+    dropout_prob: 0.1
+uncertainty:
+  union:
+    loss_function: [squared_error] #[squared_error, absolute_error, friedman_mse, poisson]
+    n_estimators: [50] #[50, 100, 150, 200] 
+    depth_control: [False, True] 
+    max_depth: 5 # if depth_control is True use this as the maximum depth in Random Forest
+    min_samples_split: 2
+    min_samples_leaf: 1
+train:
+  loss_function: mae   
+  max_epochs: 200
+  batch_size: 64
+  early_stop: True
+  early_stop.patience: 50
+  early_stop.min_delta: 0
+optimizer:
+  type: NAdam
+  base_lr: 0.001 
+  eps: 1e-7  
+  weight_decay: 0.0 
+evaluation:
+  batch_size: 64
+    

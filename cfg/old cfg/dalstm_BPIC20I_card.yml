@@ -1,0 +1,81 @@
+data:
+    dataset: "ppm" # In our setting is always ppm
+    dir: "BPIC20I"
+    n_splits: 1
+    num_workers: 0
+
+model:
+    type: dalstm
+    target_norm: False # whether to use normalization for target attribute or not
+    cat_x: True # whether to concatanate data features (x) to the input of noise estimation network or not
+    window_cat_x: 3 # if concatanate x, how many events to be included (if noise estimation network is FNN)
+    feature_dim: 128 # dimension for linear layer used in noise estimation network
+    var_type: fixedlarge # fixedlarge or fixedsmall
+    ema_rate: 0.9999
+    ema: True
+
+diffusion:
+    beta_schedule: linear # linear or cosine or cosine_anneal or cosine_reverse or sigmoid or jsd or quad or const
+    beta_start: 0.000001 # 0.0001
+    beta_end: 0.0002 #0.02
+    timesteps: 1000
+    vis_step: 100
+    num_figs: 10
+    noise_architecture: "FNN" # LSTM or FNN 
+    noise_prior_approach: median # zero: N(0,I) or median: N(normalized median,I) or mean: N(normalized mean,I) 
+    nonlinear_guidance:
+        pre_train: False # if True: first train point estimator, then use it as prior for diffusion model
+        joint_train: True
+        n_pretrain_epochs: 300
+        logging_interval: 10
+        n_layers: 2 # number of LSTM layers in both guidance and noise estimation models
+        hidden_size: 150 # number of neurons in LSTM layers in both guidance and noise estimation models
+        dropout: True # whether to use dropout in both guidance and noise estimation models
+        dropout_rate: 0.1 # dropout probability to be used in both guidance and noise estimation models
+        apply_early_stopping: True
+        n_pretrain_max_epochs: 1000
+        patience: 50 # patience for early stopping for guidance model
+        delta: 0  # hyperparameter for improvement measurement in the early stopping scheme
+
+training:
+    batch_size: 64
+    n_epochs: 5000 
+    n_iters: 100000 
+    snapshot_freq: 1000000000 
+    logging_freq: 2000 
+    validation_freq: 20000 
+    image_folder: 'training_image_samples'
+
+testing:
+    batch_size: 8
+    sampling_size: 1000
+    last_only: True
+    plot_freq: 5
+    image_folder: 'testing_image_samples'
+    n_z_samples: 1000
+    n_bins: 10
+    compute_metric_all_steps: True # True : analysis for all timesteps, otherwise for the timestep as per 3 following parameters
+    mean_t: 0
+    coverage_t: 0
+    nll_t: 0
+    trimmed_mean_range: [0.0, 100.0]
+    PICP_range: [2.5, 97.5]
+    make_plot: False
+    squared_plot: False
+    plot_true: False
+    plot_gen: False
+    fig_size: [8, 5]
+
+optim:
+    weight_decay: 0.00001 #0.000
+    optimizer: "Adam"
+    lr: 0.0001 #0.001
+    beta1: 0.9
+    amsgrad: True
+    eps: 0.00000001
+    grad_clip: 1.0
+
+aux_optim:
+    optimizer: NAdam
+    lr: 0.001 
+    eps: 1e-7 
