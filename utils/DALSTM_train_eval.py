@@ -11,7 +11,7 @@ from models.Test import test_model
 from loss.loss_handler import set_loss
 from loss.QuantileLoss import QuantileLoss
 from utils.utils import (get_model, get_optimizer_scheduler, set_random_seed,
-                         get_exp, add_suffix_to_csv)
+                         get_exp, add_suffix_to_csv, adjust_model_name)
 from utils.evaluation import uq_eval
 from utils.calibration import calibrated_regression
 
@@ -22,11 +22,13 @@ class DALSTM_train_evaluate ():
         """
         Parameters:
         cfg : configuration that is used for training, and inference.
-        dalstm_dir : user specified for dataset folder which contain all
+        dalstm_dir : user specified folder for dataset which contain all
         information about feature vectors represinting event prefixes, and 
         used by DALSTM model.
         """
-        #  Initial operations for effective training, and inference
+        ######################################################################
+        #####  Initial operations for effective training, and inference  #####
+        ######################################################################
         self.cfg = cfg
         seeds = cfg.get('seed')
         device_name = cfg.get('device')
@@ -135,8 +137,9 @@ class DALSTM_train_evaluate ():
             self.dropout_regularizer = None
             self.Bayes = None
              
-
-        # set relevant parameters for embedding-based UQ
+        ######################################################################
+        #####################   Random Forest setting   ######################
+        ######################################################################
         if self.uq_method == 'RF':
             self.union_mode = True
         else:
@@ -212,10 +215,6 @@ class DALSTM_train_evaluate ():
             self.criterion = set_loss(
                 loss_func=cfg.get('train').get('loss_function'),
                 heteroscedastic=True) 
-        elif self.uq_method == 'RF':
-            # define loss funciton for fitting the auxiliary model
-            self.criterion = cfg.get('uncertainty').get('union').get(
-                'loss_function')
         elif self.uq_method == 'SQR':
             self.criterion = QuantileLoss()
         
@@ -283,28 +282,10 @@ class DALSTM_train_evaluate ():
                         #TODO: check the piepline for SQR!!!
                         self.baseline_approach(exp_id, experiment)
                     elif self.ensemble_mode:
-                        self.ensemble(exp_id, experiment)                     
-
+                        self.ensemble(exp_id, experiment)                   
+                    elif self.union_mode: 
+                        self.aux_forest(exp_id, experiment)
                         
-                    elif self.union_mode:                    
-                        self.model, self.aux_model = fit_rf(
-                            model=self.model, cfg=self.cfg,
-                            criterion=self.criterion,
-                            val_loader=self.val_loader,
-                            dataset_path=self.dataset_path,
-                            result_path=self.result_path,
-                            y_val_path=self.y_val_path,
-                            report_path=self.report_path,
-                            split=self.split, seed=self.seed, device=self.device)
-                        predict_rf(
-                            model=self.model, aux_model=self.aux_model,
-                            test_loader=self.test_loader,
-                            test_original_lengths=self.test_lengths,
-                            y_scaler=self.max_train_val,
-                            normalization=self.normalization,
-                            report_path=self.report_path,
-                            result_path=self.result_path,
-                            split=self.split, seed=self.seed, device=self.device) 
                     # execution path for post-hoc Laplace approximation
                     elif self.laplace:
                         post_hoc_laplace(
@@ -525,6 +506,9 @@ class DALSTM_train_evaluate ():
                     verbose=True, calibration_mode=True, 
                     calibration_type=self.calibration_type,
                     recal_model=self.recal_model)
+            if self.uq_method == 'deterministic':
+                adjust_model_name(all_checkpoints=self.all_checkpoints)
+                
     
     # A method to select best experiment, and get its associated predictions
     def select_best(self):
@@ -607,7 +591,7 @@ class DALSTM_train_evaluate ():
                         device=self.device,
                         normalization=self.normalization,
                         ensemble_mode=True,
-                        ensemble_size=self.num_models,
+                        ensemble_size=self.experiments[self.min_exp_id].get('num_models'),
                         exp_id=self.min_exp_id+1)
                 elif (self.uq_method == 'DA' or self.uq_method == 'DA_A' or 
                       self.uq_method == 'CDA' or self.uq_method == 'CDA_A' or 
@@ -622,7 +606,37 @@ class DALSTM_train_evaluate ():
                         report_path=report_path, data_split = 'holdout',
                         seed=self.seed, device=self.device, 
                         normalization=self.normalization,
-                        exp_id=self.min_exp_id+1)                    
+                        exp_id=self.min_exp_id+1) 
+                elif self.uq_method == 'deterministic':
+                    final_result =  test_model(
+                        model=self.model, uq_method=self.uq_method, 
+                        num_mc_samples=self.num_mcmc, 
+                        test_loader=self.test_loader,
+                        test_original_lengths=self.test_lengths,
+                        y_scaler=self.max_train_val,
+                        processed_data_path= self.result_path,
+                        report_path=report_path, data_split = 'holdout',
+                        seed=self.seed, device=self.device,
+                        normalization=self.normalization,
+                        exp_id=self.min_exp_id+1,
+                        deterministic=True, 
+                        std_mean_ratio=self.experiments[
+                            self.min_exp_id].get('sted_mean_ratio'))
+                elif self.uq_method == 'RF':
+                    final_result = predict_rf(
+                        model_arch=self.model, val_loader=self.val_loader,
+                        test_loader=self.test_loader, 
+                        test_original_lengths=self.test_lengths, 
+                        y_scaler=self.max_train_val,
+                        normalization=self.normalization,
+                        report_path=report_path, 
+                        result_path=self.result_path, split='holdout',
+                        seed=self.seed, device=self.device,
+                        exp_id=self.min_exp_id+1,
+                        experiment=self.experiments[self.min_exp_id],
+                        cfg=self.cfg, dataset_path=self.dataset_path,
+                        y_val_path=self.y_val_path)
+ 
         else:
             #TODO: implement best parameter selection for cross-fold validation
             print('not implemented!')
@@ -631,6 +645,30 @@ class DALSTM_train_evaluate ():
         final_val_name = add_suffix_to_csv(final_name, added_suffix='validation_')
         final_val_path = os.path.join(self.result_path, final_val_name)
         return final_result, final_val_path
+    
+    def aux_forest(self, exp_id, experiment):
+        # get hyperparameters     
+        self.criterion = experiment.get('criterion')
+        self.n_estimators = experiment.get('n_estimators')
+        self.depth_control = experiment.get('depth_control') 
+        # fit the random forest auxiliary model
+        res_model, aux_model, aux_model_path = fit_rf(
+            model=self.model, cfg=self.cfg, val_loader=self.val_loader,
+            criterion=self.criterion, n_estimators=self.n_estimators,
+            depth_control=self.depth_control, dataset_path=self.dataset_path,
+            result_path=self.result_path, y_val_path=self.y_val_path,
+            report_path=self.report_path, split=self.split, seed=self.seed, 
+            device=self.device, exp_id=exp_id+1)
+        self.all_checkpoints.append(aux_model_path) 
+        # get the results on validation set, to later be used in HPO
+        res_df = predict_rf(
+            model=res_model, aux_model=aux_model, val_mode=True, 
+            test_loader=self.val_loader, y_scaler=self.max_train_val,
+            normalization=self.normalization, report_path=self.report_path,
+            result_path=self.result_path, split=self.split, seed=self.seed, 
+            device=self.device, exp_id=exp_id+1, cfg=self.cfg)
+        self.all_val_results.append(res_df)
+        
     
     def baseline_approach(self, exp_id, experiment):
         if (self.uq_method == 'DA' or self.uq_method == 'DA_A' or 

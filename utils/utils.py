@@ -1,4 +1,5 @@
 import os
+import re
 import argparse
 import yaml
 import sys
@@ -53,7 +54,23 @@ def get_exp(uq_method=None, cfg=None, random=False):
         early_stop_lst = [True]
         hyperparameters = {'deterministic': deterministc_lst, 
                            'early_stop': early_stop_lst} 
-        
+    if uq_method == 'RF': 
+        # define loss funciton options for fitting the auxiliary model
+        loss_lst = cfg.get('uncertainty').get('union').get('loss_function')
+        if not isinstance(loss_lst, list):
+            raise ValueError('Loss Function possibilities should be packed in a list.')
+        # define number of trees in the forest
+        n_est_lst = cfg.get('uncertainty').get('union').get('n_estimators')
+        if not isinstance(n_est_lst, list):
+            raise ValueError('number of trees should be packed in a list.')
+        # whether to use a maximum length for Random Forest or not
+        depth_control_lst = cfg.get('uncertainty').get('union').get(
+            'depth_control')
+        if not isinstance(depth_control_lst, list):
+            raise ValueError('depth contor options should be packed in a list.')
+        hyperparameters = {'criterion': loss_lst, 'n_estimators': n_est_lst,
+                           'depth_control': depth_control_lst} 
+                   
     keys = hyperparameters.keys()
     values = hyperparameters.values()
     combinations = list(itertools.product(*values))
@@ -566,3 +583,11 @@ def get_statistics(df=None, error_col=None, uncertainty_col=None):
     mi = mutual_info_regression(df[error_col].to_numpy().reshape(-1, 1),
                                 df[uncertainty_col].to_numpy()) 
     return (corr, p_value, pear_corr, pear_p_value, mi)
+
+def adjust_model_name(all_checkpoints=None):
+    file_path = all_checkpoints[0]
+    filename = os.path.basename(file_path)
+    dir_name = os.path.dirname(file_path)
+    modified_filename = re.sub(r'_exp_\d+', '', filename)
+    modified_path = os.path.join(dir_name, modified_filename)
+    os.rename(file_path, modified_path)

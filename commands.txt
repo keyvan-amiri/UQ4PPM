@@ -8,7 +8,10 @@ Pre-processing
 python preprocess.py --datasets HelpDesk Sepsis BPIC12 BPIC13I BPIC15_1 BPIC20DD BPIC20ID BPIC20PTC BPIC20RFP BPIC20TPD --model dalstm
 
 train and test:
-bash bash_scripts/Traditional_Ensemble.sh
+bash bash_scripts/Ensemble.sh
+bash bash_scripts/Dropout_MVE.sh
+bash bash_scripts/Deterministic.sh
+bash bash_scripts/RF.sh
 
 train and test:
 bash bash_scripts/CARD_train_test.sh
