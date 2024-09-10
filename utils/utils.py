@@ -21,7 +21,7 @@ from models.stochastic_dalstm import StochasticDALSTM
 # Utlility functions for training and inference
 ##############################################################################
 # a method to define exeriments for hyper-parameter tuning
-def get_exp(uq_method=None, cfg=None, random=False):
+def get_exp(uq_method=None, cfg=None, random=False, random_ratio=0.2):
     
     if (uq_method == 'en_b' or uq_method == 'en_b_mve' or
         uq_method == 'en_t' or uq_method == 'en_t_mve'): 
@@ -46,7 +46,8 @@ def get_exp(uq_method=None, cfg=None, random=False):
             raise ValueError('Monte Carlo Samples should be packed in a list.')
         early_stop_lst = cfg.get('train').get('early_stop')
         if not isinstance(early_stop_lst, list):
-            raise ValueError('Early stop possibilities should be packed in a list.')
+            raise ValueError('Early stop possibilities should be packed \
+                             in a list.')
         hyperparameters = {'num_mcmc': num_mc_lst, 
                            'early_stop': early_stop_lst} 
     if uq_method == 'deterministic':         
@@ -58,7 +59,8 @@ def get_exp(uq_method=None, cfg=None, random=False):
         # define loss funciton options for fitting the auxiliary model
         loss_lst = cfg.get('uncertainty').get('union').get('loss_function')
         if not isinstance(loss_lst, list):
-            raise ValueError('Loss Function possibilities should be packed in a list.')
+            raise ValueError('Loss Function possibilities should be packed \
+                             in a list.')
         # define number of trees in the forest
         n_est_lst = cfg.get('uncertainty').get('union').get('n_estimators')
         if not isinstance(n_est_lst, list):
@@ -70,12 +72,76 @@ def get_exp(uq_method=None, cfg=None, random=False):
             raise ValueError('depth contor options should be packed in a list.')
         hyperparameters = {'criterion': loss_lst, 'n_estimators': n_est_lst,
                            'depth_control': depth_control_lst} 
+    if uq_method == 'LA':
+        hessian_structure_lst = cfg.get('uncertainty').get('laplace').get(
+            'hessian_structure')
+        if not isinstance(hessian_structure_lst, list):
+            raise ValueError('Hessian structure possibilities should be packed\
+                             in a list.')
+        # whether to estimate the prior precision and observation noise 
+        # using empirical Bayes after training or not
+        empirical_bayes_lst = cfg.get('uncertainty').get('laplace').get(
+               'empirical_bayes')
+        if not isinstance(empirical_bayes_lst, list):
+            raise ValueError('Empirical Bayes possibilities should be packed\
+                             in a list.')
+        # number of epochs in case of empirical Bayes optimization
+        la_epochs_lst = cfg.get('uncertainty').get('laplace').get('epochs')
+        if not isinstance(la_epochs_lst, list):
+            raise ValueError('Empirical Bayes optimization epoch options should\
+                             be packed in a list.')
+        # learning rate in case of empirical Bayes optimization
+        la_lr_lst = cfg.get('uncertainty').get('laplace').get('lr')
+        if not isinstance(la_lr_lst, list):
+            raise ValueError('Empirical Bayes learning rate options should be\
+                             packed in a list.')
+        # amount od observation noise that is considered                     
+        sigma_noise_lst = cfg.get('uncertainty').get('laplace').get(
+                                 'sigma_noise')
+        if not isinstance(sigma_noise_lst, list):
+            raise ValueError('Sigma noise options should be packed in a list.')
+        # whether to apply statistical adjustment to observation noise or not
+        stat_noise_lst = cfg.get('uncertainty').get('laplace').get('stat_noise')
+        if not isinstance(stat_noise_lst, list):
+            raise ValueError('Statistical noise options should be packed in a \
+                             list.')
+        # prior precision of a Gaussian prior (= weight decay); it is a scalar                     
+        prior_precision_lst = cfg.get('uncertainty').get('laplace').get(
+                                 'prior_precision')
+        if not isinstance(prior_precision_lst, list):
+            raise ValueError('Prior precision options should be packed in a \
+                             list.')
+        # temperature of the likelihood; lower temperature leads to more
+        # concentrated posterior and vice versa.                     
+        temperature_lst = cfg.get('uncertainty').get('laplace').get(
+            'temperature')
+        if not isinstance(temperature_lst, list):
+            raise ValueError('Temperature values should be packed in a list.')
+        # num of MC samples for approx. posterior predictive distribution
+        n_samples_lst = cfg.get('uncertainty').get('laplace').get('n_samples')
+        if not isinstance(n_samples_lst, list):
+            raise ValueError('Number of samples for inference should be packed\
+                             in a list.')
+        hyperparameters = {'hessian_structure': hessian_structure_lst,
+                           'empirical_bayes': empirical_bayes_lst,
+                           'la_epochs': la_epochs_lst, 'la_lr': la_lr_lst,
+                           'sigma_noise': sigma_noise_lst,
+                           'stat_noise': stat_noise_lst,
+                           'prior_precision': prior_precision_lst,
+                           'temperature': temperature_lst,
+                           'n_samples': n_samples_lst} 
                    
     keys = hyperparameters.keys()
     values = hyperparameters.values()
     combinations = list(itertools.product(*values))
     experiments = [dict(zip(keys, combination)) for combination in combinations]
     
+    if random:
+        # Randomly select the desired number of experiments
+        random_selected_experiments = random.sample(
+            experiments, int(len(experiments)*random_ratio))
+        experiments = random_selected_experiments
+        
     if (uq_method == 'en_b' or uq_method == 'en_b_mve' or
         uq_method == 'en_t' or uq_method == 'en_t_mve'): 
         return experiments, max_model_num
@@ -105,7 +171,7 @@ def get_model(uq_method=None, input_size=None, hidden_size=None, n_layers=None,
                             n_layers=n_layers, max_len=max_len, dropout=dropout,
                             p_fix=dropout_prob, exclude_last_layer=True).to(device) 
         return model
-    elif (uq_method == 'LA' or uq_method == 'LA_H'):
+    elif uq_method == 'LA':
         model = DALSTMModel(input_size=input_size, hidden_size=hidden_size,
                             n_layers=n_layers, max_len=max_len, dropout=dropout,
                             p_fix=dropout_prob, return_squeezed=False).to(device)

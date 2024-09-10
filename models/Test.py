@@ -11,7 +11,7 @@ from utils.utils import augment, get_z_alpha_half, add_suffix_to_csv
 def test_model(model=None, models=None, uq_method=None, num_mc_samples=None,
                test_loader=None, test_original_lengths=None, y_scaler=None, 
                processed_data_path=None, report_path=None, val_mode=False,
-               data_split=None, fold=None, seed=None, device=None,
+               data_split='holdout', fold=None, seed=None, device=None,
                normalization=False, ensemble_mode=False, ensemble_size=None,
                confidence_level=0.95, sqr_factor=None, exp_id=None,
                deterministic=False, std_mean_ratio=None): 

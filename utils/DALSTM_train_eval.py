@@ -3,8 +3,8 @@ import pickle
 import shutil
 import torch
 import pandas as pd
-from torch.utils.data import TensorDataset, DataLoader
-from models.Laplace_approximation import post_hoc_laplace
+from torch.utils.data import TensorDataset, DataLoader, ConcatDataset
+from models.Laplace_approximation import post_hoc_laplace, inference_laplace
 from models.Random_Forest import fit_rf, predict_rf
 from models.Train import train_model
 from models.Test import test_model
@@ -18,8 +18,13 @@ from utils.calibration import calibrated_regression
 
 # A generic class for training and evaluation of DALSTM model
 class DALSTM_train_evaluate ():
-    def __init__ (self, cfg=None, dalstm_dir=None):  
+    def __init__ (self, cfg=None, dalstm_dir=None): 
         """
+        A generic class for handling training, inference, and hyperparameter
+        optimization for dropout approximaton, heteroscedastic regression,
+        deep ensembles, Laplace approxmitation, embedding-based approaches 
+        (i.e., Random Forest), and simultaneous quantile regression with LSTM
+        point estimates.
         Parameters:
         cfg : configuration that is used for training, and inference.
         dalstm_dir : user specified folder for dataset which contain all
@@ -59,7 +64,7 @@ class DALSTM_train_evaluate ():
         self.uq_method = cfg.get('uq_method')
         # metric that is used for hyper-parameter optimization
         self.HPO_metric = cfg.get('HPO_metric')
-        # type of calibration used
+        # type of calibration used (scaling or isotonic regression)
         self.calibration_type = cfg.get('calibration_type')
         # get the type of data split, and possibly number of splits for CV        
         self.split = cfg.get('split')
@@ -98,6 +103,16 @@ class DALSTM_train_evaluate ():
             self.experiments = get_exp(uq_method=self.uq_method, cfg=cfg)
             
         ######################################################################
+        #################   Laplace Approximation setting   ##################
+        ######################################################################
+        # set necessary parameters for Laplace approximation
+        if self.uq_method == 'LA':
+            self.laplace = True
+            self.last_layer_name = cfg.get('uncertainty').get('laplace').get(
+                'last_layer_name')           
+        else:
+            self.laplace = False        
+        ######################################################################
         ########################   Ensemble setting   ########################
         ######################################################################
         if (self.uq_method == 'en_b' or self.uq_method == 'en_b_mve' or
@@ -110,7 +125,6 @@ class DALSTM_train_evaluate ():
         else:
             self.ensemble_mode = False
             self.bootstrapping = False
-
         ######################################################################
         ########################   Dropout setting   ########################
         ######################################################################
@@ -135,8 +149,7 @@ class DALSTM_train_evaluate ():
             self.concrete_dropout = None
             self.weight_regularizer = None
             self.dropout_regularizer = None
-            self.Bayes = None
-             
+            self.Bayes = None             
         ######################################################################
         #####################   Random Forest setting   ######################
         ######################################################################
@@ -145,49 +158,6 @@ class DALSTM_train_evaluate ():
         else:
             self.union_mode = False
             
-        # set necessary parameters for Laplace approximation
-        if (self.uq_method == 'LA' or self.uq_method == 'LA_H'):
-            self.laplace = True
-            self.link_approx = 'mc'
-            self.pred_type = 'glm'
-            if self.uq_method == 'LA':
-                # We only use Laplace approximation which can be applied in 
-                # an architecture-agnostic fashion.
-                self.subset_of_weights= 'last_layer'
-                self.last_layer_name = cfg.get('uncertainty').get(
-                    'laplace').get('last_layer_name')
-                self.module_names=None
-                self.heteroscedastic = False
-            else:
-                # In case of Heteroscedastic regression, we apply Laplace
-                # approximation to last linear layers for mean, log variance
-                self.subset_of_weights= 'subnetwork' 
-                self.last_layer_name = None
-                self.module_names = cfg.get('uncertainty').get(
-                                    'laplace').get('module_names')
-                self.heteroscedastic = True
-            # whether to estimate the prior precision and observation noise 
-            # using empirical Bayes after training or not
-            self.empirical_bayes = cfg.get('uncertainty').get('laplace').get(
-                'empirical_bayes')
-            self.la_epochs = cfg.get('uncertainty').get('laplace').get('epochs')
-            self.la_lr = cfg.get('uncertainty').get('laplace').get('lr')
-            self.hessian_structure = cfg.get('uncertainty').get(
-                'laplace').get('hessian_structure')
-            self.n_samples = cfg.get('uncertainty').get('laplace').get(
-                'n_samples')
-            self.sigma_noise = cfg.get('uncertainty').get('laplace').get(
-                'sigma_noise')
-            self.prior_precision = cfg.get('uncertainty').get('laplace').get(
-                'prior_precision')
-            self.temperature= cfg.get('uncertainty').get('laplace').get(
-                'temperature')
-            # method for prior precision optimization
-            self.method = cfg.get('uncertainty').get('laplace').get('prior_opt')
-            self.grid_size = cfg.get('uncertainty').get('laplace').get('grid_size') 
-            self.stat_noise= cfg.get('uncertainty').get('laplace').get('stat_noise')
-        else:
-            self.laplace = False
             
         # set necessary parameters for Simultaneous Quantile Regression
         # NOTE: to use the same execution path for other methods as well
@@ -202,8 +172,10 @@ class DALSTM_train_evaluate ():
             self.sqr_factor = 12
             self.sqr_q = 'all'        
         
-
-        # define loss function (heteroscedastic/homoscedastic)
+        
+        ######################################################################
+        #########   Loss function  (heteroscedastic/homoscedastic)  ##########
+        ######################################################################
         if (self.uq_method == 'deterministic' or self.uq_method == 'DA'
             or self.uq_method == 'CDA' or self.uq_method == 'en_t' or
             self.uq_method == 'en_b'):
@@ -218,7 +190,9 @@ class DALSTM_train_evaluate ():
         elif self.uq_method == 'SQR':
             self.criterion = QuantileLoss()
         
-        # define model, scheduler, and optimizer
+        ######################################################################
+        ############### #  model, scheduler, and optimizer  ##################
+        ######################################################################
         if not self.ensemble_mode:
             self.model = get_model(
                 uq_method=self.uq_method, input_size=self.input_size,
@@ -231,7 +205,10 @@ class DALSTM_train_evaluate ():
                 Bayes=self.Bayes, device=self.device)
             if ((not self.union_mode) and (not self.laplace)):
                 self.optimizer, self.scheduler = get_optimizer_scheduler(
-                    model=self.model, cfg=self.cfg) 
+                    model=self.model, cfg=self.cfg)
+                # otherwise, learning auxiliary models including the Laplace 
+                # model and random forest will be handled using defualt strategy
+                # for back-popagation, or decisions on nodes in trees.
         else:
             self.models = get_model(
                 uq_method=self.uq_method, input_size=self.input_size,
@@ -256,6 +233,8 @@ class DALSTM_train_evaluate ():
 
             for exp_id, experiment in enumerate(self.experiments):
                 
+                print(experiment)
+                
                 # train-test pipeline for holdout data split
                 if self.split == 'holdout':
                     
@@ -266,17 +245,24 @@ class DALSTM_train_evaluate ():
                             self.uq_method, self.split, self.seed, exp_id+1)) 
                     self.all_reports.append(self.report_path)
                     
-                    # get paths for processed data
+                    # load train, validation, and test data loaders
                     (self.X_train_path, self.X_val_path, self.X_test_path,
                      self.y_train_path, self.y_val_path, self.y_test_path,
-                     self.test_lengths_path) = self.holdout_paths()
-                    # load train, validation, and test data loaders
+                     self.test_lengths_path) = self.holdout_paths()                    
                     if not self.bootstrapping:
                         # except for Bootstrapping ensemble
-                        (self.train_loader, self.val_loader, self.test_loader,
-                         self.test_lengths) = self.load_data()
+                        if self.laplace:
+                            # additionally get train+val loader, and y values
+                            (self.train_loader, self.val_loader, 
+                             self.test_loader, self.train_val_loader,
+                             self.y_train_val, self.test_lengths
+                             ) = self.load_data()
+                        else:                             
+                            (self.train_loader, self.val_loader,
+                             self.test_loader, self.test_lengths
+                             ) = self.load_data()
                         
-                    # execution path for dropout and heteroscedastic
+                    # training, and inference on validation set
                     if ((not self.ensemble_mode) and (not self.union_mode) and
                         (not self.laplace)):    
                         #TODO: check the piepline for SQR!!!
@@ -285,38 +271,10 @@ class DALSTM_train_evaluate ():
                         self.ensemble(exp_id, experiment)                   
                     elif self.union_mode: 
                         self.aux_forest(exp_id, experiment)
-                        
-                    # execution path for post-hoc Laplace approximation
                     elif self.laplace:
-                        post_hoc_laplace(
-                            model=self.model, cfg=self.cfg, 
-                            X_train_path=self.X_train_path, 
-                            X_val_path=self.X_val_path,
-                            X_test_path=self.X_test_path,
-                            y_train_path=self.y_train_path,
-                            y_val_path=self.y_val_path, 
-                            y_test_path=self.y_test_path,
-                            test_original_lengths=self.test_lengths,
-                            y_scaler=self.max_train_val,
-                            normalization=self.normalization,
-                            subset_of_weights=self.subset_of_weights,
-                            hessian_structure=self.hessian_structure,
-                            empirical_bayes=self.empirical_bayes,
-                            method=self.method, grid_size=self.grid_size,
-                            last_layer_name=self.last_layer_name,
-                            module_names=self.module_names,
-                            sigma_noise=self.sigma_noise, 
-                            stat_noise=self.stat_noise,
-                            prior_precision=self.prior_precision,
-                            temperature=self.temperature,
-                            n_samples=self.n_samples, link_approx=self.link_approx,
-                            pred_type=self.pred_type,
-                            la_epochs=self.la_epochs, la_lr=self.la_lr,
-                            heteroscedastic=self.heteroscedastic,
-                            report_path=self.report_path,
-                            result_path=self.result_path,
-                            split=self.split, seed=self.seed, device=self.device)
-                    
+                        self.laplace_pipeline(exp_id, experiment)
+                        
+
                 # train-test pipeline for cross=validation data split          
                 else:
                     for split_key in range(self.n_splits):
@@ -326,16 +284,24 @@ class DALSTM_train_evaluate ():
                             '{}_{}_fold{}_seed_{}_exp_{}_report_.txt'.format(
                                 self.uq_method, self.split, split_key+1,
                                 self.seed, exp_id+1))
+                        print()
                         # load train, validation, and test data loaders
                         (self.X_train_path, self.X_val_path, self.X_test_path,
                          self.y_train_path, self.y_val_path, self.y_test_path,
                          self.test_lengths_path) = self.cv_paths(
                              split_key=split_key)
-                        # except for Bootstrapping ensemble
                         if not self.bootstrapping:
-                            (self.train_loader, self.val_loader,
-                             self.test_loader, self.test_lengths
-                             ) = self.load_data()
+                            # except for Bootstrapping ensemble
+                            if self.laplace:
+                                # additionally get train+val loader, and y values
+                                (self.train_loader, self.val_loader, 
+                                 self.test_loader, self.train_val_loader,
+                                 self.y_train_val, self.test_lengths
+                                 ) = self.load_data()
+                            else:                             
+                                (self.train_loader, self.val_loader,
+                                 self.test_loader, self.test_lengths
+                                 ) = self.load_data()                        
                         if ((not self.ensemble_mode) and (not self.union_mode)):                    
                             train_model(model=self.model,
                                         uq_method=self.uq_method,
@@ -471,18 +437,14 @@ class DALSTM_train_evaluate ():
                                 test_original_lengths=self.test_lengths,
                                 y_scaler=self.max_train_val,
                                 normalization=self.normalization,
-                                subset_of_weights=self.subset_of_weights,
                                 hessian_structure=self.hessian_structure,
                                 empirical_bayes=self.empirical_bayes,
-                                method=self.method, grid_size=self.grid_size,
                                 last_layer_name=self.last_layer_name,
                                 sigma_noise=self.sigma_noise, 
                                 stat_noise=self.stat_noise,
                                 prior_precision=self.prior_precision,
                                 temperature=self.temperature,
                                 n_samples=self.n_samples,
-                                link_approx=self.link_approx,
-                                pred_type=self.pred_type,
                                 la_epochs=self.la_epochs, la_lr=self.la_lr,
                                 report_path=self.report_path,
                                 result_path=self.result_path,
@@ -585,13 +547,10 @@ class DALSTM_train_evaluate ():
                         test_original_lengths=self.test_lengths,
                         y_scaler=self.max_train_val,
                         processed_data_path= self.result_path,                        
-                        report_path=report_path,
-                        data_split = 'holdout',
-                        seed=self.seed,
-                        device=self.device,
-                        normalization=self.normalization,
-                        ensemble_mode=True,
-                        ensemble_size=self.experiments[self.min_exp_id].get('num_models'),
+                        report_path=report_path, seed=self.seed,
+                        device=self.device, normalization=self.normalization,
+                        ensemble_mode=True, ensemble_size=self.experiments[
+                            self.min_exp_id].get('num_models'),
                         exp_id=self.min_exp_id+1)
                 elif (self.uq_method == 'DA' or self.uq_method == 'DA_A' or 
                       self.uq_method == 'CDA' or self.uq_method == 'CDA_A' or 
@@ -603,9 +562,8 @@ class DALSTM_train_evaluate ():
                         test_original_lengths=self.test_lengths,
                         y_scaler=self.max_train_val,
                         processed_data_path= self.result_path,
-                        report_path=report_path, data_split = 'holdout',
-                        seed=self.seed, device=self.device, 
-                        normalization=self.normalization,
+                        report_path=report_path, seed=self.seed, 
+                        device=self.device, normalization=self.normalization,
                         exp_id=self.min_exp_id+1) 
                 elif self.uq_method == 'deterministic':
                     final_result =  test_model(
@@ -615,13 +573,11 @@ class DALSTM_train_evaluate ():
                         test_original_lengths=self.test_lengths,
                         y_scaler=self.max_train_val,
                         processed_data_path= self.result_path,
-                        report_path=report_path, data_split = 'holdout',
-                        seed=self.seed, device=self.device,
-                        normalization=self.normalization,
-                        exp_id=self.min_exp_id+1,
-                        deterministic=True, 
+                        report_path=report_path, seed=self.seed,
+                        device=self.device, normalization=self.normalization,
+                        exp_id=self.min_exp_id+1, deterministic=True, 
                         std_mean_ratio=self.experiments[
-                            self.min_exp_id].get('sted_mean_ratio'))
+                            self.min_exp_id].get('std_mean_ratio'))
                 elif self.uq_method == 'RF':
                     final_result = predict_rf(
                         model_arch=self.model, val_loader=self.val_loader,
@@ -630,12 +586,33 @@ class DALSTM_train_evaluate ():
                         y_scaler=self.max_train_val,
                         normalization=self.normalization,
                         report_path=report_path, 
-                        result_path=self.result_path, split='holdout',
-                        seed=self.seed, device=self.device,
-                        exp_id=self.min_exp_id+1,
+                        result_path=self.result_path, seed=self.seed, 
+                        device=self.device, exp_id=self.min_exp_id+1,
                         experiment=self.experiments[self.min_exp_id],
                         cfg=self.cfg, dataset_path=self.dataset_path,
                         y_val_path=self.y_val_path)
+                elif self.uq_method == 'LA':
+                    final_result = inference_laplace(
+                        model=self.model, test_loader=self.test_loader, 
+                        test_original_lengths=self.test_lengths,
+                        y_train_val=self.y_train_val,
+                        y_scaler=self.max_train_val, 
+                        normalization=self.normalization,
+                        last_layer_name=self.last_layer_name,
+                        hessian_structure= self.experiments[
+                            self.min_exp_id].get('hessian_structure'),
+                        sigma_noise= self.experiments[
+                            self.min_exp_id].get('sigma_noise'),
+                        stat_noise=self.experiments[
+                            self.min_exp_id].get('stat_noise'),
+                        prior_precision=self.experiments[
+                            self.min_exp_id].get('prior_precision'),
+                        temperature=self.experiments[
+                            self.min_exp_id].get('temperature'),
+                        pred_type='glm',                      
+                        report_path=self.report_path,
+                        result_path=self.result_path, seed=self.seed,
+                        device=self.device, exp_id=self.min_exp_id+1)
  
         else:
             #TODO: implement best parameter selection for cross-fold validation
@@ -645,6 +622,44 @@ class DALSTM_train_evaluate ():
         final_val_name = add_suffix_to_csv(final_name, added_suffix='validation_')
         final_val_path = os.path.join(self.result_path, final_val_name)
         return final_result, final_val_path
+    
+    
+    def laplace_pipeline(self, exp_id, experiment):
+        # get hyperparameters     
+        self.hessian_structure = experiment.get('hessian_structure')
+        self.empirical_bayes = experiment.get('empirical_bayes')
+        self.method = experiment.get('method')
+        self.grid_size = experiment.get('grid_size')
+        self.la_epochs = experiment.get('la_epochs')
+        self.la_lr = experiment.get('la_lr')
+        self.sigma_noise = experiment.get('sigma_noise')
+        self.stat_noise = experiment.get('stat_noise')
+        self.prior_precision = experiment.get('prior_precision')
+        self.temperature = experiment.get('temperature')
+        self.n_samples = experiment.get('n_samples')        
+        
+        la_model, la_path = post_hoc_laplace(
+            model=self.model, cfg=self.cfg, y_train_val=self.y_train_val, 
+            train_loader=self.train_loader, val_loader=self.val_loader,
+            train_val_loader=self.train_val_loader, 
+            last_layer_name=self.last_layer_name, 
+            hessian_structure=self.hessian_structure,
+            empirical_bayes=self.empirical_bayes,
+            la_epochs=self.la_epochs, la_lr=self.la_lr, 
+            sigma_noise=self.sigma_noise, stat_noise=self.stat_noise, 
+            prior_precision=self.prior_precision, temperature=self.temperature,                      
+            n_samples=self.n_samples, report_path=self.report_path,
+            result_path=self.result_path, seed=self.seed,
+            device=self.device, exp_id=exp_id+1)
+        self.all_checkpoints.append(la_path)
+        
+        res_df = inference_laplace(
+            la=la_model, val_mode=True, test_loader=self.val_loader, 
+            y_scaler=self.max_train_val, normalization=self.normalization,
+            report_path=self.report_path, result_path=self.result_path,
+            seed=self.seed, device=self.device, exp_id=exp_id+1)
+        self.all_val_results.append(res_df)
+
     
     def aux_forest(self, exp_id, experiment):
         # get hyperparameters     
@@ -657,7 +672,7 @@ class DALSTM_train_evaluate ():
             criterion=self.criterion, n_estimators=self.n_estimators,
             depth_control=self.depth_control, dataset_path=self.dataset_path,
             result_path=self.result_path, y_val_path=self.y_val_path,
-            report_path=self.report_path, split=self.split, seed=self.seed, 
+            report_path=self.report_path, seed=self.seed, 
             device=self.device, exp_id=exp_id+1)
         self.all_checkpoints.append(aux_model_path) 
         # get the results on validation set, to later be used in HPO
@@ -665,8 +680,8 @@ class DALSTM_train_evaluate ():
             model=res_model, aux_model=aux_model, val_mode=True, 
             test_loader=self.val_loader, y_scaler=self.max_train_val,
             normalization=self.normalization, report_path=self.report_path,
-            result_path=self.result_path, split=self.split, seed=self.seed, 
-            device=self.device, exp_id=exp_id+1, cfg=self.cfg)
+            result_path=self.result_path, seed=self.seed, device=self.device,
+            exp_id=exp_id+1, cfg=self.cfg)
         self.all_val_results.append(res_df)
         
     
@@ -701,7 +716,7 @@ class DALSTM_train_evaluate ():
                 y_scaler=self.max_train_val,
                 processed_data_path= self.result_path,
                 report_path=self.report_path, val_mode=True,
-                data_split = 'holdout', seed=self.seed, device=self.device,
+                seed=self.seed, device=self.device,
                 normalization=self.normalization, exp_id=exp_id+1)
             self.all_val_results.append(res_df)
         else:
@@ -727,22 +742,23 @@ class DALSTM_train_evaluate ():
             self.expanded_experiments = []
             for current_exp in self.experiments:
                 for current_ratio in ratio_exp:
-                    # Create a new experiment with 'sted_mean_ratio' added
+                    # Create a new experiment with 'std_mean_ratio' added
                     new_exp = current_exp.copy()
-                    new_exp['sted_mean_ratio'] = current_ratio
+                    new_exp['std_mean_ratio'] = current_ratio
                     self.expanded_experiments.append(new_exp)
             for experiment_id, new_experiment in enumerate(
                     self.expanded_experiments):
                 res_df = test_model(
                     model=self.model, uq_method=self.uq_method, 
-                    num_mc_samples=self.num_mcmc, test_loader=self.val_loader,
+                    num_mc_samples=self.num_mcmc,
+                    test_loader=self.val_loader,
                     y_scaler=self.max_train_val,
                     processed_data_path= self.result_path,
                     report_path=self.report_path, val_mode=True,
-                    data_split = 'holdout', seed=self.seed, device=self.device,
+                    seed=self.seed, device=self.device,
                     normalization=self.normalization, exp_id=experiment_id+1,
                     deterministic=True, 
-                    std_mean_ratio=new_experiment.get('sted_mean_ratio'))
+                    std_mean_ratio=new_experiment.get('std_mean_ratio'))
                 self.all_val_results.append(res_df)
     
     # A method to conduct train and inference with ensembles
@@ -778,7 +794,6 @@ class DALSTM_train_evaluate ():
                 early_stop=self.early_stop,
                 processed_data_path=self.result_path,
                 report_path=self.report_path,
-                data_split='holdout',
                 cfg=self.cfg,
                 seed=self.seed,
                 model_idx=i,
@@ -798,7 +813,6 @@ class DALSTM_train_evaluate ():
             processed_data_path= self.result_path,
             report_path=self.report_path,
             val_mode=True,
-            data_split = 'holdout',
             seed=self.seed,
             device=self.device,
             normalization=self.normalization,
@@ -817,7 +831,6 @@ class DALSTM_train_evaluate ():
                 y_scaler=self.max_train_val,
                 processed_data_path= self.result_path,
                 report_path=self.report_path,
-                data_split = 'holdout',
                 seed=self.seed,
                 device=self.device,
                 normalization=self.normalization,
@@ -894,12 +907,16 @@ class DALSTM_train_evaluate ():
         
     # A method to load training and evaluation 
     def load_data(self):
-        X_train = torch.load(self.X_train_path)
-        X_val = torch.load(self.X_val_path)
-        X_test = torch.load(self.X_test_path)
-        y_train = torch.load(self.y_train_path)
-        y_val = torch.load(self.y_val_path)
-        y_test = torch.load(self.y_test_path)
+        X_train = torch.load(self.X_train_path, weights_only=True)
+        X_val = torch.load(self.X_val_path, weights_only=True)
+        X_test = torch.load(self.X_test_path, weights_only=True)
+        y_train = torch.load(self.y_train_path, weights_only=True)
+        y_val = torch.load(self.y_val_path, weights_only=True)
+        y_test = torch.load(self.y_test_path, weights_only=True)
+        if self.laplace:
+            y_train = y_train.unsqueeze(dim=1)
+            y_val = y_val.unsqueeze(dim=1)
+            y_test = y_test.unsqueeze(dim=1)
         # define training dataset
         if self.bootstrapping:
             subset_size = int(X_train.size(0) * self.Bootstrapping_ratio)
@@ -935,4 +952,15 @@ class DALSTM_train_evaluate ():
                                  shuffle=False)
         with open(self.test_lengths_path, 'rb') as f:
             test_lengths =  pickle.load(f)
-        return (train_loader, val_loader, test_loader, test_lengths) 
+        if not self.laplace:
+            return (train_loader, val_loader, test_loader, test_lengths)
+        else:
+            train_val_dataset = ConcatDataset([train_dataset, val_dataset])
+            train_val_loader = DataLoader(train_val_dataset,
+                                          batch_size=batch_size, shuffle=True)
+            y_train_val = torch.cat([y for _, y in train_val_dataset], dim=0)
+            y_train_val = y_train_val.numpy()
+            return (train_loader, val_loader, test_loader, train_val_loader, 
+                    y_train_val, test_lengths)
+
+         

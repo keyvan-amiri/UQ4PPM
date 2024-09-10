@@ -10,7 +10,7 @@ from utils.utils import add_suffix_to_csv
 def fit_rf(model=None, cfg=None, val_loader=None, criterion=None, 
            n_estimators=None, depth_control=None, dataset_path=None, 
            result_path=None, y_val_path=None, report_path=None,      
-           split=None, fold=None, seed=None, device=None,
+           split='holdout', fold=None, seed=None, device=None,
            exp_id=None):
     
     # get current time (as start) to compute training time
@@ -114,7 +114,7 @@ def fit_rf(model=None, cfg=None, val_loader=None, criterion=None,
 def predict_rf(model=None, model_arch=None, aux_model=None, val_mode=False, 
                val_loader=None, test_loader=None, test_original_lengths=None, 
                y_scaler=None, normalization=False, report_path=None, 
-               result_path=None, split=None, fold=None, seed=None, device=None,
+               result_path=None, split='holdout', fold=None, seed=None, device=None,
                exp_id=None, experiment=None, cfg=None, dataset_path=None,
                y_val_path=None):
     
@@ -133,7 +133,7 @@ def predict_rf(model=None, model_arch=None, aux_model=None, val_mode=False,
     if not val_mode:
         all_results['Prefix_length'] = []
         # saving a fitted random forest might not work properly using
-        # pickle. Therefore, we fit our randome forest with best hyperparameters
+        # pickle. Therefore, we fit our random forest with best hyperparameters
         # yet another time.
         print('Fit randome forest with best hyperparameters yet for another time')
         print('best experiment is:', experiment)
