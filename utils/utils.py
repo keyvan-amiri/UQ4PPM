@@ -21,7 +21,7 @@ from models.stochastic_dalstm import StochasticDALSTM
 # Utlility functions for training and inference
 ##############################################################################
 # a method to define exeriments for hyper-parameter tuning
-def get_exp(uq_method=None, cfg=None, random=False, random_ratio=0.2):
+def get_exp(uq_method=None, cfg=None, is_random=False, random_ratio=0.1):
     
     if (uq_method == 'en_b' or uq_method == 'en_b_mve' or
         uq_method == 'en_t' or uq_method == 'en_t_mve'): 
@@ -136,7 +136,7 @@ def get_exp(uq_method=None, cfg=None, random=False, random_ratio=0.2):
     combinations = list(itertools.product(*values))
     experiments = [dict(zip(keys, combination)) for combination in combinations]
     
-    if random:
+    if is_random:
         # Randomly select the desired number of experiments
         random_selected_experiments = random.sample(
             experiments, int(len(experiments)*random_ratio))

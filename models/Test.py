@@ -206,7 +206,11 @@ def test_model(model=None, models=None, uq_method=None, num_mc_samples=None,
             _y_truth = _y_truth.detach().cpu().numpy()
             _y_pred = _y_pred.detach().cpu().numpy()
             mae_batch = np.abs(_y_truth - _y_pred)
-            mape_batch = (mae_batch/_y_truth*100)
+            #mape_batch = (mae_batch/_y_truth*100)
+            epsilon = 1e-8
+            mape_batch = np.where(
+                np.abs(_y_truth) > epsilon, 
+                (mae_batch / (_y_truth + epsilon) * 100), 0)
             # collect inference result in all_result dict.
             all_results['GroundTruth'].extend(_y_truth.tolist())
             all_results['Prediction'].extend(_y_pred.tolist())

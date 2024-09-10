@@ -177,7 +177,11 @@ def predict_rf(model=None, model_arch=None, aux_model=None, val_mode=False,
                 _y_pred = y_scaler * _y_pred
                 epistemic_std = y_scaler * epistemic_std
             mae_batch = np.abs(_y_truth - _y_pred)
-            mape_batch = (mae_batch/_y_truth*100)
+            #mape_batch = (mae_batch/_y_truth*100)
+            epsilon = 1e-8
+            mape_batch = np.where(
+                np.abs(_y_truth) > epsilon, 
+                (mae_batch / (_y_truth + epsilon) * 100), 0)
             # collect inference result in all_result dict.
             all_results['GroundTruth'].extend(_y_truth.tolist())
             all_results['Prediction'].extend(_y_pred.tolist())

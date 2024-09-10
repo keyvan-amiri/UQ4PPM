@@ -25,6 +25,8 @@ def main():
     parser.add_argument('--normalization_pgtnet', type=str2bool, nargs='?',
                         const=True, default=True,
                         help='Whether to apply normalization for PGTNet.')
+    parser.add_argument('--cv', default=False, 
+                        help='Type of the predictive model')
     
     args = parser.parse_args()
     dataset_names = args.datasets
@@ -36,9 +38,11 @@ def main():
         if args.model == 'dalstm':            
             if args.normalization_lstm:
                 DALSTM_preprocessing(dataset_name=dataset, seed=args.seed,
-                                     normalization=args.normalization_lstm)
+                                     normalization=args.normalization_lstm,
+                                     cv=args.cv)
             else:
-                DALSTM_preprocessing(dataset_name=dataset, seed=args.seed)
+                DALSTM_preprocessing(dataset_name=dataset, seed=args.seed,
+                                     cv=args.cv)
         """
         # create graph dataset representation of the event log for PGTNet
         elif args.model == 'pgtnet':      

@@ -38,7 +38,12 @@ class DALSTM_preprocessing ():
     def __init__ (self, xes_dir=None, dalstm_dir=None, conversion_cfg=None,
                   dataset_name=None, split_ratio=None, n_splits=None,
                   normalization=None, normalization_type=None, overwrite=None, 
-                  perform_lifecycle_trick=None, fill_na=None, seed=None):
+                  perform_lifecycle_trick=None, fill_na=None, seed=None,
+                  cv=False):
+        # whether to create tensor datasets for CV split or not
+        self.cv = cv
+        # set a threshold for excluding prefixes wit very small remaining times
+        self.threshold = 0.1
         # set random seed for cross-validation
         if seed is None:
             self.seed = 42
@@ -586,6 +591,18 @@ class DALSTM_preprocessing ():
         y_train /= (24*3600) 
         y_val /= (24*3600) 
         y_test /= (24*3600) 
+        
+        # filter out train, validation prefixes with very small remaining time
+        y_combined = np.concatenate((y_train, y_val))
+        y_combined_median = np.median(y_combined)
+        threshold = self.threshold * y_combined_median
+        train_mask = y_train >= threshold
+        val_mask = y_val >= threshold
+        X_train = X_train[train_mask]
+        y_train = y_train[train_mask]
+        X_val = X_val[val_mask]
+        y_val = y_val[val_mask]
+        
         # Target attribute normalization
         if self.normalization:
             # get the maximum value for remaining time in train and val sets.
@@ -650,65 +667,72 @@ class DALSTM_preprocessing ():
             pickle.dump(max_len, file)
         # Delete csv files as they are not require anymore
         self.delete_files(extension='.csv')
-        # Now, we create train, valid, test splits for cross-validation
-        # Put all prefixes in one dataset
-        X_total = torch.cat((X_train, X_val, X_test), dim=0)
-        y_total = torch.cat((y_train, y_val, y_test), dim=0)
-        total_lengths = train_lengths + valid_lengths + test_lengths
-        # get indices for train, validation, and test
-        n_samples = X_total.shape[0]
-        splits={}
-        kf = KFold(n_splits=self.n_splits, shuffle=True,
-                   random_state=self.seed)
-        kf_split = kf.split(np.zeros(n_samples)) 
-        for i, (_, ids) in enumerate(kf_split):
-            splits[i] = ids.tolist()
-        for split_key in range(self.n_splits):
-            test_ids = splits[split_key]
-            val_ids = splits[((split_key + 1) % self.n_splits)]      
-            train_ids = []
-            for fold in range(self.n_splits):
-                if fold != split_key and fold != (split_key + 1) % self.n_splits: 
-                    train_ids.extend(splits[fold]) 
-            # now get training, validation, and test prefixes
-            X_train = X_total[train_ids]
-            y_train = y_total[train_ids]
-            X_val = X_total[val_ids]
-            y_val = y_total[val_ids]
-            X_test = X_total[test_ids]
-            y_test = y_total[test_ids]
-            test_lengths = [total_lengths[i] for i in test_ids]          
-            # define file names, and paths 
-            X_train_path = os.path.join(
-                self.dataset_path,
-                "DALSTM_X_train_fold_"+str(split_key+1)+self.dataset_name+".pt")
-            X_val_path = os.path.join(
-                self.dataset_path,
-                "DALSTM_X_val_fold_"+str(split_key+1)+self.dataset_name+".pt")
-            X_test_path = os.path.join(
-                self.dataset_path,
-                "DALSTM_X_test_fold_"+str(split_key+1)+self.dataset_name+".pt")
-            y_train_path = os.path.join(
-                self.dataset_path,
-                "DALSTM_y_train_fold_"+str(split_key+1)+self.dataset_name+".pt")
-            y_val_path = os.path.join(
-                self.dataset_path,
-                "DALSTM_y_val_fold_"+str(split_key+1)+self.dataset_name+".pt")
-            y_test_path = os.path.join(
-                self.dataset_path,
-                "DALSTM_y_test_fold_"+str(split_key+1)+self.dataset_name+".pt")        
-            test_length_path = os.path.join(
-                self.dataset_path,
-                "DALSTM_test_length_list_fold_"+str(
-                    split_key+1)+self.dataset_name+".pkl")
-            # save training, validation, test tensors   
-            torch.save(X_train, X_train_path) 
-            torch.save(X_val, X_val_path)
-            torch.save(X_test, X_test_path)
-            torch.save(y_train, y_train_path)
-            torch.save(y_val, y_val_path)
-            torch.save(y_test, y_test_path)
-            # save lengths
-            with open(test_length_path, 'wb') as file:
-                pickle.dump(test_lengths, file)  
-        print('Preprocessing is done for both holdout and CV data split.')      
+        print('Preprocessing is done for holdout data split.')
+        
+        ######################################################################
+        ######## create train, valid, test splits for cross-validation #######
+        ######################################################################
+        # TODO: pre-prcessing in CV split is not conducted. 
+        if self.cv:
+            # Put all prefixes in one dataset
+            X_total = torch.cat((X_train, X_val, X_test), dim=0)
+            y_total = torch.cat((y_train, y_val, y_test), dim=0)
+            total_lengths = train_lengths + valid_lengths + test_lengths
+            # get indices for train, validation, and test
+            n_samples = X_total.shape[0]
+            splits={}
+            kf = KFold(n_splits=self.n_splits, shuffle=True,
+                       random_state=self.seed)
+            kf_split = kf.split(np.zeros(n_samples)) 
+            for i, (_, ids) in enumerate(kf_split):
+                splits[i] = ids.tolist()
+            for split_key in range(self.n_splits):
+                test_ids = splits[split_key]
+                val_ids = splits[((split_key + 1) % self.n_splits)]      
+                train_ids = []
+                for fold in range(self.n_splits):
+                    if (fold != split_key and 
+                        fold != (split_key + 1) % self.n_splits): 
+                        train_ids.extend(splits[fold]) 
+                # now get training, validation, and test prefixes
+                X_train = X_total[train_ids]
+                y_train = y_total[train_ids]
+                X_val = X_total[val_ids]
+                y_val = y_total[val_ids]
+                X_test = X_total[test_ids]
+                y_test = y_total[test_ids]
+                test_lengths = [total_lengths[i] for i in test_ids]          
+                # define file names, and paths 
+                X_train_path = os.path.join(
+                    self.dataset_path,
+                    "DALSTM_X_train_fold_"+str(split_key+1)+self.dataset_name+".pt")
+                X_val_path = os.path.join(
+                    self.dataset_path,
+                    "DALSTM_X_val_fold_"+str(split_key+1)+self.dataset_name+".pt")
+                X_test_path = os.path.join(
+                    self.dataset_path,
+                    "DALSTM_X_test_fold_"+str(split_key+1)+self.dataset_name+".pt")
+                y_train_path = os.path.join(
+                    self.dataset_path,
+                    "DALSTM_y_train_fold_"+str(split_key+1)+self.dataset_name+".pt")
+                y_val_path = os.path.join(
+                    self.dataset_path,
+                    "DALSTM_y_val_fold_"+str(split_key+1)+self.dataset_name+".pt")
+                y_test_path = os.path.join(
+                    self.dataset_path,
+                    "DALSTM_y_test_fold_"+str(split_key+1)+self.dataset_name+".pt")        
+                test_length_path = os.path.join(
+                    self.dataset_path,
+                    "DALSTM_test_length_list_fold_"+str(
+                        split_key+1)+self.dataset_name+".pkl")
+                # save training, validation, test tensors   
+                torch.save(X_train, X_train_path) 
+                torch.save(X_val, X_val_path)
+                torch.save(X_test, X_test_path)
+                torch.save(y_train, y_train_path)
+                torch.save(y_val, y_val_path)
+                torch.save(y_test, y_test_path)
+                # save lengths
+                with open(test_length_path, 'wb') as file:
+                    pickle.dump(test_lengths, file)  
+            print('Preprocessing is done for CV data split.')      

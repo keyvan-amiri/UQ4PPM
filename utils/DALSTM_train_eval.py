@@ -92,15 +92,23 @@ class DALSTM_train_evaluate ():
             self.num_mcmc = None      
             self.early_stop = cfg.get('train').get('early_stop')
 
-        # set experiments for hyperparameter optimization
+
+        ######################################################################
+        ##########   experiments for hyperparameter optimization   ###########
+        ######################################################################
         if (self.uq_method == 'en_b' or self.uq_method == 'en_b_mve' or
             self.uq_method == 'en_t' or self.uq_method == 'en_t_mve'):
             # set the experiments considering grid search over parameters
             self.experiments, self.max_model_num = get_exp(
                 uq_method=self.uq_method, cfg=cfg)
         else:
-            # set the experiments considering grid search over parameters
-            self.experiments = get_exp(uq_method=self.uq_method, cfg=cfg)
+            if self.uq_method == 'LA':
+                # set the experiments considering random search over parameters
+                self.experiments = get_exp(uq_method=self.uq_method, cfg=cfg,
+                                           is_random=True)
+            else:
+                # set the experiments considering grid search over parameters
+                self.experiments = get_exp(uq_method=self.uq_method, cfg=cfg)
             
         ######################################################################
         #################   Laplace Approximation setting   ##################
@@ -232,9 +240,7 @@ class DALSTM_train_evaluate ():
             self.all_val_results, self.all_test_results = [], []
 
             for exp_id, experiment in enumerate(self.experiments):
-                
-                print(experiment)
-                
+
                 # train-test pipeline for holdout data split
                 if self.split == 'holdout':
                     
@@ -284,7 +290,7 @@ class DALSTM_train_evaluate ():
                             '{}_{}_fold{}_seed_{}_exp_{}_report_.txt'.format(
                                 self.uq_method, self.split, split_key+1,
                                 self.seed, exp_id+1))
-                        print()
+
                         # load train, validation, and test data loaders
                         (self.X_train_path, self.X_val_path, self.X_test_path,
                          self.y_train_path, self.y_val_path, self.y_test_path,
