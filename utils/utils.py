@@ -361,6 +361,14 @@ def get_optimizer(config_optim, parameters):
         raise NotImplementedError(
             'Optimizer {} not understood.'.format(config_optim.optimizer))
 
+def get_optimizer_params(optimizer):
+    # Access the first param group 
+    param_group = optimizer.param_groups[0]
+    # Extract optimizer parameters 
+    base_lr = param_group['lr']
+    eps = param_group.get('eps', None)
+    weight_decay = param_group.get('weight_decay', None)
+    return base_lr, eps, weight_decay
 
 def dict2namespace(config):
     namespace = argparse.Namespace()

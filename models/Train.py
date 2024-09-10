@@ -3,17 +3,23 @@ import random
 from datetime import datetime
 import torch
 from torch.nn.utils import clip_grad_value_
-from utils.utils import augment
+import torch.optim as optim
+from utils.utils import (augment, get_optimizer_params, set_optimizer)
 
 # method to handle training the model
 def train_model(model=None, uq_method=None, train_loader=None, val_loader=None,
-                criterion=None, optimizer=None, scheduler=None, device=None,
-                num_epochs=100, early_patience=20, min_delta=0, early_stop=True,
+                train_val_loader=None, criterion=None, optimizer=None,
+                scheduler=None, device=None, num_epochs=100, 
+                early_patience=50, min_delta=0, early_stop=True,
                 clip_grad_norm=None, clip_value=None,
                 processed_data_path=None, report_path =None,
                 data_split='holdout', fold=None, cfg=None, seed=None,
                 model_idx=None, ensemble_mode=False, sqr_q='all',
                 sqr_factor=None, exp_id=None):
+    
+    # get optimizer parameters to be used in retraining with train+val data
+    base_lr, eps, weight_decay = get_optimizer_params(optimizer)
+    optimizer_type = cfg.get('optimizer').get('type')
     
     # get current time (as start) to compute training time
     start=datetime.now()
@@ -177,6 +183,7 @@ def train_model(model=None, uq_method=None, train_loader=None, val_loader=None,
             'best_valid_loss': best_valid_loss            
             }
             torch.save(checkpoint, checkpoint_path)
+            best_epoch = epoch + 1
         else:
             current_patience += 1
             # Check for early stopping
@@ -197,4 +204,91 @@ def train_model(model=None, uq_method=None, train_loader=None, val_loader=None,
             training_time)) 
         file.write('#######################################################\n')
         file.write('#######################################################\n')
+    
+    ##########################################################################
+    ######## retrain the model on train + val sets.
+    ##########################################################################
+    if train_val_loader!=None:
+        # we do not retrain the model for bootstrapping ensembles
+        print('Now start retraining on training + validation sets')
+        with open(report_path, 'a') as file:
+            file.write('Now start retraining on training + validation sets\n')
+            file.write('Retraning epochs: {} .\n'.format(best_epoch)) 
+            file.write('###################################################\n')    
+        # get current time (as start) to compute training time
+        start=datetime.now()   
+        # re-initialize model weights
+        for layer in model.children():
+            if hasattr(layer, 'reset_parameters'):
+                layer.reset_parameters()
+        # re-initialize optimizer and scheduler
+        optimizer = set_optimizer (model, optimizer_type, base_lr, eps, 
+                                   weight_decay)
+        scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, factor=0.5)
+        model.train()
+        # Training loop     
+        for epoch in range(best_epoch): 
+            for batch in train_val_loader:
+                # Forward pass
+                inputs = batch[0].to(device)
+                targets = batch[1].to(device)
+                optimizer.zero_grad() # Resets the gradients
+                if (uq_method == 'deterministic' or uq_method == 'en_t' or 
+                    uq_method == 'en_b'):
+                    outputs = model(inputs)
+                    loss = criterion(outputs, targets)
+                elif (uq_method == 'SQR'):
+                    if sqr_q == 'all':
+                        taus = torch.rand(inputs.shape[0], 1) 
+                    elif isinstance(sqr_q, list):
+                        # Generate random values from the list
+                        taus = torch.tensor([random.choice(sqr_q) 
+                                             for _ in range(inputs.shape[0])]
+                                            ).view(-1, 1)   
+                    else:
+                        taus = torch.zeros(inputs.shape[0], 1).fill_(sqr_q)
+                    taus = taus.to(device)
+                    outputs = model(
+                        augment(inputs, tau=taus, sqr_factor=sqr_factor,
+                                aug_type='RNN', device=device))               
+                    loss = criterion(outputs, targets, taus)
+                elif (uq_method == 'DA' or uq_method == 'CDA' or
+                      uq_method == 'DA_A' or uq_method == 'CDA_A'):
+                    mean, log_var, regularization = model(inputs) 
+                    if (uq_method == 'DA_A' or uq_method == 'CDA_A'):
+                        loss = criterion(targets, mean, log_var) + regularization
+                    else:
+                        loss = criterion(mean, targets) + regularization
+                elif (uq_method == 'mve' or uq_method == 'en_t_mve' or
+                      uq_method == 'en_b_mve'):                
+                    mean, log_var = model(inputs)
+                    loss = criterion(targets, mean, log_var)                
+                # Backward pass and optimization
+                loss.backward()
+                if clip_grad_norm: # if True: clips gradient at specified value
+                    clip_grad_value_(model.parameters(), clip_value=clip_value)
+                optimizer.step()
+                
+            # print the results       
+            print(f'Epoch {epoch + 1}/{best_epoch},', f'Loss: {loss.item()}')
+            with open(report_path, 'a') as file:
+                file.write('Epoch {}/{} Loss: {} .\n'.format(
+                    epoch + 1, best_epoch, loss.item()))    
+            # Update learning rate if there is any scheduler
+            if scheduler is not None:
+                scheduler.step(average_valid_loss)
+    
+        training_time = (datetime.now()-start).total_seconds()
+        with open(report_path, 'a') as file:
+            file.write('Retraining time- in seconds: {}\n'.format(training_time)) 
+            file.write('###################################################\n')
+            file.write('###################################################\n')
+        checkpoint = {
+            'epoch': best_epoch,
+            'model_state_dict': model.state_dict(),
+            'optimizer_state_dict': optimizer.state_dict(),
+            'loss': loss.item()
+            }
+        torch.save(checkpoint, checkpoint_path)
+    
     return checkpoint_path

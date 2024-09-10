@@ -257,16 +257,9 @@ class DALSTM_train_evaluate ():
                      self.test_lengths_path) = self.holdout_paths()                    
                     if not self.bootstrapping:
                         # except for Bootstrapping ensemble
-                        if self.laplace:
-                            # additionally get train+val loader, and y values
-                            (self.train_loader, self.val_loader, 
-                             self.test_loader, self.train_val_loader,
-                             self.y_train_val, self.test_lengths
-                             ) = self.load_data()
-                        else:                             
-                            (self.train_loader, self.val_loader,
-                             self.test_loader, self.test_lengths
-                             ) = self.load_data()
+                        (self.train_loader, self.val_loader, self.test_loader,
+                         self.train_val_loader, self.y_train_val,
+                         self.test_lengths) = self.load_data()
                         
                     # training, and inference on validation set
                     if ((not self.ensemble_mode) and (not self.union_mode) and
@@ -298,16 +291,9 @@ class DALSTM_train_evaluate ():
                              split_key=split_key)
                         if not self.bootstrapping:
                             # except for Bootstrapping ensemble
-                            if self.laplace:
-                                # additionally get train+val loader, and y values
-                                (self.train_loader, self.val_loader, 
-                                 self.test_loader, self.train_val_loader,
-                                 self.y_train_val, self.test_lengths
-                                 ) = self.load_data()
-                            else:                             
-                                (self.train_loader, self.val_loader,
-                                 self.test_loader, self.test_lengths
-                                 ) = self.load_data()                        
+                            (self.train_loader, self.val_loader, self.test_loader,
+                             self.train_val_loader, self.y_train_val,
+                             self.test_lengths) = self.load_data()                    
                         if ((not self.ensemble_mode) and (not self.union_mode)):                    
                             train_model(model=self.model,
                                         uq_method=self.uq_method,
@@ -358,8 +344,9 @@ class DALSTM_train_evaluate ():
                                     # Set a unique seed for selection of subset data
                                     unique_seed = i + 100  
                                     torch.manual_seed(unique_seed)
-                                    (self.train_loader, self.val_loader, 
-                                     self.test_loader, self.test_lengths
+                                    (self.train_loader, self.val_loader,
+                                     self.test_loader, self.train_val_loader,
+                                     self.y_train_val, self.test_lengths
                                      ) = self.load_data() 
                                 # train a member of ensemble 
                                 train_model(model=self.models[i-1],
@@ -704,6 +691,7 @@ class DALSTM_train_evaluate ():
         res_model = train_model(
             model=self.model, uq_method=self.uq_method,
             train_loader=self.train_loader, val_loader=self.val_loader,
+            train_val_loader=self.train_val_loader,
             criterion=self.criterion, optimizer=self.optimizer,
             scheduler=self.scheduler,
             device=self.device, num_epochs=self.max_epochs,
@@ -781,32 +769,56 @@ class DALSTM_train_evaluate ():
                 # Set a unique seed to select a subset of data
                 unique_seed = i + 100  
                 torch.manual_seed(unique_seed)
-                (self.train_loader,self.val_loader,
-                 self.test_loader, self.test_lengths
-                 ) = self.load_data()                           
-            # train a member of ensemble    
-            res_model = train_model(
-                model=self.models[i-1],
-                uq_method=self.uq_method,
-                train_loader=self.train_loader,
-                val_loader=self.val_loader,
-                criterion=self.criterion,
-                optimizer=self.optimizers[i-1],
-                scheduler=self.schedulers[i-1],
-                device=self.device,
-                num_epochs=self.max_epochs,
-                early_patience=self.early_stop_patience,
-                min_delta=self.early_stop_min_delta, 
-                early_stop=self.early_stop,
-                processed_data_path=self.result_path,
-                report_path=self.report_path,
-                cfg=self.cfg,
-                seed=self.seed,
-                model_idx=i,
-                ensemble_mode=self.ensemble_mode,
-                sqr_q=self.sqr_q,
-                sqr_factor=self.sqr_factor,
-                exp_id=exp_id+1)
+                (self.train_loader, self.val_loader, self.test_loader,
+                 self.train_val_loader, self.y_train_val, self.test_lengths
+                 ) = self.load_data() 
+                res_model = train_model(
+                    model=self.models[i-1],
+                    uq_method=self.uq_method,
+                    train_loader=self.train_loader,
+                    val_loader=self.val_loader,
+                    criterion=self.criterion,
+                    optimizer=self.optimizers[i-1],
+                    scheduler=self.schedulers[i-1],
+                    device=self.device,
+                    num_epochs=self.max_epochs,
+                    early_patience=self.early_stop_patience,
+                    min_delta=self.early_stop_min_delta, 
+                    early_stop=self.early_stop,
+                    processed_data_path=self.result_path,
+                    report_path=self.report_path,
+                    cfg=self.cfg,
+                    seed=self.seed,
+                    model_idx=i,
+                    ensemble_mode=self.ensemble_mode,
+                    sqr_q=self.sqr_q,
+                    sqr_factor=self.sqr_factor,
+                    exp_id=exp_id+1)                     
+            else:
+                # train a member of traditional ensemble (with retraining) 
+                res_model = train_model(
+                    model=self.models[i-1],
+                    uq_method=self.uq_method,
+                    train_loader=self.train_loader,
+                    val_loader=self.val_loader,
+                    train_val_loader=self.train_val_loader,
+                    criterion=self.criterion,
+                    optimizer=self.optimizers[i-1],
+                    scheduler=self.schedulers[i-1],
+                    device=self.device,
+                    num_epochs=self.max_epochs,
+                    early_patience=self.early_stop_patience,
+                    min_delta=self.early_stop_min_delta, 
+                    early_stop=self.early_stop,
+                    processed_data_path=self.result_path,
+                    report_path=self.report_path,
+                    cfg=self.cfg,
+                    seed=self.seed,
+                    model_idx=i,
+                    ensemble_mode=self.ensemble_mode,
+                    sqr_q=self.sqr_q,
+                    sqr_factor=self.sqr_factor,
+                    exp_id=exp_id+1)
             self.all_checkpoints.append(res_model)
         # Restore the original random state
         torch.set_rng_state(original_rng_state)
@@ -958,15 +970,10 @@ class DALSTM_train_evaluate ():
                                  shuffle=False)
         with open(self.test_lengths_path, 'rb') as f:
             test_lengths =  pickle.load(f)
-        if not self.laplace:
-            return (train_loader, val_loader, test_loader, test_lengths)
-        else:
-            train_val_dataset = ConcatDataset([train_dataset, val_dataset])
-            train_val_loader = DataLoader(train_val_dataset,
-                                          batch_size=batch_size, shuffle=True)
-            y_train_val = torch.cat([y for _, y in train_val_dataset], dim=0)
-            y_train_val = y_train_val.numpy()
-            return (train_loader, val_loader, test_loader, train_val_loader, 
-                    y_train_val, test_lengths)
-
-         
+        train_val_dataset = ConcatDataset([train_dataset, val_dataset])
+        train_val_loader = DataLoader(train_val_dataset, batch_size=batch_size,
+                                      shuffle=True)
+        y_train_val = torch.cat([y for _, y in train_val_dataset], dim=0)
+        y_train_val = y_train_val.numpy()
+        return (train_loader, val_loader, test_loader, train_val_loader,
+                y_train_val, test_lengths)    

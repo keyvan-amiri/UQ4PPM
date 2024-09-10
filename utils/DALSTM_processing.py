@@ -43,7 +43,7 @@ class DALSTM_preprocessing ():
         # whether to create tensor datasets for CV split or not
         self.cv = cv
         # set a threshold for excluding prefixes wit very small remaining times
-        self.threshold = 0.1
+        self.threshold = 0.2
         # set random seed for cross-validation
         if seed is None:
             self.seed = 42
