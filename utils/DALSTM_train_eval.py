@@ -96,19 +96,18 @@ class DALSTM_train_evaluate ():
         ######################################################################
         ##########   experiments for hyperparameter optimization   ###########
         ######################################################################
+        HPO_radom_ratio = cfg.get('HPO_radom_ratio')
         if (self.uq_method == 'en_b' or self.uq_method == 'en_b_mve' or
             self.uq_method == 'en_t' or self.uq_method == 'en_t_mve'):
             # set the experiments considering grid search over parameters
             self.experiments, self.max_model_num = get_exp(
                 uq_method=self.uq_method, cfg=cfg)
         else:
-            if self.uq_method == 'LA':
-                # set the experiments considering random search over parameters
-                self.experiments = get_exp(uq_method=self.uq_method, cfg=cfg,
-                                           is_random=True)
-            else:
-                # set the experiments considering grid search over parameters
-                self.experiments = get_exp(uq_method=self.uq_method, cfg=cfg)
+            # set the experiments considering random search over parameters
+            self.experiments = get_exp(uq_method=self.uq_method, cfg=cfg,
+                                       is_random=True, random_ratio=HPO_radom_ratio)
+            # set the experiments considering grid search over parameters
+            #self.experiments = get_exp(uq_method=self.uq_method, cfg=cfg)
             
         ######################################################################
         #################   Laplace Approximation setting   ##################
@@ -974,7 +973,11 @@ class DALSTM_train_evaluate ():
         train_val_dataset = ConcatDataset([train_dataset, val_dataset])
         train_val_loader = DataLoader(train_val_dataset, batch_size=batch_size,
                                       shuffle=True)
-        y_train_val = torch.cat([y for _, y in train_val_dataset], dim=0)
+        if not self.laplace:
+            y_list = [y.unsqueeze(0) for _, y in train_val_dataset]
+            y_train_val = torch.cat(y_list, dim=0)
+        else:
+            y_train_val = torch.cat([y for _, y in train_val_dataset], dim=0)
         y_train_val = y_train_val.numpy()
         return (train_loader, val_loader, test_loader, train_val_loader,
                 y_train_val, test_lengths)    

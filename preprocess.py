@@ -27,6 +27,10 @@ def main():
                         help='Whether to apply normalization for PGTNet.')
     parser.add_argument('--cv', default=False, 
                         help='Type of the predictive model')
+    parser.add_argument('--filter_ratio', type=float, default=0.1,
+                        help='Multiplied by median remaining time in training,\
+                        and validation sets, and then all prefixes with smaller\
+                        remaining time are filtered from training data.')
     
     args = parser.parse_args()
     dataset_names = args.datasets
@@ -39,10 +43,10 @@ def main():
             if args.normalization_lstm:
                 DALSTM_preprocessing(dataset_name=dataset, seed=args.seed,
                                      normalization=args.normalization_lstm,
-                                     cv=args.cv)
+                                     cv=args.cv, threshold=args.filter_ratio)
             else:
                 DALSTM_preprocessing(dataset_name=dataset, seed=args.seed,
-                                     cv=args.cv)
+                                     cv=args.cv, threshold=args.filter_ratio)
         """
         # create graph dataset representation of the event log for PGTNet
         elif args.model == 'pgtnet':      

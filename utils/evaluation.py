@@ -51,12 +51,18 @@ def uq_eval(csv_file, prefix, report=False, verbose=False,
     if calibration_mode:
         # if evaluation is done for calibrated predictions
         if (calibration_type == 'miscal' or calibration_type == 'all'):
+            # for numerical stability
+            pred_std_miscal = np.maximum(pred_std_miscal, 1e-6) 
             uq_metrics1 = uct.metrics.get_all_metrics(
                 pred_mean, pred_std_miscal, y_true)
         if (calibration_type == 'rms' or calibration_type == 'all'):
+            # for numerical stability
+            pred_std_rms_cal = np.maximum(pred_std_rms_cal, 1e-6) 
             uq_metrics2 = uct.metrics.get_all_metrics(
                 pred_mean, pred_std_rms_cal, y_true)
         if (calibration_type == 'ma' or calibration_type == 'all'):
+            # for numerical stability
+            pred_std_ma_cal = np.maximum(pred_std_ma_cal, 1e-6) 
             uq_metrics3 = uct.metrics.get_all_metrics(
                 pred_mean, pred_std_ma_cal, y_true)
         if (calibration_type == 'isotonic' or calibration_type == 'all'):
@@ -70,6 +76,7 @@ def uq_eval(csv_file, prefix, report=False, verbose=False,
             uq_metrics4['Prediction Interval Coverage Probability (PICP)-0.95'] = picp     
     else:
         # if evaluation is done before calibrated regression.
+        pred_std = np.maximum(pred_std, 1e-6) # for numerical stability
         uq_metrics = uct.metrics.get_all_metrics(pred_mean, pred_std, y_true)
     
     if report:        
