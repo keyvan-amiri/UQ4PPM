@@ -8,10 +8,10 @@ from sklearn.ensemble import RandomForestRegressor
 from utils.utils import add_suffix_to_csv
 
 def fit_rf(model=None, cfg=None, val_loader=None, criterion=None, 
-           n_estimators=None, depth_control=None, dataset_path=None, 
-           result_path=None, y_val_path=None, report_path=None,      
-           split='holdout', fold=None, seed=None, device=None,
-           exp_id=None):
+           n_estimators=None, depth_control=None, max_depth=None, 
+           dataset_path=None, result_path=None, y_val_path=None,
+           report_path=None, split='holdout', fold=None, seed=None,
+           device=None, exp_id=None):
     
     # get current time (as start) to compute training time
     start=datetime.now()
@@ -84,10 +84,10 @@ def fit_rf(model=None, cfg=None, val_loader=None, criterion=None,
     X_val_emb = X_val_emb.cpu().numpy() if X_val_emb.is_cuda else X_val_emb.numpy()
     y_val = y_val.cpu().numpy() if y_val.is_cuda else y_val.numpy()
     
-    if depth_control:
-        max_depth = cfg.get('uncertainty').get('union').get('max_depth')
-    else:
-        max_depth = None
+    #if depth_control:
+        #max_depth = cfg.get('uncertainty').get('union').get('max_depth')
+    #else:
+        #max_depth = None
     min_samples_split = (
         cfg.get('uncertainty').get('union').get('min_samples_split'))
     min_samples_leaf = (
@@ -140,11 +140,13 @@ def predict_rf(model=None, model_arch=None, aux_model=None, val_mode=False,
         criterion = experiment.get('criterion')
         n_estimators = experiment.get('n_estimators')
         depth_control = experiment.get('depth_control') 
+        max_depth = experiment.get('max_depth')
         model, aux_model, _ = fit_rf(
             model=model_arch, cfg=cfg, val_loader=val_loader, criterion=criterion,
             n_estimators=n_estimators, depth_control=depth_control,
-            dataset_path=dataset_path, result_path=result_path,
-            y_val_path=y_val_path, report_path=report_path,
+            max_depth=max_depth, dataset_path=dataset_path,
+            result_path=result_path, y_val_path=y_val_path,
+            report_path=report_path,
             split=split, fold=fold, seed=seed, device=device, exp_id=exp_id)
 
     start=datetime.now()       

@@ -659,14 +659,15 @@ class DALSTM_train_evaluate ():
         self.criterion = experiment.get('criterion')
         self.n_estimators = experiment.get('n_estimators')
         self.depth_control = experiment.get('depth_control') 
+        self.max_depth= experiment.get('max_depth')
         # fit the random forest auxiliary model
         res_model, aux_model, aux_model_path = fit_rf(
             model=self.model, cfg=self.cfg, val_loader=self.val_loader,
             criterion=self.criterion, n_estimators=self.n_estimators,
-            depth_control=self.depth_control, dataset_path=self.dataset_path,
-            result_path=self.result_path, y_val_path=self.y_val_path,
-            report_path=self.report_path, seed=self.seed, 
-            device=self.device, exp_id=exp_id+1)
+            depth_control=self.depth_control, max_depth=self.max_depth, 
+            dataset_path=self.dataset_path, result_path=self.result_path,
+            y_val_path=self.y_val_path, report_path=self.report_path, 
+            seed=self.seed, device=self.device, exp_id=exp_id+1)
         self.all_checkpoints.append(aux_model_path) 
         # get the results on validation set, to later be used in HPO
         res_df = predict_rf(

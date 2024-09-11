@@ -70,8 +70,15 @@ def get_exp(uq_method=None, cfg=None, is_random=False, random_ratio=0.1):
             'depth_control')
         if not isinstance(depth_control_lst, list):
             raise ValueError('depth contor options should be packed in a list.')
-        hyperparameters = {'criterion': loss_lst, 'n_estimators': n_est_lst,
-                           'depth_control': depth_control_lst} 
+        # whether to use a maximum length for Random Forest or not
+        max_depth_lst = cfg.get('uncertainty').get('union').get('max_depth')
+        if not isinstance(max_depth_lst, list):
+            raise ValueError('Max depth options should be packed in a list.')
+            
+        hyperparameters = {'criterion': loss_lst,
+                           'n_estimators': n_est_lst,
+                           'depth_control': depth_control_lst,
+                           'max_depth': max_depth_lst} 
     if uq_method == 'LA':
         hessian_structure_lst = cfg.get('uncertainty').get('laplace').get(
             'hessian_structure')
@@ -131,10 +138,32 @@ def get_exp(uq_method=None, cfg=None, is_random=False, random_ratio=0.1):
                            'temperature': temperature_lst,
                            'n_samples': n_samples_lst} 
                    
-    keys = hyperparameters.keys()
-    values = hyperparameters.values()
-    combinations = list(itertools.product(*values))
-    experiments = [dict(zip(keys, combination)) for combination in combinations]
+    if uq_method != 'RF':
+        keys = hyperparameters.keys()
+        values = hyperparameters.values()
+        combinations = list(itertools.product(*values))
+        experiments = [dict(zip(keys, combination)) 
+                       for combination in combinations]
+    else:
+        experiments = []
+        for criterion in loss_lst:
+            for n_estimators in n_est_lst:
+                for depth_control in depth_control_lst:
+                    if depth_control:
+                        # Use the full range of max_depth values
+                        for max_depth in max_depth_lst:
+                            experiments.append({
+                                'criterion': criterion,
+                                'n_estimators': n_estimators,
+                                'depth_control': depth_control,
+                                'max_depth': max_depth})
+                    else:
+                        # Set max_depth to None when depth_control is False
+                        experiments.append({
+                            'criterion': criterion,
+                            'n_estimators': n_estimators,
+                            'depth_control': depth_control,
+                            'max_depth': None})
     
     if is_random:
         # Randomly select the desired number of experiments
