@@ -87,7 +87,7 @@ def main():
     
     # Argument to select the dataset (i.e., an event log)
     parser.add_argument('--dataset', default='HelpDesk',
-                        help='Datasets used by model')    
+                        help='Dataset used by model')    
     # Argument to select backbone architecture.
     parser.add_argument('--model', default='pgtnet',
                         help='Type of the predictive model')

@@ -13,7 +13,7 @@ def main():
     # can handle multiple event logs at the same time
     parser.add_argument('--datasets', nargs='+',
                         help='Raw datasets to be pre-processed', required=True)
-    parser.add_argument('--model', default='pgtnet',
+    parser.add_argument('--model', default='dalstm',
                         help='Type of the predictive model')
     parser.add_argument('--seed', type=int, default=42,
                         help='Number of splits that is used')
@@ -27,7 +27,7 @@ def main():
                         help='Whether to apply normalization for PGTNet.')
     parser.add_argument('--cv', default=False, 
                         help='Type of the predictive model')
-    parser.add_argument('--filter_ratio', type=float, default=0.1,
+    parser.add_argument('--filter_ratio', type=float, default=0.0,
                         help='Multiplied by median remaining time in training,\
                         and validation sets, and then all prefixes with smaller\
                         remaining time are filtered from training data.')
