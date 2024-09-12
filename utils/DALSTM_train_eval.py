@@ -168,10 +168,7 @@ class DALSTM_train_evaluate ():
         ###############   Simultaneous Quantile Regression   #################
         ######################################################################
         # NOTE: to use the same execution path for other methods as well
-        if self.uq_method == 'SQR':
-            self.sqr_factor = cfg.get('uncertainty').get('sqr').get(
-                'scaling_factor')
-        else:
+        if self.uq_method != 'SQR':
             self.sqr_factor = 12
             self.sqr_q = 'all'       
         ######################################################################
@@ -433,8 +430,9 @@ class DALSTM_train_evaluate ():
                         processed_data_path= self.result_path,
                         report_path=report_path, seed=self.seed, 
                         device=self.device, normalization=self.normalization,
-                        sqr_q=self.sqr_q, sqr_factor=self.sqr_factor,
-                        exp_id=self.min_exp_id+1)                   
+                        sqr_q=self.experiments[self.min_exp_id].get('tau'),
+                        sqr_factor=self.experiments[self.min_exp_id].get(
+                            'sqr_factor'), exp_id=self.min_exp_id+1)  
                 elif self.uq_method == 'deterministic':
                     final_result =  test_model(
                         model=self.model, uq_method=self.uq_method, 
@@ -569,6 +567,7 @@ class DALSTM_train_evaluate ():
         elif self.uq_method == 'SQR':
             self.sqr_q = experiment.get('tau')
             self.max_epochs = experiment.get('max_epochs')
+            self.sqr_factor = experiment.get('sqr_factor')
         res_model = train_model(
             model=self.model, uq_method=self.uq_method,
             train_loader=self.train_loader, val_loader=self.val_loader,
