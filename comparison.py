@@ -12,7 +12,8 @@ def main():
                         help='Dataset to be analysed') 
     parser.add_argument('--model', default='dalstm',
                         help='Type of the predictive model')
-    
+    parser.add_argument('--calibration', default='miscal',
+                        help='Type of the calibrated regression used') 
     args = parser.parse_args()
     root_path = os.getcwd()
     UQ_Comparison(args=args, root_path=root_path)
@@ -27,6 +28,7 @@ class UQ_Comparison ():
         self.args = args
         self.dataset = args.dataset
         self.model = args.model
+        self.calibration = args.calibration
         self.result_path = os.path.join(root_path, 'results', args.dataset,
                                         args.model)
         self.cal_path = os.path.join(root_path, 'results', args.dataset,
@@ -35,13 +37,17 @@ class UQ_Comparison ():
                                         args.model, 'comparison')
         if not os.path.exists(self.comp_path):
             os.makedirs(self.comp_path)
-        self.uq_df_path = os.path.join(self.comp_path, 'uq_metrics.csv')   
-        self.uq_dict_lst, self.uq_method_lst = self.load_uq_dicts(
-            self.result_path)
+        
+        # comparison for results before calibrated regression
+        self.uq_df_path = os.path.join(self.comp_path, 
+                                       self.dataset + '_uq_metrics.csv')   
+        self.uq_dict_lst, self.init_uq_method_lst = self.load_uq_dicts(
+            self.result_path)        
         (self.mae_lst, self.rmse_lst, self.mis_cal_lst, self.sharpness_lst,
          self.nll_lst, self.crps_lst, self.ause_lst, self.aurg_lst, 
          self.mpiw_lst, self.picp_lst, self.qice_lst, self.below_lst, 
          self.more_than_lst) = self.extract_metrics(self.uq_dict_lst)
+        self.uq_method_lst = self.replace_techniques()
         self.uq_df = self.lists_to_dataframe(
             self.uq_method_lst, mae=self.mae_lst, rmse=self.rmse_lst, 
             mis_cal=self.mis_cal_lst, sharpness=self.sharpness_lst,
@@ -57,12 +63,52 @@ class UQ_Comparison ():
             elif column=='aurg':
                 self.plot_aurg()
         
-    def load_uq_dicts(self, folder_path):
+        # comparison for results after calibrated regression
+        self.uq_df_path = os.path.join(
+            self.comp_path, self.dataset + '_uq_metrics_calibrated.csv')   
+        self.uq_dict_lst, self.init_uq_method_lst = self.load_uq_dicts(
+            self.cal_path, calibration=True)           
+        (self.mae_lst, self.rmse_lst, self.mis_cal_lst, self.sharpness_lst,
+         self.nll_lst, self.crps_lst, self.mpiw_lst, self.picp_lst, 
+         self.qice_lst, self.below_lst,
+         self.more_than_lst) = self.extract_metrics(self.uq_dict_lst,
+                                                    calibration=True)
+        self.uq_method_lst = self.replace_techniques()
+        self.uq_df_cal = self.lists_to_dataframe(
+            self.uq_method_lst, mae=self.mae_lst, rmse=self.rmse_lst, 
+            mis_cal=self.mis_cal_lst, sharpness=self.sharpness_lst,
+            nll=self.nll_lst, crps=self.crps_lst, mpiw=self.mpiw_lst,
+            picp=self.picp_lst, qice=self.qice_lst, below=self.below_lst, 
+            more_than=self.more_than_lst)
+        for column in self.uq_df_cal.columns:
+            if not column in ['aurg', 'mae', 'rmse', 'picp']:
+                self.plot_metrics(column, calibration=True)
+            elif column=='picp':
+                self.plot_picp(calibration=True)
+        
+        # visualize calibration effect
+        self.plot_metric_comparison()
+                
+                
+                
+        
+    def load_uq_dicts(self, folder_path, calibration=False):
+        # set appropraie string to search for files
+        if not calibration:
+            search_str = 'uq_metrics.pkl'
+        else:
+            if self.calibration == 'ma_cal':
+                search_str = 'uq_metrics_std_ma_cal.pkl'
+            elif self.calibration == 'rms_cal':
+                search_str = 'uq_metrics_std_rms_cal.pkl'
+            else:
+                search_str = 'uq_metrics_std_miscal.pkl'              
+                        
         data_list = []
         techniques = []
         # Iterate over the files in the folder
         for filename in os.listdir(folder_path):
-            if filename.endswith('uq_metrics.pkl'):
+            if filename.endswith(search_str):
                 # Extract the technique from the filename
                 # Split by 'holdout' or 'cv' and take the first part
                 technique = filename.split('_holdout')[0].split('_cv')[0]
@@ -77,17 +123,34 @@ class UQ_Comparison ():
                     data_list.append(data)    
         return data_list, techniques
     
-    def extract_metrics(self, dict_list):
+
+    def replace_techniques(self):
+        # Define the replacements in a dictionary
+        replacements = {
+        'en_b_mve': 'En (B) + H',
+        'en_t': 'En (T)',
+        'DA_A': 'DA + H',
+        'en_t_mve': 'En (T) + H',
+        'en_b': 'En (B)',
+        'mve': 'H'
+        }    
+        # Use list comprehension to replace elements in the list
+        updated_list = [replacements.get(item, item) for 
+                        item in self.init_uq_method_lst]    
+        return updated_list
+
+    def extract_metrics(self, dict_list, calibration=False):
         mae_lst = [d['accuracy']['mae'] for d in dict_list]
         rmse_lst = [d['accuracy']['rmse'] for d in dict_list]
         mis_cal_lst = [d['avg_calibration']['miscal_area'] for d in dict_list]
         sharpness_lst = [d['sharpness']['sharp'] for d in dict_list]
         nll_lst = [d['scoring_rule']['nll'] for d in dict_list]
         crps_lst = [d['scoring_rule']['crps'] for d in dict_list]
-        ause_lst = [d['Area Under Sparsification Error curve (AUSE)']
-                    for d in dict_list]
-        aurg_lst = [d['Area Under Random Gain curve (AURG)']
-                    for d in dict_list]
+        if not calibration:
+            ause_lst = [d['Area Under Sparsification Error curve (AUSE)']
+                        for d in dict_list]
+            aurg_lst = [d['Area Under Random Gain curve (AURG)']
+                        for d in dict_list]
         mpiw_lst = [d['Mean Prediction Interval Width (MPIW)']
                     for d in dict_list]
         picp_lst = [d['Prediction Interval Coverage Probability (PICP)-0.95']
@@ -98,9 +161,17 @@ class UQ_Comparison ():
                     for d in dict_list]
         more_than_lst = [d['Test_instance_morethan_upper_bound']
                     for d in dict_list]
-        return (mae_lst, rmse_lst, mis_cal_lst, sharpness_lst, nll_lst,
-                crps_lst, ause_lst, aurg_lst, mpiw_lst, picp_lst, qice_lst,
-                below_lst, more_than_lst)
+        if not calibration:
+            return (mae_lst, rmse_lst, mis_cal_lst, sharpness_lst, nll_lst,
+                    crps_lst, ause_lst, aurg_lst, mpiw_lst, picp_lst, qice_lst,
+                    below_lst, more_than_lst)
+        else:
+            return (mae_lst, rmse_lst, mis_cal_lst, sharpness_lst, nll_lst,
+                    crps_lst, mpiw_lst, picp_lst, qice_lst,
+                    below_lst, more_than_lst)
+            
+            
+
     
     def lists_to_dataframe(self, techniques, **metrics):
         df = pd.DataFrame(metrics, index=techniques)
@@ -108,7 +179,7 @@ class UQ_Comparison ():
         df.to_csv(self.uq_df_path)
         return df
     
-    def plot_metrics(self, metric, smaller_is_better=True):
+    def plot_metrics(self, metric, smaller_is_better=True, calibration=False):
         str_metric = str(metric).upper()
         df_filtered = self.uq_df[self.uq_df.index != 'deterministic']
         # Get the value for the 'deterministic' technique
@@ -134,12 +205,15 @@ class UQ_Comparison ():
         # Customize the plot
         plt.xlabel('UQ Technique')
         plt.ylabel(str_metric)
-        plt.title(f'{str_metric} for different UQ Techniques')
+        plt.title(f'{self.dataset}: {str_metric} for different UQ Techniques')
         plt.xticks(rotation=45, ha='right')
         plt.legend()
     
         # Save the plot as a PDF file
-        new_file_name = f'{self.dataset}_{str_metric}_comparison.pdf'
+        if not calibration:
+            new_file_name = f'{self.dataset}_{str_metric}_comparison.pdf'
+        else:
+            new_file_name = f'{self.dataset}_{str_metric}_comparison_calibrated_{self.calibration}.pdf'
         new_file_path = os.path.join(self.comp_path, new_file_name)
         plt.tight_layout()
         plt.savefig(new_file_path, format='pdf')
@@ -148,7 +222,7 @@ class UQ_Comparison ():
         plt.clf()
         plt.close()
         
-    def plot_picp(self):
+    def plot_picp(self, calibration=False):
         # Ideal value
         ideal_value = 0.95
         # Calculate distances from the ideal value
@@ -169,12 +243,17 @@ class UQ_Comparison ():
         # Customize the plot
         plt.xlabel('UQ Technique')
         plt.ylabel('PICP')
-        plt.title('PICP for Different UQ Techniques')
+        plt.title(f'{self.dataset}: PICP for Different UQ Techniques')
         plt.xticks(rotation=45, ha='right')
         plt.legend()
         
         # Save the plot as a PDF file
-        new_file_name = f'{self.dataset}_PICP_comparison.pdf'
+        if not calibration:
+            new_file_name = f'{self.dataset}_PICP_comparison.pdf'
+        else:
+            new_file_name = f'{self.dataset}_PICP_comparison_calibrated_{self.calibration}.pdf'
+            
+        
         new_file_path = os.path.join(self.comp_path, new_file_name)
         plt.tight_layout()
         plt.savefig(new_file_path, format='pdf')
@@ -194,9 +273,9 @@ class UQ_Comparison ():
         # Customize the plot
         plt.xlabel('Technique')
         plt.ylabel('AURG')
-        plt.title('AURG for Different UQ Techniques')
+        plt.title(f'{self.dataset}: AURG for Different UQ Techniques')
         plt.xticks(rotation=45, ha='right')
-    
+
         # Save the plot as a PDF file
         new_file_name = f'{self.dataset}_AURG_comparison.pdf'
         new_file_path = os.path.join(self.comp_path, new_file_name)
@@ -205,7 +284,46 @@ class UQ_Comparison ():
         # Clear and close the plot
         plt.clf()
         plt.close()
-    
+        
+    def plot_metric_comparison(self):
+        metrics = self.uq_df.columns  # Get the list of metrics (columns)
+        techniques = self.uq_df.index  # Get the list of techniques (index)
+        for metric in metrics:
+            if not metric in ['aurg', 'mae', 'rmse', 'ause']:
+                if metric not in self.uq_df_cal.columns:
+                    print(f"Warning: '{metric}' not found in uq_df_cal. Skipping...")
+                    continue
+                str_metric = str(metric).upper()
+                plt.figure(figsize=(10, 6))
+                # Get values before and after calibration for the current metric
+                before_calibration = self.uq_df[metric]
+                after_calibration = self.uq_df_cal[metric]
+                # Set positions for the bars
+                x = np.arange(len(techniques))
+                width = 0.35  # Width of the bars
+                # Plot bars for the metric
+                plt.bar(x - width/2, before_calibration, width, 
+                        label='Before Calibration', color='orange')
+                plt.bar(x + width/2, after_calibration, width, 
+                        label='After Calibration', color='blue')
+
+                # Add labels and title
+                plt.xlabel('Techniques')
+                plt.ylabel(metric)
+                plt.title(f'{self.dataset} Comparison of {metric} Before and After Calibration')
+                plt.xticks(x, techniques, rotation=45, ha='right')
+                plt.legend()
+
+                # Show the plot
+                plt.tight_layout()
+                # Save the plot as a PDF file
+                new_file_name = f'{self.dataset}_{str_metric}_calibration_effect.pdf'
+                new_file_path = os.path.join(self.comp_path, new_file_name)
+                plt.tight_layout()  # Adjust layout to fit labels
+                plt.savefig(new_file_path, format='pdf')    
+                # Clear and close the plot
+                plt.clf()
+                plt.close()
 
         
 if __name__ == '__main__':

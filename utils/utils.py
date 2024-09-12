@@ -141,11 +141,11 @@ def get_exp(uq_method=None, cfg=None, is_random=False, random_ratio=0.1):
         tau_lst = cfg.get('uncertainty').get('sqr').get('tau')
         if not isinstance(tau_lst, list):
             raise ValueError('tau options should be packed in a list.')
-        max_epochs_lst = cfg.get('uncertainty').get('sqr').get('max_epochs')
+        max_epochs_lst = cfg.get('train').get('max_epochs')
         if not isinstance(max_epochs_lst, list):
             raise ValueError('Maximum epoch options should be packed in a list.')
         sqr_factor_lst = cfg.get('uncertainty').get('sqr').get('scaling_factor')
-        if not isinstance(max_epochs_lst, list):
+        if not isinstance(sqr_factor_lst, list):
             raise ValueError('Scaling factor options should be packed in a list.')           
         hyperparameters = {'tau': tau_lst, 'max_epochs': max_epochs_lst,
                            'sqr_factor': sqr_factor_lst} 

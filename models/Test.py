@@ -116,6 +116,8 @@ def test_model(model=None, models=None, uq_method=None, num_mc_samples=None,
                 _y_pred = model(inputs)     
             elif (uq_method == 'SQR'):
                 if sqr_q == 'all':
+                    print('###########################')
+                    print('now use different levels!!!!')
                     # prediction mean and std based on muliple confidence levels
                     confidence_levels = [0.95, 0.85, 0.75, 0.65, 0.55,
                                          0.45, 0.35, 0.25, 0.15, 0.05]
