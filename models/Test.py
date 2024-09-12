@@ -13,14 +13,19 @@ def test_model(model=None, models=None, uq_method=None, num_mc_samples=None,
                processed_data_path=None, report_path=None, val_mode=False,
                data_split='holdout', fold=None, seed=None, device=None,
                normalization=False, ensemble_mode=False, ensemble_size=None,
-               confidence_level=0.95, sqr_factor=None, exp_id=None,
-               deterministic=False, std_mean_ratio=None): 
-    
-    # lower, upper taus as well as z-score for SQR method
-    lower_tau = (1-confidence_level)/2
-    upper_tau = 1 - (1-confidence_level)/2
-    z_alpha_half = get_z_alpha_half(confidence_level)
-    
+               sqr_q=None, sqr_factor=None, exp_id=None, deterministic=False,
+               std_mean_ratio=None): 
+    """
+    This function is used for the following UQ techniques:
+        1) Deterministic point estimate.
+        2) Dropout approximation
+        3) Heteroscedastic regression
+        combinations of 2,3
+        4) Simultaneous Quantile Regression
+        5) Ensembles (Traditional/Bootstrapping)
+        combinations of 5,3
+    """
+       
     start=datetime.now()
     if data_split=='holdout':
         print(f'Now: start inference experiment number: {exp_id}, \
@@ -110,17 +115,50 @@ def test_model(model=None, models=None, uq_method=None, num_mc_samples=None,
             if uq_method == 'deterministic':            
                 _y_pred = model(inputs)     
             elif (uq_method == 'SQR'):
-                lower_taus = torch.zeros(batch_size, 1).fill_(lower_tau)
-                upper_taus = torch.zeros(batch_size, 1).fill_(upper_tau) 
-                upper_y_pred = model(
-                    augment(inputs, tau=upper_taus, sqr_factor=sqr_factor,
-                            aug_type='RNN', device=device))              
-                lower_y_pred = model(
-                    augment(inputs, tau=lower_taus, sqr_factor=sqr_factor,
-                            aug_type='RNN', device=device))
-                _y_pred = (upper_y_pred+lower_y_pred)/2
-                aleatoric_std = (torch.abs(upper_y_pred-lower_y_pred)/
-                                 (2*z_alpha_half))
+                if sqr_q == 'all':
+                    # prediction mean and std based on muliple confidence levels
+                    confidence_levels = [0.95, 0.85, 0.75, 0.65, 0.55,
+                                         0.45, 0.35, 0.25, 0.15, 0.05]
+                    predicted_means, predicted_stds = [], []
+                    for level in confidence_levels:
+                        # lower, upper taus as well as z-score for SQR method
+                        lower_tau = (1-level)/2
+                        upper_tau = 1 - (1-level)/2
+                        z_alpha_half = get_z_alpha_half(level)
+                        lower_taus = torch.zeros(batch_size, 1).fill_(lower_tau)
+                        upper_taus = torch.zeros(batch_size, 1).fill_(upper_tau)
+                        upper_y_pred = model(
+                            augment(inputs, tau=upper_taus, sqr_factor=sqr_factor,
+                                    aug_type='RNN', device=device))  
+                        lower_y_pred = model(
+                            augment(inputs, tau=lower_taus, sqr_factor=sqr_factor,
+                                    aug_type='RNN', device=device))
+                        predicted_means.append((upper_y_pred+lower_y_pred)/2)
+                        predicted_stds.append((torch.abs(upper_y_pred-lower_y_pred)/
+                                     (2*z_alpha_half)))
+                    stacked_means = torch.stack(predicted_means, dim=0)
+                    stacked_stds = torch.stack(predicted_stds, dim=0)
+                    # predited mean is the average for all confidence levels
+                    _y_pred = torch.mean(stacked_means, dim=0)
+                    # predited std is the average for all confidence levels
+                    aleatoric_std = torch.mean(stacked_stds, dim=0)                   
+                else:
+                    # prediction mean and std based on single confidence level
+                    lower_tau = sqr_q[0]
+                    upper_tau = sqr_q[1]
+                    confidence_level = 1-2*lower_tau
+                    z_alpha_half = get_z_alpha_half(confidence_level)
+                    lower_taus = torch.zeros(batch_size, 1).fill_(lower_tau)
+                    upper_taus = torch.zeros(batch_size, 1).fill_(upper_tau)
+                    upper_y_pred = model(
+                        augment(inputs, tau=upper_taus, sqr_factor=sqr_factor,
+                                aug_type='RNN', device=device))  
+                    lower_y_pred = model(
+                        augment(inputs, tau=lower_taus, sqr_factor=sqr_factor,
+                                aug_type='RNN', device=device))
+                    _y_pred = (upper_y_pred+lower_y_pred)/2
+                    aleatoric_std = (torch.abs(upper_y_pred-lower_y_pred)/
+                                     (2*z_alpha_half))
                 if normalization:
                     aleatoric_std = y_scaler * aleatoric_std                     
             elif (uq_method == 'DA' or uq_method == 'CDA' or

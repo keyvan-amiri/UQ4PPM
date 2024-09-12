@@ -102,7 +102,7 @@ def get_exp(uq_method=None, cfg=None, is_random=False, random_ratio=0.1):
         if not isinstance(la_lr_lst, list):
             raise ValueError('Empirical Bayes learning rate options should be\
                              packed in a list.')
-        # amount od observation noise that is considered                     
+        # amount of observation noise that is considered                     
         sigma_noise_lst = cfg.get('uncertainty').get('laplace').get(
                                  'sigma_noise')
         if not isinstance(sigma_noise_lst, list):
@@ -137,7 +137,15 @@ def get_exp(uq_method=None, cfg=None, is_random=False, random_ratio=0.1):
                            'prior_precision': prior_precision_lst,
                            'temperature': temperature_lst,
                            'n_samples': n_samples_lst} 
-                   
+    if uq_method == 'SQR':
+        tau_lst = cfg.get('uncertainty').get('sqr').get('tau')
+        if not isinstance(tau_lst, list):
+            raise ValueError('tau options should be packed in a list.')
+        max_epochs_lst = cfg.get('uncertainty').get('sqr').get('max_epochs')
+        if not isinstance(max_epochs_lst, list):
+            raise ValueError('Maximum epoch options should be packed in a list.')
+        hyperparameters = {'tau': tau_lst, 'max_epochs': max_epochs_lst} 
+    # get experiment list based on hyper-parameter combinations               
     if uq_method != 'RF':
         keys = hyperparameters.keys()
         values = hyperparameters.values()
@@ -164,7 +172,7 @@ def get_exp(uq_method=None, cfg=None, is_random=False, random_ratio=0.1):
                             'n_estimators': n_estimators,
                             'depth_control': depth_control,
                             'max_depth': None})
-    
+    # sample some of the experiments to save computation resources
     if is_random:
         # Randomly select the desired number of experiments
         random_selected_experiments = random.sample(

@@ -79,7 +79,9 @@ class DALSTM_train_evaluate ():
         # the probabibility that is used for dropout
         self.dropout_prob = cfg.get('model').get('lstm').get('dropout_prob')
         # define training hyperparameters
-        self.max_epochs = cfg.get('train').get('max_epochs')
+        if self.uq_method != 'SQR':
+            # in case of SQR we allow for different epoch sizes 
+            self.max_epochs = cfg.get('train').get('max_epochs')
         self.early_stop_patience = cfg.get('train').get('early_stop.patience')
         self.early_stop_min_delta = cfg.get('train').get('early_stop.min_delta')        
         if not (self.uq_method == 'DA' or self.uq_method == 'CDA' or
@@ -91,8 +93,6 @@ class DALSTM_train_evaluate ():
             # one experiment.
             self.num_mcmc = None      
             self.early_stop = cfg.get('train').get('early_stop')
-
-
         ######################################################################
         ##########   experiments for hyperparameter optimization   ###########
         ######################################################################
@@ -104,11 +104,11 @@ class DALSTM_train_evaluate ():
                 uq_method=self.uq_method, cfg=cfg)
         else:
             # set the experiments considering random search over parameters
-            self.experiments = get_exp(uq_method=self.uq_method, cfg=cfg,
-                                       is_random=True, random_ratio=HPO_radom_ratio)
+            self.experiments = get_exp(
+                uq_method=self.uq_method, cfg=cfg, is_random=True,
+                random_ratio=HPO_radom_ratio)
             # set the experiments considering grid search over parameters
-            #self.experiments = get_exp(uq_method=self.uq_method, cfg=cfg)
-            
+            #self.experiments = get_exp(uq_method=self.uq_method, cfg=cfg)            
         ######################################################################
         #################   Laplace Approximation setting   ##################
         ######################################################################
@@ -164,22 +164,16 @@ class DALSTM_train_evaluate ():
             self.union_mode = True
         else:
             self.union_mode = False
-            
-            
-        # set necessary parameters for Simultaneous Quantile Regression
+        ######################################################################
+        ###############   Simultaneous Quantile Regression   #################
+        ######################################################################
         # NOTE: to use the same execution path for other methods as well
-        try:
+        if self.uq_method == 'SQR':
             self.sqr_factor = cfg.get('uncertainty').get('sqr').get(
                 'scaling_factor')
-            self.confidence_level = cfg.get('uncertainty').get('sqr').get(
-                'confidence_level')
-            self.sqr_q = cfg.get('uncertainty').get('sqr').get('tau')
-        except:
-            self.confidence_level = 0.95
+        else:
             self.sqr_factor = 12
-            self.sqr_q = 'all'        
-        
-        
+            self.sqr_q = 'all'       
         ######################################################################
         #########   Loss function  (heteroscedastic/homoscedastic)  ##########
         ######################################################################
@@ -195,10 +189,9 @@ class DALSTM_train_evaluate ():
                 loss_func=cfg.get('train').get('loss_function'),
                 heteroscedastic=True) 
         elif self.uq_method == 'SQR':
-            self.criterion = QuantileLoss()
-        
+            self.criterion = QuantileLoss()        
         ######################################################################
-        ############### #  model, scheduler, and optimizer  ##################
+        ################  model, scheduler, and optimizer  ###################
         ######################################################################
         if not self.ensemble_mode:
             self.model = get_model(
@@ -229,18 +222,25 @@ class DALSTM_train_evaluate ():
             self.optimizers, self.schedulers = get_optimizer_scheduler(
                 models=self.models, cfg=self.cfg, ensemble_mode=True,
                 num_models=self.max_model_num)                 
-      
-        # execute training and evaluation loop
+        ######################################################################
+        ################## Training and evaluation loop  #####################
+        ######################################################################
+        # loop over seeds
         for execution_seed in seeds:            
             # set random seed
             self.seed = int(execution_seed) 
             set_random_seed(self.seed)
+            # lists for best models checkpoints & reports (all experiments)
             self.all_checkpoints, self.all_reports = [], []
+            # lists for inference results on val, test sets (all experiments)
             self.all_val_results, self.all_test_results = [], []
-
+            
+            # loop over experiments (HPO)
             for exp_id, experiment in enumerate(self.experiments):
-
-                # train-test pipeline for holdout data split
+                
+                ##############################################################
+                ######### train-test pipeline for holdout data split  ########
+                ##############################################################
                 if self.split == 'holdout':
                     
                     # define the report path
@@ -262,14 +262,25 @@ class DALSTM_train_evaluate ():
                         
                     # training, and inference on validation set
                     if ((not self.ensemble_mode) and (not self.union_mode) and
-                        (not self.laplace)):    
+                        (not self.laplace)): 
+                        # For:
+                            # 1) Deterministic point estimate.
+                            # 2) Dropout approximation
+                            # 3) Heteroscedastic regression
+                            # combinations of 2,3
+                            # 4) Simultaneous Quantile Regression
                         #TODO: check the piepline for SQR!!!
                         self.baseline_approach(exp_id, experiment)
                     elif self.ensemble_mode:
+                        # For:
+                            # Ensembles (Traditional/Bootstrapping)
+                            # Ensembles combined with heteroscedastic regression
                         self.ensemble(exp_id, experiment)                   
                     elif self.union_mode: 
+                        # union (embedding) based: for now only Random Forests
                         self.aux_forest(exp_id, experiment)
                     elif self.laplace:
+                        # For: Laplace Approximation
                         self.laplace_pipeline(exp_id, experiment)
                         
 
@@ -292,156 +303,11 @@ class DALSTM_train_evaluate ():
                             # except for Bootstrapping ensemble
                             (self.train_loader, self.val_loader, self.test_loader,
                              self.train_val_loader, self.y_train_val,
-                             self.test_lengths) = self.load_data()                    
-                        if ((not self.ensemble_mode) and (not self.union_mode)):                    
-                            train_model(model=self.model,
-                                        uq_method=self.uq_method,
-                                        train_loader=self.train_loader,
-                                        val_loader=self.val_loader,
-                                        criterion=self.criterion,
-                                        optimizer=self.optimizer,
-                                        scheduler=self.scheduler,
-                                        device=self.device,
-                                        num_epochs=self.max_epochs,
-                                        early_patience=self.early_stop_patience,
-                                        min_delta=self.early_stop_min_delta, 
-                                        early_stop=self.early_stop,
-                                        processed_data_path=self.result_path,
-                                        report_path=self.report_path,
-                                        data_split='cv',
-                                        fold = split_key+1,
-                                        cfg=self.cfg,
-                                        seed=self.seed,
-                                        ensemble_mode=self.ensemble_mode,
-                                        sqr_q=self.sqr_q,
-                                        sqr_factor=self.sqr_factor)
-                            test_model(model=self.model, 
-                                       uq_method=self.uq_method,
-                                       num_mc_samples=self.num_mcmc,  
-                                       test_loader=self.test_loader,
-                                       test_original_lengths=self.test_lengths,
-                                       y_scaler=self.max_train_val,
-                                       processed_data_path= self.result_path,
-                                       report_path=self.report_path,
-                                       data_split='cv',
-                                       fold = split_key+1,
-                                       seed=self.seed,
-                                       device=self.device,
-                                       normalization=self.normalization,
-                                       confidence_level=self.confidence_level,
-                                       sqr_factor=self.sqr_factor) 
-                        elif self.ensemble_mode:
-                            self.num_models = experiment.get('num_models')
-                            self.Bootstrapping_ratio = experiment.get(
-                                'Bootstrapping_ratio')
-                            # get random state 
-                            # before subset selction Bootstrapping
-                            original_rng_state = torch.get_rng_state()
-                            for i in range(1, self.num_models+1):
-                                # load relevant data for Bootstrapping ensemble
-                                if self.bootstrapping:
-                                    # Set a unique seed for selection of subset data
-                                    unique_seed = i + 100  
-                                    torch.manual_seed(unique_seed)
-                                    (self.train_loader, self.val_loader,
-                                     self.test_loader, self.train_val_loader,
-                                     self.y_train_val, self.test_lengths
-                                     ) = self.load_data() 
-                                # train a member of ensemble 
-                                train_model(model=self.models[i-1],
-                                            uq_method=self.uq_method,
-                                            train_loader=self.train_loader,
-                                            val_loader=self.val_loader,
-                                            criterion=self.criterion,
-                                            optimizer=self.optimizers[i-1],
-                                            scheduler=self.schedulers[i-1],
-                                            device=self.device,
-                                            num_epochs=self.max_epochs,
-                                            early_patience=self.early_stop_patience,
-                                            min_delta=self.early_stop_min_delta,
-                                            early_stop=self.early_stop,
-                                            processed_data_path=self.result_path,
-                                            report_path=self.report_path,
-                                            data_split='cv',
-                                            fold = split_key+1,
-                                            cfg=self.cfg,
-                                            seed=self.seed,
-                                            model_idx=i,
-                                            ensemble_mode=self.ensemble_mode,
-                                            sqr_q=self.sqr_q,
-                                            sqr_factor=self.sqr_factor,
-                                            exp_id=exp_id+1)
-                            # Restore the original random state
-                            torch.set_rng_state(original_rng_state)
-                            # inference with all ensemble members
-                            test_model(models=self.models,
-                                       uq_method=self.uq_method,
-                                       num_mc_samples=self.num_mcmc,  
-                                       test_loader=self.test_loader,
-                                       test_original_lengths=self.test_lengths,
-                                       y_scaler=self.max_train_val,
-                                       processed_data_path= self.result_path,
-                                       report_path=self.report_path,
-                                       data_split='cv',
-                                       fold = split_key+1,
-                                       seed=self.seed,
-                                       device=self.device,
-                                       normalization=self.normalization,
-                                       ensemble_mode=self.ensemble_mode,
-                                       ensemble_size=self.num_models,
-                                       confidence_level=self.confidence_level,
-                                       sqr_factor=self.sqr_factor,
-                                       exp_id=exp_id+1)
-                        
-                        # execution path for embedding based random forest
-                        elif self.union_mode:
-                            self.model, self.aux_model = fit_rf(
-                                model=self.model, cfg=self.cfg,
-                                criterion=self.criterion,
-                                val_loader=self.val_loader,
-                                dataset_path=self.dataset_path,
-                                result_path=self.result_path,
-                                y_val_path=self.y_val_path,
-                                report_path=self.report_path,
-                                split=self.split, fold = split_key+1,
-                                seed=self.seed, device=self.device)
-                            predict_rf(
-                                model=self.model, aux_model=self.aux_model,
-                                test_loader=self.test_loader,
-                                test_original_lengths=self.test_lengths,
-                                y_scaler=self.max_train_val,
-                                normalization=self.normalization,
-                                report_path=self.report_path,
-                                result_path=self.result_path,
-                                split=self.split, fold = split_key+1,
-                                seed=self.seed, device=self.device) 
-                        
-                        # execution path for post-hoc Laplace approximation
-                        elif self.laplace:
-                            post_hoc_laplace(
-                                model=self.model, cfg=self.cfg, 
-                                X_train_path=self.X_train_path, 
-                                X_val_path=self.X_val_path,
-                                X_test_path=self.X_test_path,
-                                y_train_path=self.y_train_path,
-                                y_val_path=self.y_val_path, 
-                                y_test_path=self.y_test_path,
-                                test_original_lengths=self.test_lengths,
-                                y_scaler=self.max_train_val,
-                                normalization=self.normalization,
-                                hessian_structure=self.hessian_structure,
-                                empirical_bayes=self.empirical_bayes,
-                                last_layer_name=self.last_layer_name,
-                                sigma_noise=self.sigma_noise, 
-                                stat_noise=self.stat_noise,
-                                prior_precision=self.prior_precision,
-                                temperature=self.temperature,
-                                n_samples=self.n_samples,
-                                la_epochs=self.la_epochs, la_lr=self.la_lr,
-                                report_path=self.report_path,
-                                result_path=self.result_path,
-                                split=self.split, fold = split_key+1,
-                                seed=self.seed, device=self.device)  
+                             self.test_lengths) = self.load_data()  
+                        # for train and test:
+                            # data_split='cv'
+                            # fold = split_key+1
+                        # TODO: implement train and test cv split
                             
             if self.uq_method == 'deterministic':
                 self.experiments=self.expanded_experiments
@@ -557,6 +423,18 @@ class DALSTM_train_evaluate ():
                         report_path=report_path, seed=self.seed, 
                         device=self.device, normalization=self.normalization,
                         exp_id=self.min_exp_id+1) 
+                elif self.uq_method == 'SQR':
+                    final_result = test_model(
+                        model=self.model, uq_method=self.uq_method, 
+                        num_mc_samples=self.num_mcmc, 
+                        test_loader=self.test_loader,
+                        test_original_lengths=self.test_lengths,
+                        y_scaler=self.max_train_val,
+                        processed_data_path= self.result_path,
+                        report_path=report_path, seed=self.seed, 
+                        device=self.device, normalization=self.normalization,
+                        sqr_q=self.sqr_q, sqr_factor=self.sqr_factor,
+                        exp_id=self.min_exp_id+1)                   
                 elif self.uq_method == 'deterministic':
                     final_result =  test_model(
                         model=self.model, uq_method=self.uq_method, 
@@ -688,6 +566,9 @@ class DALSTM_train_evaluate ():
         elif self.uq_method == 'deterministic':
             self.deterministic = experiment.get('deterministic')
             self.early_stop = experiment.get('early_stop')
+        elif self.uq_method == 'SQR':
+            self.sqr_q = experiment.get('tau')
+            self.max_epochs = experiment.get('max_epochs')
         res_model = train_model(
             model=self.model, uq_method=self.uq_method,
             train_loader=self.train_loader, val_loader=self.val_loader,
@@ -710,8 +591,9 @@ class DALSTM_train_evaluate ():
                 y_scaler=self.max_train_val,
                 processed_data_path= self.result_path,
                 report_path=self.report_path, val_mode=True,
-                seed=self.seed, device=self.device,
-                normalization=self.normalization, exp_id=exp_id+1)
+                seed=self.seed, device=self.device, sqr_q=self.sqr_q,
+                sqr_factor=self.sqr_factor, normalization=self.normalization,
+                exp_id=exp_id+1)                                  
             self.all_val_results.append(res_df)
         else:
             ratio_exp = self.cfg.get('std_mean_ratio')

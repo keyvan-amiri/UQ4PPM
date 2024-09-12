@@ -16,6 +16,16 @@ def train_model(model=None, uq_method=None, train_loader=None, val_loader=None,
                 data_split='holdout', fold=None, cfg=None, seed=None,
                 model_idx=None, ensemble_mode=False, sqr_q='all',
                 sqr_factor=None, exp_id=None):
+    """
+    This function is used for the following UQ techniques:
+        1) Deterministic point estimate.
+        2) Dropout approximation
+        3) Heteroscedastic regression
+        combinations of 2,3
+        4) Simultaneous Quantile Regression
+        5) Ensembles (Traditional/Bootstrapping)
+        combinations of 5,3
+    """
     
     # get optimizer parameters to be used in retraining with train+val data
     base_lr, eps, weight_decay = get_optimizer_params(optimizer)
