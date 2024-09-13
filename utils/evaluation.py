@@ -617,6 +617,12 @@ def uq_eval(csv_file, prefix, report=False, verbose=False,
                         file.write(f"{key}: {value}\n") 
                 with open(uq_dict_path4, 'wb') as file:
                     pickle.dump(uq_metrics4, file)   
+    if (not calibration_mode and not report):
+        # we are in HPO situation!
+        (uq_metrics['Area Under Sparsification Error curve (AUSE)'],
+         uq_metrics['Area Under Random Gain curve (AURG)']
+         ) = get_sparsification(
+             pred_mean=pred_mean, y_true=y_true, pred_std=pred_std)
     if not calibration_mode:
         return uq_metrics
           
@@ -706,7 +712,6 @@ def correlation_stats (df, prefix, uq_dict, calibration_mode=False,
             uncertainty_col = 'calibrated_std_rms_cal'
         elif calibration_type == 'ma':
             uncertainty_col = 'calibrated_std_ma_cal'
-
     # Uncertainty vs. MAE
     error_col = 'Absolute_error'
     (corr, p_value, pear_corr, pear_p_value, mi) = get_statistics(
@@ -773,3 +778,40 @@ def calculate_mpiw(df):
     interval_widths = df['confidence_upper'] - df['confidence_lower']
     mpiw = np.mean(interval_widths)
     return mpiw
+
+def get_sparsification(pred_mean=None, y_true=None, pred_std=None):
+    n_samples = len(pred_mean)
+    n_steps = 100
+    step_size = int(n_samples / n_steps)
+    np.random.seed(42)
+    # Compute Oracle curve        
+    mae_per_sample = np.abs(pred_mean - y_true) # MAE for each sample
+    # Sort by MAE descending
+    sorted_indices_by_mae = np.argsort(mae_per_sample)[::-1]  
+    mae_oracle = []
+    for i in range(n_steps):
+        remaining_indices = sorted_indices_by_mae[i * step_size:]
+        mae_oracle.append(compute_mae(y_true[remaining_indices],
+                                              pred_mean[remaining_indices]))
+    # Compute Random curve
+    mae_random = []
+    for i in range(n_steps):
+        remaining_indices = np.random.choice(
+                        n_samples, n_samples - i * step_size, replace=False)
+        mae_random.append(
+                        compute_mae(y_true[remaining_indices],
+                                    pred_mean[remaining_indices]))
+    # Compute UQ curve
+    sorted_indices_by_uncertainty = np.argsort(
+                    pred_std)[::-1]  # Sort by uncertainty descending
+    mae_uq = []
+    for i in range(n_steps):
+        remaining_indices = sorted_indices_by_uncertainty[i * step_size:]
+        mae_uq.append(compute_mae(y_true[remaining_indices],
+                                              pred_mean[remaining_indices]))
+    # Plot the curves
+    x = np.linspace(0, 1, n_steps)
+    # Compute areas for AUSE and AURG
+    ause = np.trapz(mae_uq, x) - np.trapz(mae_oracle, x)
+    aurg = np.trapz(mae_random, x) - np.trapz(mae_uq, x)
+    return (ause, aurg)

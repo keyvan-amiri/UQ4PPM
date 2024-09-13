@@ -336,7 +336,8 @@ class DALSTM_train_evaluate ():
             extracted_keys = first_experiment.keys()
             for key in extracted_keys:
                 hpo_results[key] = []
-            additional_keys = ['mae', 'rmse', 'nll', 'crps', 'sharp']
+            additional_keys = ['mae', 'rmse', 'nll', 'crps', 'sharp', 'ause',
+                               'aurg', 'miscal_area', 'check', 'interval']
             for key in additional_keys:
                 hpo_results[key] = []
             for exp_id, experiment in enumerate(self.experiments):
@@ -356,6 +357,17 @@ class DALSTM_train_evaluate ():
                     uq_metrics.get('scoring_rule').get('crps'))
                 hpo_results['sharp'].append(
                     uq_metrics.get('sharpness').get('sharp'))
+                hpo_results['ause'].append(uq_metrics.get(
+                    'Area Under Sparsification Error curve (AUSE)'))
+                hpo_results['aurg'].append(uq_metrics.get(
+                    'Area Under Random Gain curve (AURG)'))
+                hpo_results['miscal_area'].append(
+                    uq_metrics.get('avg_calibration').get('miscal_area'))                
+                hpo_results['check'].append(
+                    uq_metrics.get('scoring_rule').get('check'))
+                hpo_results['interval'].append(
+                    uq_metrics.get('scoring_rule').get('interval'))
+
             hpo_df = pd.DataFrame(hpo_results)
             csv_filename = os.path.join(
                 self.result_path,

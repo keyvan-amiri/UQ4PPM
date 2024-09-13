@@ -57,9 +57,9 @@ class UQ_Comparison ():
             more_than=self.more_than_lst)
         for column in self.uq_df.columns:
             if not column in ['aurg', 'picp']:
-                self.plot_metrics(column)
+                self.plot_metrics(self.uq_df, column)
             elif column=='picp':
-                self.plot_picp()
+                self.plot_picp(self.uq_df)
             elif column=='aurg':
                 self.plot_aurg()
         
@@ -82,9 +82,9 @@ class UQ_Comparison ():
             more_than=self.more_than_lst)
         for column in self.uq_df_cal.columns:
             if not column in ['aurg', 'mae', 'rmse', 'picp']:
-                self.plot_metrics(column, calibration=True)
+                self.plot_metrics(self.uq_df_cal, column, calibration=True)
             elif column=='picp':
-                self.plot_picp(calibration=True)
+                self.plot_picp(self.uq_df_cal, calibration=True)
         
         # visualize calibration effect
         self.plot_metric_comparison()
@@ -130,6 +130,7 @@ class UQ_Comparison ():
         'en_b_mve': 'En (B) + H',
         'en_t': 'En (T)',
         'DA_A': 'DA + H',
+        'CDA_A': 'CDA + H',
         'en_t_mve': 'En (T) + H',
         'en_b': 'En (B)',
         'mve': 'H'
@@ -170,20 +171,17 @@ class UQ_Comparison ():
                     crps_lst, mpiw_lst, picp_lst, qice_lst,
                     below_lst, more_than_lst)
             
-            
-
-    
     def lists_to_dataframe(self, techniques, **metrics):
         df = pd.DataFrame(metrics, index=techniques)
         df.index.name = 'technique'  # Set index name for clarity
         df.to_csv(self.uq_df_path)
         return df
     
-    def plot_metrics(self, metric, smaller_is_better=True, calibration=False):
+    def plot_metrics(self, df, metric, smaller_is_better=True, calibration=False):
         str_metric = str(metric).upper()
-        df_filtered = self.uq_df[self.uq_df.index != 'deterministic']
+        df_filtered = df[df.index != 'deterministic']
         # Get the value for the 'deterministic' technique
-        deterministic_val = self.uq_df.loc['deterministic', metric]
+        deterministic_val = df.loc['deterministic', metric]
     
         # Define colors based on whether smaller or larger values are better
         if smaller_is_better:
@@ -222,19 +220,19 @@ class UQ_Comparison ():
         plt.clf()
         plt.close()
         
-    def plot_picp(self, calibration=False):
+    def plot_picp(self, df, calibration=False):
         # Ideal value
         ideal_value = 0.95
         # Calculate distances from the ideal value
-        self.uq_df['distance'] = np.abs(self.uq_df['picp'] - ideal_value)    
+        df['distance'] = np.abs(df['picp'] - ideal_value)    
         # Normalize distances to [0, 1]
-        norm = mcolors.Normalize(vmin=self.uq_df['distance'].min(), 
-                                 vmax=self.uq_df['distance'].max())
+        norm = mcolors.Normalize(vmin=df['distance'].min(), 
+                                 vmax=df['distance'].max())
         cmap = plt.get_cmap('RdYlGn_r')  # Red to Green colormap, reversed
         # Plot the bar chart for picp
         plt.figure(figsize=(10, 6))
-        bars = plt.bar(self.uq_df.index, self.uq_df['picp'], 
-                       color=cmap(norm(self.uq_df['distance'])))
+        bars = plt.bar(df.index, df['picp'], 
+                       color=cmap(norm(df['distance'])))
     
         # Add the horizontal dashed line for ideal value
         plt.axhline(ideal_value, color='k', linestyle='--', 
@@ -289,7 +287,7 @@ class UQ_Comparison ():
         metrics = self.uq_df.columns  # Get the list of metrics (columns)
         techniques = self.uq_df.index  # Get the list of techniques (index)
         for metric in metrics:
-            if not metric in ['aurg', 'mae', 'rmse', 'ause']:
+            if not metric in ['aurg', 'mae', 'rmse', 'ause', 'distance']:
                 if metric not in self.uq_df_cal.columns:
                     print(f"Warning: '{metric}' not found in uq_df_cal. Skipping...")
                     continue
