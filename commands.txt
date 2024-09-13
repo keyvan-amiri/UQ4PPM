@@ -14,36 +14,22 @@ python comparison.py --dataset BPIC20TPD --model dalstm
 train and test:
 bash bash_scripts/01Experiment-1.sh
 bash bash_scripts/02Experiment-2.sh
+bash bash_scripts/03Experiment-3.sh
+
 bash bash_scripts/Experiment-3.sh
 
 
 
 bash bash_scripts/RF.sh
 
-train and test:
-bash bash_scripts/CARD_train_test.sh
-bash bash_scripts/dropout_mve_train_test.sh
-bash bash_scripts/ensemble_train_test.sh
-bash bash_scripts/ensemble_GPU1.sh   16 uq4ppm
-bash bash_scripts/ensemble_GPU2.sh   16 uq4ppm2
-bash bash_scripts/rf_train_test.sh
-bash bash_scripts/la_train_test.sh
-bash bash_scripts/SQR_train_test.sh
-bash bash_scripts/LAH_train_test.sh
+
 
 evaluation:
 bash bash_scripts/evaluation.sh
-bash bash_scripts/helpdesk_evaluation.sh
 
 recalibration:
 bash bash_scripts/recalibration_HelpDesk.sh
-bash bash_scripts/recalibration_Sepsis.sh
-bash bash_scripts/recalibration_BPIC20I.sh
-bash bash_scripts/recalibration_BPIC13I.sh
-bash bash_scripts/recalibration_BPIC12.sh
-bash bash_scripts/recalibration_RF_HelpDesk.sh
-bash bash_scripts/recalibration_LA_HelpDesk.sh
-bash bash_scripts/recalibration_SQR_HelpDesk.sh
+
 
 
 initial work on PGTNet:
