@@ -11,8 +11,8 @@ from utils.utils import get_mean_std_truth, add_suffix_to_csv
 
 def calibrated_regression(calibration_df_path=None, test_df_path=None,
                           uq_method=None, confidence_level=0.95,
-                          report_path=None,
-                          recalibration_path=None):
+                          report_path=None, recalibration_path=None,
+                          report=True):
     """
     recalibration is done based on two approaches:
     1) Isotonic regression remaps quantiles of the original distribution. The
@@ -65,6 +65,7 @@ def calibrated_regression(calibration_df_path=None, test_df_path=None,
     recalibrated_test_path = os.path.join(recalibration_path, recal_name)
     test_df.to_csv(recalibrated_test_path, index=False)
     calibration_time = (datetime.now()-start).total_seconds()
-    with open(report_path, 'a') as file:
-        file.write('Calibration took  {} seconds. \n'.format(calibration_time))        
+    if report:
+        with open(report_path, 'a') as file:
+            file.write('Calibration took  {} seconds. \n'.format(calibration_time))        
     return (recalibrated_test_path, recal_model)

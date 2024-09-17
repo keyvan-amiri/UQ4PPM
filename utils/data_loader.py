@@ -4,25 +4,23 @@ import pickle
 import torch
 from torch.utils.data import TensorDataset
 
+# A calss for customized exception related to normalization error.
 class NormalizationError(Exception):
     def __init__(self, message):
         super().__init__(message)
-   
+
+    
 def get_dataset(args, config, test_set=False, validation=False):
     data_object = None
     split_method = 'cv' if args.n_splits > 1 else 'holdout'
     if config.model.type == 'dalstm':
         data_object = DALSTM_Dataset(config, args.split, validation, 
                                      split_method) 
-    #TODO implement separate objects for each model architecture
-    elif config.model.type == 'cnn':
-        pass
-    elif config.model.type == 'pt':
-        pass
+    #TODO implement separate objects for PGTNet architecture
     elif config.model.type == 'pgtnet':
-        pass
+        print(f'The backebone model {args.model} is not yet supported') 
     else: 
-        print(f'The backebone model {args.model} is not supported')     
+        print(f'The backebone model {args.model} is not recognized')     
     data_type = 'test' if test_set else 'train'
     logging.info(data_object.summary_dataset(split=data_type))
     data = data_object.return_dataset(split=data_type)   
@@ -30,6 +28,7 @@ def get_dataset(args, config, test_set=False, validation=False):
     return data_object, data
 
 # A class to create datasets to be used by DALSTM model
+# In general a separate class is required for each architecture. 
 class DALSTM_Dataset(object):
     def __init__(self, config, split, validation=False,
                  split_method='holdout'):
@@ -53,12 +52,12 @@ class DALSTM_Dataset(object):
              self.mean_train_val_path, self.median_train_val_path
              ) = self.cv_paths(split_key=split)
         # Load data
-        X_train = torch.load(self.X_train_path)
-        X_val = torch.load(self.X_val_path)
-        X_test = torch.load(self.X_test_path)
-        y_train = torch.load(self.y_train_path)
-        y_val = torch.load(self.y_val_path)
-        y_test = torch.load(self.y_test_path) 
+        X_train = torch.load(self.X_train_path, weights_only=True)
+        X_val = torch.load(self.X_val_path, weights_only=True)
+        X_test = torch.load(self.X_test_path, weights_only=True)
+        y_train = torch.load(self.y_train_path, weights_only=True)
+        y_val = torch.load(self.y_val_path, weights_only=True)
+        y_test = torch.load(self.y_test_path, weights_only=True) 
         # define training and test set bsed on arguments
         if validation:
             # train set = train set, while test set = validation set 
@@ -92,11 +91,9 @@ class DALSTM_Dataset(object):
                 raise NormalizationError(
                     'Repeat pre-processing step with target normalization')
             else:
-                """
-                Although normalization is not applied we still need
-                maximum, mean, and median of remaining time (in case we want to
-                use a noise_prior instead of pre-trained deterministic model.
-                """
+                # Although normalization is not applied we still need maximum,
+                # mean, and median of remaining time (in case we want to use 
+                # a noise_prior instead of pre-trained deterministic model.
                 self.max_target_value = torch.max(
                     torch.cat((y_train, y_val), 0)).numpy()
                 self.mean_target_value = torch.mean(

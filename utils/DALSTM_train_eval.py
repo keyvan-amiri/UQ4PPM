@@ -16,7 +16,7 @@ from utils.evaluation import uq_eval
 from utils.calibration import calibrated_regression
 
 
-# A generic class for training and evaluation of DALSTM model
+# A generic class for training and evaluation UQ techniques on DALSTM model
 class DALSTM_train_evaluate ():
     def __init__ (self, cfg=None, dalstm_dir=None): 
         """

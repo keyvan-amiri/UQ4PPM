@@ -40,9 +40,11 @@ plt.style.use('ggplot')
 
 
 class Diffusion(object):
-    def __init__(self, args, config, device=None):
+    def __init__(self, args, config, key=None, device=None):
         self.args = args
         self.config = config
+        # set the key for specific combination of hyperparameters
+        self.key=key
         if device is None:
             device = (
                 torch.device("cuda")
@@ -369,14 +371,8 @@ class Diffusion(object):
         gen_y = y_tile_seq[idx].reshape(current_batch_size,
                                         config.testing.n_z_samples,
                                         1).cpu().numpy()
-        """
-        directly modify the dict value by concat np.array instead of append
-        np.array gen_y to list reduces a huge amount of memory consumption.
-        However, for recalibration purpose we may still encounter memory
-        problems. To avoid such problems we change the data type for special
-        datasets.
-        """
-        #if (self.args.recalibration  and (self.args.dataset == 'BPIC20I')):            
+        # directly modify the dict value by concat np.array instead of append
+        # np.array gen_y to list reduces a huge amount of memory consumption.
 
         if len(gen_y_by_batch_list[current_t]) == 0:
             gen_y_by_batch_list[current_t] = gen_y
@@ -574,6 +570,9 @@ class Diffusion(object):
         if config.diffusion.noise_architecture == 'LSTM':
             model = ConditionalGuidedModelLSTM(config, args)
         else:
+            # FNN architecture is used. In general, perform better than LSTM
+            # in experiments. Therefore, for any other architecure like PGTNet,
+            # there might be no need for separate noise estimation design.
             model = ConditionalGuidedModelFNN(config, args)
         model = model.to(self.device)
                
@@ -752,7 +751,7 @@ class Diffusion(object):
                     ).to(self.device)
                     t = torch.cat([t, self.num_timesteps - 1 - t], dim=0)[:n]
                     
-                    #TODO: add necessary code for PGTNET, PT, ...
+                    #TODO: add necessary code for PGTNET, 
                     # it depends on how x,y are saved in data batches!
                     if config.model.type == 'dalstm':
                         x_batch = xy_0[0].to(self.device)
@@ -831,9 +830,9 @@ class Diffusion(object):
                     # optimize non-linear guidance model
                     if config.diffusion.nonlinear_guidance.joint_train:
                         self.cond_pred_model.train()
-                        aux_loss = \
-                            self.nonlinear_guidance_model_train_step(
-                                x_batch, y_batch, aux_optimizer)
+                        aux_loss = (self.nonlinear_guidance_model_train_step(
+                            x_batch, y_batch, aux_optimizer))
+
                         if (step % self.config.training.logging_freq == 0 or
                             step == 1):
                             logging.info(f"meanwhile, non-linear guidance model\
@@ -982,8 +981,8 @@ class Diffusion(object):
         args = self.args
         config = self.config
         log_path = os.path.join(self.args.log_path)
-        if args.recalibration:
-            # load validation set for inference and then recalibration
+        if args.validation:
+            # load validation set for inference
             dataset_object, dataset = get_dataset(args, config, test_set=True,
                                                   validation=True)
             logging.info('Now: start inference on validation set:')
@@ -1137,19 +1136,12 @@ class Diffusion(object):
                                   config.testing.coverage_t))
         
         # define an empty dictionary to collect instance level information
-        if args.recalibration:
+        instance_results = {'GroundTruth': [], 'Deterministic_Prediction':[],
+                            'Prediction': [], 'Aleatoric_Uncertainty': [],
+                            'Absolute_error': []}  
+        if not args.validation:
             # we don't need prefix length and error for recalibration
-            instance_results = {'GroundTruth': [],
-                                'Prediction': [],
-                                'Aleatoric_Uncertainty': []}
-            
-        else:
-            instance_results = {'GroundTruth': [],
-                                'Deterministic_Prediction':[],
-                                'Prediction': [],
-                                'Aleatoric_Uncertainty': [], 
-                                'Prefix_length':[],
-                                'Absolute_error': []}   
+            instance_results['Prefix_length'] = []
                        
         with torch.no_grad():
             #true_x_by_batch_list = []
@@ -1170,29 +1162,24 @@ class Diffusion(object):
             median_target_value = dataset_object.return_median_target_arrtibute() 
             normalized_median_target_value = median_target_value/max_target_value 
             
-            if  not args.recalibration:
+            if not args.validation:
                 # get all prefix lengths in test set.
-                test_length_list = dataset_object.return_prefix_lengths() 
-                
+                test_length_list = dataset_object.return_prefix_lengths()                 
             # indicator to access relevant prefix lengths in each batch
             index_indicator = 0 
 
             for step, xy_batch in enumerate(test_loader):
-                # TODO: chceck the following works for PGTNet, PT, ...
+                # TODO: Apply necessary changes for other architectures
                 current_batch_size = xy_batch[0].shape[0]
                 x_batch = xy_batch[0].to(self.device)
                 y_batch = xy_batch[1].to(self.device)
-                """
-                compute y_0_hat as the initial Prediction to 
-                guide the reverse diffusion process
-                """
+                # compute y_0_hat as the initial Prediction to guide the 
+                # reverse diffusion process
                 y_0_hat_batch = self.compute_guiding_Prediction(x_batch)
                 true_y_by_batch_list.append(y_batch.cpu().numpy()) 
-                """
-                contain y samples through reverse diffusion 
-                -- some pytorch version might not have torch.tile 
-                """
-                # TODO: check whether the followings work for PGTNet, PT, ...
+                # contain y samples through reverse diffusion
+                # some pytorch version might not have torch.tile
+                # TODO: Apply necessary changes for other architectures
                 y_0_tile = (y_batch.repeat(
                     config.testing.n_z_samples, 1, 1).transpose(0, 1)).to(
                         self.device).flatten(0, 1).view(-1)
@@ -1201,10 +1188,8 @@ class Diffusion(object):
                         self.device).flatten(0, 1).view(-1)
                 y_T_mean_tile = y_0_hat_tile
                 
-                """
-                If we want to use a noie prior instead of the guidance of 
-                point estimator (i.e., pre-trained deterministic model)
-                """
+                # If we want to use a noie prior instead of the guidance of 
+                # point estimator (i.e., pre-trained deterministic model)                
                 if config.diffusion.noise_prior:  
                     if config.diffusion.noise_prior_approach == 'zero':
                         # apply 0 instead of f_phi(x) as prior mean
@@ -1222,7 +1207,6 @@ class Diffusion(object):
                             float(normalized_median_target_value)).to(
                                 self.device)                        
                         #y_T_mean_tile = torch.full_like(y_0_hat_tile, normalized_median_target_value).to(self.device)                            
-                #TODO: check memory problem is resolved!
                 x_tile = (x_batch.repeat(
                     config.testing.n_z_samples, 1, 1).transpose(0, 1)).to(
                         self.device).flatten(0, 1).view(
@@ -1241,7 +1225,7 @@ class Diffusion(object):
                 minibatch_sample_start = time.time()
                 # TODO: in the original implementation there was no squeeze=True
                 # but we needed it for DALSTM model. Check whether it is also
-                # applicable to PGTNet, PT, etc.
+                # applicable to other architectures or not.
                 y_tile_seq = p_sample_loop(
                     model, x_tile, y_0_hat_tile,y_T_mean_tile,
                     self.num_timesteps, self.alphas,
@@ -1251,11 +1235,9 @@ class Diffusion(object):
                     "Minibatch {} sampling took {:.4f} seconds.".format(
                         step, (minibatch_sample_end - minibatch_sample_start)))
                 
-                """
-                obtain generated y and compute squared error at:
-                    a) all time steps or 
-                    b) a particular time step
-                """ 
+                # obtain generated y and compute squared error at:
+                    # a) all time steps or 
+                    # b) a particular time step                 
                 # a) all time steps or
                 if config.testing.compute_metric_all_steps:
                     for idx in range(self.num_timesteps + 1):
@@ -1311,10 +1293,8 @@ class Diffusion(object):
                     # get deterministic predictions
                     deterministic_Predictions = y_0_hat_batch_unnormalized.cpu(
                         ).detach().numpy()
-                    if not args.recalibration:
-                        # we don't need deterministic results for calibration
-                        instance_results['Deterministic_Prediction'].extend(
-                            deterministic_Predictions)
+                    instance_results['Deterministic_Prediction'].extend(
+                        deterministic_Predictions)
                     # get probabilistic prediction:
                     # 1) prediction mean
                     mean_Predictions = np.mean(gen_y_unnormalized, axis=1)
@@ -1325,25 +1305,22 @@ class Diffusion(object):
                     std_Predictions = np.squeeze(std_Predictions)
                     instance_results['Aleatoric_Uncertainty'].extend(
                         std_Predictions) 
-                    if not args.recalibration:
-                        # we don't need prefix lengths and errors for recalibration
-                        # get relevant prefix length                    
+                    # get absolute error
+                    absolute_error_values = np.abs(
+                        groundtruth_values - mean_Predictions)
+                    instance_results['Absolute_error'].extend(
+                        absolute_error_values)                     
+                    if not args.validation:              
                         relevant_prefix_length = test_length_list[
-                            index_indicator:int(current_batch_size)+index_indicator]                    
+                            index_indicator:
+                                int(current_batch_size)+index_indicator]                   
                         instance_results['Prefix_length'].extend(
-                            relevant_prefix_length)                    
-                        # get absolute error
-                        absolute_error_values = np.abs(
-                            groundtruth_values - mean_Predictions)
-                        instance_results['Absolute_error'].extend(
-                            absolute_error_values) 
+                            relevant_prefix_length)
                     index_indicator += int(current_batch_size)
                 # b) a particular time step
                 else:
-                    """
-                    store generated y at certain step for MAE/RMSE and 
-                    for QICE computation
-                    """
+                    # Store generated y at certain step for MAE/RMSE and for
+                    # QICE computation                    
                     gen_y = self.store_gen_y_at_step_t(
                         config=config,
                         current_batch_size=current_batch_size, idx=mean_idx,
@@ -1419,26 +1396,31 @@ class Diffusion(object):
             instance_level_df = pd.DataFrame(instance_results)
             # get seed to set csv file name
             only_seed = int(self.args.seed[0])
-            if args.recalibration:
-                # in case of inference on validation set (i.e., recailibration)
-                instance_level_df[
-                    ['Prediction','Aleatoric_Uncertainty','GroundTruth']
-                    ] = instance_level_df[
-                        ['Prediction', 'Aleatoric_Uncertainty', 'GroundTruth']
-                        ].astype(float)
+            # change data type in dataframe
+            instance_level_df[['GroundTruth','Deterministic_Prediction',
+                               'Prediction', 'Aleatoric_Uncertainty',
+                               'Absolute_error']] = instance_level_df[[
+                                   'GroundTruth', 'Deterministic_Prediction',
+                                   'Prediction', 'Aleatoric_Uncertainty',
+                                   'Absolute_error']].astype(float)
+            if not args.validation:
+                instance_level_df[['Prefix_length']] = instance_level_df[
+                    ['Prefix_length']].astype(int)   
+
+            if args.validation:
                 instance_level_df.to_csv(os.path.join(
                     self.args.log_path2, 'instance_level_Predictions.csv'),
                     index=False)
                 # create another copy alongside the results for other methods
                 if self.args.n_splits == 1:           
-                    csv_name = 'CARD_holdout_seed_{}_inference_result_validation_.csv'.format(
-                        only_seed)
+                    csv_name = 'CARD_holdout_seed_{}_{}_inference_result_validation_.csv'.format(
+                        only_seed, self.key)                  
                 else:
-                    csv_name = 'CARD_holdout_fold{}_seed_{}_inference_result_validation_.csv'.format(
-                        self.args.split, only_seed)
+                    csv_name = 'CARD_cv_fold{}_seed_{}_{}_inference_result_validation_.csv'.format(
+                        self.args.split, only_seed, self.key)
                 instance_level_df.to_csv(
-                    os.path.join(self.args.instance_path, 'recalibration',
-                                 csv_name), index=False) 
+                    os.path.join(self.args.instance_path, csv_name), 
+                    index=False)  
                 # clear the memory
                 del true_y_by_batch_list
                 if config.testing.plot_gen:
@@ -1451,28 +1433,19 @@ class Diffusion(object):
                 gc.collect()
                 return None
             else:
-                # in case of inference on test set.
-                instance_level_df[[
-                    'Prediction','Aleatoric_Uncertainty','GroundTruth',
-                    'Deterministic_Prediction', 'Absolute_error']
-                    ] = instance_level_df[[
-                        'Prediction', 'Aleatoric_Uncertainty', 'GroundTruth',
-                        'Deterministic_Prediction', 'Absolute_error']].astype(float)
-                instance_level_df[['Prefix_length']] = instance_level_df[
-                    ['Prefix_length']].astype(int)                   
                 instance_level_df.to_csv(os.path.join(
                     self.args.log_path, 'instance_level_Predictions.csv'),
                     index=False) 
                 # create another copy alongside csv results of other methods
                 if self.args.n_splits == 1:           
-                    csv_name = 'CARD_holdout_seed_{}_inference_result_.csv'.format(
-                        only_seed)
+                    csv_name = 'CARD_holdout_seed_{}_{}_inference_result_.csv'.format(
+                        only_seed, self.key)
                 else:
-                    csv_name = 'CARD_holdout_fold{}_seed_{}_inference_result_.csv'.format(
-                        self.args.split, only_seed)
+                    csv_name = 'CARD_cv_fold{}_seed_{}_{}_inference_result_.csv'.format(
+                        self.args.split, only_seed, self.key)
                 instance_level_df.to_csv(
-                    os.path.join(self.args.instance_path, csv_name), index=False)          
-                  
+                    os.path.join(self.args.instance_path, csv_name), 
+                    index=False)        
 
         ################## compute metrics on test set ##################
         all_true_y = np.concatenate(true_y_by_batch_list, axis=0)

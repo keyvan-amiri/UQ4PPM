@@ -11,12 +11,16 @@ python comparison.py --dataset Sepsis --model dalstm
 python comparison.py --dataset BPIC15_1 --model dalstm
 python comparison.py --dataset BPIC20TPD --model dalstm
 
+python MixGaussian.py --dataset HelpDesk --model dalstm --techniques en_b_mve DA CDA_A RF
+
+
 train and test:
 bash bash_scripts/01Experiment-1.sh
 bash bash_scripts/02Experiment-2.sh
 bash bash_scripts/03Experiment-3.sh
 
 bash bash_scripts/Experiment-3.sh
+bash bash_scripts/Experiment-4.sh
 
 
 

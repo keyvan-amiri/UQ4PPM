@@ -1,18 +1,13 @@
 import os
 import re
 import argparse
-import yaml
-import sys
-import logging
 import random
-import shutil
 import itertools
 import numpy as np
-import torch
-import torch.optim as optim
-import torch.utils.tensorboard as tb
 from scipy.stats import norm, spearmanr, pearsonr
 from sklearn.feature_selection import mutual_info_regression
+import torch
+import torch.optim as optim
 from models.dalstm import DALSTMModel, DALSTMModelMve, dalstm_init_weights
 from models.stochastic_dalstm import StochasticDALSTM
 
@@ -410,157 +405,6 @@ def get_optimizer_params(optimizer):
     eps = param_group.get('eps', None)
     weight_decay = param_group.get('weight_decay', None)
     return base_lr, eps, weight_decay
-
-def dict2namespace(config):
-    namespace = argparse.Namespace()
-    for key, value in config.items():
-        if isinstance(value, dict):
-            new_value = dict2namespace(value)
-        else:
-            new_value = value
-        setattr(namespace, key, new_value)
-    return namespace
-    
-# return original config before any changes within parse_config method.
-def parse_temp_config(task_name=None):
-    task_name = task_name + '.yml'
-    with open(os.path.join('cfg', task_name), "r") as f:
-         temp_config = yaml.safe_load(f)
-         temporary_config = dict2namespace(temp_config)
-    return temporary_config
-
-# update original config file, and return it alongside the logger.
-def parse_config(args=None):    
-    # set log path
-    args.log_path = os.path.join(args.exp, 'logs', args.doc)
-    # set separate log folder for recalibration results, and reports
-    if args.recalibration:
-        args.log_path2 = os.path.join(args.exp, 'recalibration', args.doc)
-        
-    # parse config file
-    with open(os.path.join(args.config), "r") as f:
-        if args.test:
-            config = yaml.unsafe_load(f)
-            new_config = config
-        else:
-            config = yaml.safe_load(f)
-            new_config = dict2namespace(config)
-    tb_path = os.path.join(args.exp, 'tensorboard', args.doc)
-
-    if not args.test:
-        args.im_path = os.path.join(args.exp, new_config.training.image_folder, args.doc)
-        # if noise_prior is not provided by the user the relevant config is set to False.
-        new_config.diffusion.noise_prior = True if args.noise_prior else False
-        new_config.model.cat_y_pred = False if args.no_cat_f_phi else True
-        if not args.resume_training:
-            if not args.timesteps is None:
-                new_config.diffusion.timesteps = args.timesteps
-            if os.path.exists(args.log_path):
-                overwrite = False
-                if args.ni:
-                    overwrite = True
-                else:
-                    response = input(
-                        'Folder {} already exists. Overwrite? (Y/N)'.format(
-                            args.log_path))
-                    if response.upper() == "Y":
-                        overwrite = True
-                if overwrite:
-                    shutil.rmtree(args.log_path)
-                    shutil.rmtree(tb_path)
-                    shutil.rmtree(args.im_path)
-                    os.makedirs(args.log_path)
-                    os.makedirs(args.im_path)
-                    if os.path.exists(tb_path):
-                        shutil.rmtree(tb_path)
-                else:
-                    print('Folder exists. Program halted.')
-                    sys.exit(0)
-            else:
-                os.makedirs(args.log_path)
-                if not os.path.exists(args.im_path):
-                    os.makedirs(args.im_path)
-            #save the updated config the log in result folder
-            with open(os.path.join(args.log_path, 'config.yml'), 'w') as f:
-                yaml.dump(new_config, f, default_flow_style=False)
-
-        new_config.tb_logger = tb.SummaryWriter(log_dir=tb_path)
-        # setup logger
-        level = getattr(logging, args.verbose.upper(), None)
-        if not isinstance(level, int):
-            raise ValueError("level {} not supported".format(args.verbose))
-
-        handler1 = logging.StreamHandler()
-        # saving training info to a .txt file
-        handler2 = logging.FileHandler(os.path.join(args.log_path, "stdout.txt"))
-        formatter = logging.Formatter(
-            "%(levelname)s - %(filename)s - %(asctime)s - %(message)s"
-        )
-        handler1.setFormatter(formatter)
-        handler2.setFormatter(formatter)
-        logger = logging.getLogger()
-        logger.addHandler(handler1)
-        logger.addHandler(handler2)
-        logger.setLevel(level)
-
-    else:
-        if args.recalibration:
-            # set the image path for inference on validation (i.e., recalibration)
-            args.im_path = os.path.join(
-                args.exp, 'recalibration', new_config.testing.image_folder,
-                args.doc)
-        else:
-            # set the image path for inference on test set.
-            args.im_path = os.path.join(
-                args.exp, new_config.testing.image_folder, args.doc)
-        
-        level = getattr(logging, args.verbose.upper(), None)
-        if not isinstance(level, int):
-            raise ValueError("level {} not supported".format(args.verbose))
-
-        handler1 = logging.StreamHandler()
-        # saving test metrics to a .txt file
-        if args.recalibration:
-            txt_path = os.path.join(args.log_path2,'testmetrics.txt')
-            os.makedirs(os.path.dirname(txt_path), exist_ok=True)
-            # set a handler for recalibration
-            open(txt_path, 'w').close()
-            handler2 = logging.FileHandler(txt_path)
-        else:
-            # set a handler for inference on test
-            handler2 = logging.FileHandler(
-                os.path.join(args.log_path, 'testmetrics.txt'))
-        formatter = logging.Formatter(
-            "%(levelname)s - %(filename)s - %(asctime)s - %(message)s"
-        )
-        handler1.setFormatter(formatter)
-        handler2.setFormatter(formatter)
-        logger = logging.getLogger()
-        logger.addHandler(handler1)
-        logger.addHandler(handler2)
-        logger.setLevel(level)
-
-        os.makedirs(args.im_path, exist_ok=True)
-
-    # add device
-    device_name = f'cuda:{args.device}' if torch.cuda.is_available() else 'cpu'
-    device = torch.device(device_name)
-    logging.info("Using device: {}".format(device))
-    new_config.device = device
-
-    # set number of threads
-    if args.thread > 0:
-        torch.set_num_threads(args.thread)
-        print('Using {} threads'.format(args.thread))
-
-    # set random seed
-    if isinstance(args.seed, list):
-        seed = int(args.seed[0])       
-    set_random_seed(seed)
-
-    torch.backends.cudnn.benchmark = True
-
-    return new_config, logger
 
 # optimize disk usage: remove unnecessary data inputs
 # TODO: this method should be changed data_root is removed from configurations!
