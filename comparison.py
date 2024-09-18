@@ -18,8 +18,6 @@ def main():
     root_path = os.getcwd()
     UQ_Comparison(args=args, root_path=root_path)
     
-    
-    # set the folder to analyse different UQ metrics saved there
 
 
 # A generic class for comparing results of different UQ techniques
@@ -73,15 +71,17 @@ class UQ_Comparison ():
          self.qice_lst, self.below_lst,
          self.more_than_lst) = self.extract_metrics(self.uq_dict_lst,
                                                     calibration=True)
-        self.uq_method_lst = self.replace_techniques()
-        self.uq_df_cal = self.lists_to_dataframe(
-            self.uq_method_lst, mae=self.mae_lst, rmse=self.rmse_lst, 
-            mis_cal=self.mis_cal_lst, sharpness=self.sharpness_lst,
-            nll=self.nll_lst, crps=self.crps_lst, mpiw=self.mpiw_lst,
-            picp=self.picp_lst, qice=self.qice_lst, below=self.below_lst, 
-            more_than=self.more_than_lst)
+        self.ause_lst = self.uq_df['ause'].tolist()
+        self.aurg_lst = self.uq_df['aurg'].tolist()
+        self.uq_method_lst = self.replace_techniques()        
+        self.uq_df_cal = self.lists_to_dataframe_calibrated(
+            self.uq_method_lst, self.ause_lst, self.aurg_lst, mae=self.mae_lst,
+            rmse=self.rmse_lst, mis_cal=self.mis_cal_lst, 
+            sharpness=self.sharpness_lst, nll=self.nll_lst, crps=self.crps_lst,
+            mpiw=self.mpiw_lst, picp=self.picp_lst, qice=self.qice_lst,
+            below=self.below_lst, more_than=self.more_than_lst)
         for column in self.uq_df_cal.columns:
-            if not column in ['aurg', 'mae', 'rmse', 'picp']:
+            if not column in ['aurg', 'mae', 'rmse', 'picp', 'ause']:
                 self.plot_metrics(self.uq_df_cal, column, calibration=True)
             elif column=='picp':
                 self.plot_picp(self.uq_df_cal, calibration=True)
@@ -174,8 +174,21 @@ class UQ_Comparison ():
     def lists_to_dataframe(self, techniques, **metrics):
         df = pd.DataFrame(metrics, index=techniques)
         df.index.name = 'technique'  # Set index name for clarity
-        df.to_csv(self.uq_df_path)
-        return df
+        df_sorted = df.sort_index()
+        df_sorted.to_csv(self.uq_df_path)
+        return df_sorted
+    
+    def lists_to_dataframe_calibrated(self, techniques, ause_list, aurg_list, 
+                                      **metrics):
+        df = pd.DataFrame(metrics, index=techniques)
+        df.index.name = 'technique'  # Set index name for clarity
+        df_sorted = df.sort_index()
+        df_sorted['ause'] = ause_list
+        df_sorted['aurg'] = aurg_list        
+        df_sorted.to_csv(self.uq_df_path)
+        return df_sorted
+    
+    
     
     def plot_metrics(self, df, metric, smaller_is_better=True, calibration=False):
         str_metric = str(metric).upper()

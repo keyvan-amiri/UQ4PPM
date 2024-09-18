@@ -187,7 +187,8 @@ def uq_eval(csv_file, prefix, report=False, verbose=False,
                 
             # create earliness analysis plot
             if (prefix=='DA_A' or prefix=='CDA_A' or prefix == 'en_t_mve' or 
-                prefix == 'en_b_mve' or prefix=='deterministic'):
+                prefix == 'en_b_mve' or prefix=='deterministic' or 
+                prefix=='GMM'):
                 uncertainty_col = 'Total_Uncertainty'
             elif (prefix=='CARD' or prefix=='mve' or prefix=='SQR'):
                 uncertainty_col = 'Aleatoric_Uncertainty'
@@ -288,7 +289,7 @@ def uq_eval(csv_file, prefix, report=False, verbose=False,
             sorted_errors = sorted_df['Absolute_error'].values
             if (prefix=='DA_A' or prefix=='CDA_A' or 
                 prefix == 'en_t_mve' or prefix == 'en_b_mve' or
-                prefix=='deterministic'):
+                prefix=='deterministic' or prefix=='GMM'):
                 sorted_pred_std = sorted_df['Total_Uncertainty'].values 
             elif (prefix=='CARD' or prefix=='mve' or prefix=='SQR'):
                 sorted_pred_std = sorted_df['Aleatoric_Uncertainty'].values
@@ -327,7 +328,7 @@ def uq_eval(csv_file, prefix, report=False, verbose=False,
             sorted_lengths = sorted_df['Prefix_length'].values
             if (prefix=='DA_A' or prefix=='CDA_A' or 
                 prefix == 'en_t_mve' or prefix == 'en_b_mve' or 
-                prefix=='deterministic'):
+                prefix=='deterministic' or prefix=='GMM'):
                 sorted_pred_std = sorted_df['Total_Uncertainty'].values 
             elif (prefix=='CARD' or prefix=='mve' or prefix=='SQR'):
                 sorted_pred_std = sorted_df['Aleatoric_Uncertainty'].values
@@ -366,7 +367,7 @@ def uq_eval(csv_file, prefix, report=False, verbose=False,
             sorted_rem_time = sorted_df['GroundTruth'].values
             if (prefix=='DA_A' or prefix=='CDA_A' or 
                 prefix == 'en_t_mve' or prefix == 'en_b_mve' or 
-                prefix=='deterministic'):
+                prefix=='deterministic' or prefix=='GMM'):
                 sorted_pred_std = sorted_df['Total_Uncertainty'].values 
             elif (prefix=='CARD' or prefix=='mve' or prefix=='SQR'):
                 sorted_pred_std = sorted_df['Aleatoric_Uncertainty'].values
@@ -695,7 +696,7 @@ def correlation_stats (df, prefix, uq_dict, calibration_mode=False,
                        calibration_type=None):
     if not calibration_mode:
         if (prefix=='DA_A' or prefix=='CDA_A' or prefix=='en_b_mve' or
-            prefix=='en_t_mve' or prefix=='deterministic'):
+            prefix=='en_t_mve' or prefix=='deterministic' or prefix=='GMM'):
             uncertainty_col = 'Total_Uncertainty'
         elif (prefix=='DA' or prefix=='CDA' or prefix=='en_t' or 
               prefix=='en_b' or prefix=='RF' or prefix=='LA'):
