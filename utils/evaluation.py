@@ -16,7 +16,8 @@ from utils.utils import get_mean_std_truth, uq_label_plot, get_statistics
 
 # A method to conduct evaluation on prediction dataframe
 def uq_eval(csv_file, prefix, report=False, verbose=False,
-            calibration_mode=False, calibration_type=None, recal_model=None):
+            calibration_mode=False, calibration_type=None, recal_model=None,
+            mixture_mode=False, mixture_info=None):
     """    
     Parameters
     ----------
@@ -591,6 +592,8 @@ def uq_eval(csv_file, prefix, report=False, verbose=False,
                 # Iterate over the dictionary items and write them to the file
                 for key, value in uq_metrics.items():
                     file.write(f"{key}: {value}\n") 
+                if mixture_mode:
+                    file.write(f"Best mixture combination: {mixture_info}\n")
             with open(uq_dict_path, 'wb') as file:
                 pickle.dump(uq_metrics, file)         
         else:
@@ -598,24 +601,32 @@ def uq_eval(csv_file, prefix, report=False, verbose=False,
                 with open(report_path1, 'w') as file:
                     for key, value in uq_metrics1.items():
                         file.write(f"{key}: {value}\n")
+                    if mixture_mode:
+                        file.write(f"Best mixture combination: {mixture_info}\n")
                 with open(uq_dict_path1, 'wb') as file:
                     pickle.dump(uq_metrics1, file)   
             if (calibration_type == 'rms' or calibration_type == 'all'):
                 with open(report_path2, 'w') as file:
                     for key, value in uq_metrics2.items():
                         file.write(f"{key}: {value}\n")
+                    if mixture_mode:
+                        file.write(f"Best mixture combination: {mixture_info}\n")
                 with open(uq_dict_path2, 'wb') as file:
                     pickle.dump(uq_metrics2, file)   
             if (calibration_type == 'ma' or calibration_type == 'all'):
                 with open(report_path3, 'w') as file:
                     for key, value in uq_metrics3.items():
                         file.write(f"{key}: {value}\n")
+                    if mixture_mode:
+                        file.write(f"Best mixture combination: {mixture_info}\n")
                 with open(uq_dict_path3, 'wb') as file:
                     pickle.dump(uq_metrics3, file)   
             if (calibration_type == 'isotonic' or calibration_type == 'all'):
                 with open(report_path4, 'w') as file:
                     for key, value in uq_metrics4.items():
                         file.write(f"{key}: {value}\n") 
+                    if mixture_mode:
+                        file.write(f"Best mixture combination: {mixture_info}\n")
                 with open(uq_dict_path4, 'wb') as file:
                     pickle.dump(uq_metrics4, file)   
     if (not calibration_mode and not report):

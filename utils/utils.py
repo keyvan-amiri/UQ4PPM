@@ -533,7 +533,7 @@ def uq_label_plot (uq_method=None):
     elif uq_method == 'deterministic':
         uq_label = 'deterministic'
     elif uq_method == 'GMM':
-        uq_label = 'GMM'
+        uq_label = 'GMM-uniform'
     elif uq_method == 'GMMD':
         uq_label = 'GMM-dynamic'
     return uq_label

@@ -73,16 +73,22 @@ def mixture_inference(args, best_combination, techniques, test_df_lst,
     if validation:
         mixture_df.to_csv(csv_val_path, index=False)
     else:
+        if args.style == 'uniform':
+            gmm_method = 'GMM'
+        else:
+            gmm_method = 'GMMD'
         mixture_df.to_csv(csv_test_path, index=False)
-        _ = uq_eval(csv_test_path, 'GMM', report=True, verbose=True)  
+        _ = uq_eval(csv_test_path, gmm_method, report=True, verbose=True,
+                    mixture_mode=True, mixture_info=best_combination)  
         recalibration_path = os.path.join(args.result_path, 'recalibration')
         calibrated_result, recal_model = calibrated_regression(
             calibration_df_path=csv_val_path, test_df_path=csv_test_path, 
-            uq_method='GMM', confidence_level=0.95,
+            uq_method=gmm_method, confidence_level=0.95,
             recalibration_path=recalibration_path, report=False)  
-        uq_eval(calibrated_result, 'GMM', report=True, verbose=True,
+        uq_eval(calibrated_result, gmm_method, report=True, verbose=True,
                 calibration_mode=True, calibration_type=args.calibration_type,
-                recal_model=recal_model)
+                recal_model=recal_model, mixture_mode=True, 
+                mixture_info=best_combination)
 
 
 def get_best_combination(args, experiments, techniques, df_lst):    
@@ -127,48 +133,57 @@ def dynamic_mixture(args, experiment, techniques, df_lst):
         pred_mean_list.append(torch.tensor(pred_mean))
         pred_std_list.append(torch.tensor(pred_std))
     # stack the result for all experiments
-    pred_mean_tensor = torch.stack(pred_mean_list, dim=1)
+    pred_mean_list = [t.to(torch.float64).requires_grad_() for t in pred_mean_list]
+    pred_std_list = [t.to(torch.float64).requires_grad_() for t in pred_std_list]
+    pred_mean_tensor = torch.stack(pred_mean_list, dim=1)    
     pred_std_tensor = torch.stack(pred_std_list, dim=1)
-    y_true_tensor=torch.tensor(y_true)
+    y_true_tensor=torch.tensor(y_true, requires_grad=True)
     #print(pred_mean_tensor.size())
     num_tech = len(experiment)
+    weights = torch.randn((num_tech,), dtype=torch.double, requires_grad=True)
+    """
     # initial uniform weights for starting point
     uniform_weight = 1 / num_tech
     weights = torch.full((num_tech,), uniform_weight, dtype=torch.double, 
                          requires_grad=True)
+    """
     #print(weights.size())
     gmm_loss_fn = GMM_Loss()
     hyper_optimizer = torch.optim.Adam([weights], lr=args.gmm_lr)
     for epoch in range(args.gmm_epochs):
         hyper_optimizer.zero_grad()
-        # Ensure the weights are normalized (sum to 1)
-        weights = weights / weights.sum()
+        #weights.data /= weights.data.sum()
         # get the prediction means for the mixture of Gaussians
-        mixture_mean = torch.matmul(pred_mean_tensor, weights)
+        mixture_mean = torch.matmul(pred_mean_tensor, weights)/(weights.sum())
         mixture_mean_expanded = mixture_mean.unsqueeze(1)  # (num_samples, 1)
         mean_diff_squared = (pred_mean_tensor - mixture_mean_expanded) ** 2  
         std_squared = pred_std_tensor ** 2 
-        mixture_var = torch.matmul(std_squared + mean_diff_squared, weights)
+        mixture_var = torch.matmul(std_squared + mean_diff_squared, weights)/(weights.sum())
         mixture_std = torch.sqrt(mixture_var)
         #print(mixture_mean.size())
         #print(mixture_std.size())
         loss = gmm_loss_fn(mixture_mean, mixture_std, y_true_tensor, args.alpha)
         loss.backward()
         hyper_optimizer.step()
-
-    weights = weights / weights.sum()
-    mixture_mean = torch.matmul(pred_mean_tensor, weights)
-    mixture_mean_expanded = mixture_mean.unsqueeze(1)  # (num_samples, 1)
-    mean_diff_squared = (pred_mean_tensor - mixture_mean_expanded) ** 2  
-    std_squared = pred_std_tensor ** 2 
-    mixture_var = torch.matmul(std_squared + mean_diff_squared, weights)
-    mixture_std = torch.sqrt(mixture_var)
-    final_loss = gmm_loss_fn(mixture_mean, mixture_std, y_true_tensor, args.alpha)
+    
+    with torch.no_grad():   
+        #weights = weights / weights.sum()
+        weights = torch.softmax(weights, dim=0)
+        mixture_mean = torch.matmul(pred_mean_tensor, weights)
+        mixture_mean_expanded = mixture_mean.unsqueeze(1)  # (num_samples, 1)
+        mean_diff_squared = (pred_mean_tensor - mixture_mean_expanded) ** 2  
+        std_squared = pred_std_tensor ** 2 
+        mixture_var = torch.matmul(std_squared + mean_diff_squared, weights)
+        mixture_std = torch.sqrt(mixture_var)
+        final_loss = gmm_loss_fn(mixture_mean, mixture_std, y_true_tensor,
+                                 args.alpha)
+    
     weights = weights.cpu().detach().numpy()
     weight_dict = {}
     for i, index in enumerate(experiment):
         technique = techniques[index]
         weight_dict[technique] = weights[i]
+    
     
     return final_loss, weight_dict
    
