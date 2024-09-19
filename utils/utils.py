@@ -490,7 +490,7 @@ def get_mean_std_truth (df=None, uq_method=None):
     y_true = df['GroundTruth'].values
     if (uq_method=='DA_A' or uq_method=='CDA_A' or
         uq_method == 'en_t_mve' or uq_method == 'en_b_mve' or
-        uq_method=='deterministic' or uq_method=='GMM'):
+        uq_method=='deterministic' or uq_method=='GMM' or uq_method=='GMMD'):
         pred_std = df['Total_Uncertainty'].values 
     elif (uq_method=='CARD' or uq_method=='mve' or uq_method=='SQR'):
         pred_std = df['Aleatoric_Uncertainty'].values
@@ -534,6 +534,8 @@ def uq_label_plot (uq_method=None):
         uq_label = 'deterministic'
     elif uq_method == 'GMM':
         uq_label = 'GMM'
+    elif uq_method == 'GMMD':
+        uq_label = 'GMM-dynamic'
     return uq_label
 
 def get_statistics(df=None, error_col=None, uncertainty_col=None):
@@ -550,28 +552,3 @@ def adjust_model_name(all_checkpoints=None):
     modified_filename = re.sub(r'_exp_\d+', '', filename)
     modified_path = os.path.join(dir_name, modified_filename)
     os.rename(file_path, modified_path)
-
-def get_val_dataframes(args, result_path):
-    columns_to_keep = ['GroundTruth', 'Prediction', 'std']
-    val_df_lst = []
-    for technique in args.techniques:
-        pattern = re.compile(rf'{re.escape(technique)}_{re.escape(args.split)}_seed_{re.escape(str(args.seed))}_.*\.csv') 
-        matching_files = [f for f in os.listdir(result_path) if pattern.match(f)]
-        for file in matching_files:
-            if file.endswith('inference_result_validation_.csv'):
-                file_path = os.path.join(result_path, file)
-                df = pd.read_csv(file_path) 
-                if (technique=='DA_A' or technique=='CDA_A' or 
-                    technique == 'en_t_mve' or technique == 'en_b_mve' or 
-                    technique=='deterministic'):
-                    df = df.rename(columns={'Total_Uncertainty': 'std'})
-                elif (technique=='CARD' or technique=='mve' or 
-                      technique=='SQR'):
-                    df = df.rename(columns={'Aleatoric_Uncertainty': 'std'})
-                elif (technique=='DA' or technique=='CDA' or 
-                      technique == 'en_t' or technique == 'en_b' or 
-                      technique == 'RF' or technique == 'LA'):
-                    df = df.rename(columns={'Epistemic_Uncertainty': 'std'})
-                df = df[columns_to_keep]                
-                val_df_lst.append(df)        
-    return val_df_lst
