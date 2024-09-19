@@ -85,7 +85,7 @@ def main():
     parser.add_argument('--dataset', default='HelpDesk',
                         help='Dataset used by model')    
     # Argument to select backbone architecture.
-    parser.add_argument('--model', default='pgtnet',
+    parser.add_argument('--model', default='dalstm',
                         help='Type of the predictive model')
     # select the uncertainty quantification approach
     parser.add_argument('--UQ', default='deterministic',

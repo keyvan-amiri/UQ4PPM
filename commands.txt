@@ -13,7 +13,7 @@ python comparison.py --dataset BPIC20TPD --model dalstm
 
 python MixGaussian.py --cfg HelpDesk_GMM.yaml
 python MixGaussian.py --cfg BPIC20TPD_GMM.yaml 
-
+python MixGaussian.py --cfg BPIC20TPD_GMM.yaml --style dynamic 
 
 train and test:
 bash bash_scripts/01Experiment-1.sh

@@ -4,6 +4,7 @@ import yaml
 import re
 import pickle
 import pandas as pd
+import torch
 import itertools
 import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
@@ -17,6 +18,7 @@ from uncertainty_toolbox.metrics_calibration import (miscalibration_area,
 from utils.utils import get_val_dataframes, get_mean_std_truth
 from utils.evaluation import get_sparsification, uq_eval
 from utils.calibration import calibrated_regression
+from loss.GMMLoss import GMM_Loss
     
 
 def mixture_inference(args, best_combination, techniques, test_df_lst,
@@ -90,12 +92,22 @@ def mixture_inference(args, best_combination, techniques, test_df_lst,
                 recal_model=recal_model)
 
 
-def get_best_combination(experiments, techniques, df_lst):
+def get_best_combination(args, experiments, techniques, df_lst):    
     # compute NLL for all combinations of techniques
     exp_dict = {}
     for experiment in experiments:
-        NLL_exp, weight_dict = static_mixture(experiment, techniques, df_lst)
-        exp_dict[tuple(experiment)] = {'score': NLL_exp, 'weights': weight_dict}
+        if args.style == 'uniform':
+            NLL_exp, weight_dict = static_mixture(
+                experiment, techniques, df_lst)
+            exp_dict[tuple(experiment)] = {
+                'score': NLL_exp, 'weights': weight_dict}
+        elif args.style == 'dynamic':
+            Loss_exp, weight_dict = dynamic_mixture(
+                args, experiment, techniques, df_lst)
+            exp_dict[tuple(experiment)] = {
+                'score': Loss_exp, 'weights': weight_dict}
+        else:
+            raise ValueError('Mixture style is not supported.')
     # find the combination with lowes NLL
     lowest_score = float('inf')
     #lowest_score_key = None
@@ -108,11 +120,70 @@ def get_best_combination(experiments, techniques, df_lst):
             lowest_score_value = value
     return lowest_score_value.get('weights')
 
+
+def dynamic_mixture(args, experiment, techniques, df_lst):
+    # collect predictions for all components
+    # Initialize lists to store tensors
+    pred_mean_list = []
+    pred_std_list = []
+    for index in experiment:
+        df = df_lst[index]
+        technique = techniques[index]
+        pred_mean, pred_std, y_true = get_mean_std_truth(
+            df=df, uq_method=technique)
+        pred_mean_list.append(torch.tensor(pred_mean))
+        pred_std_list.append(torch.tensor(pred_std))
+    # stack the result for all experiments
+    pred_mean_tensor = torch.stack(pred_mean_list, dim=1)
+    pred_std_tensor = torch.stack(pred_std_list, dim=1)
+    y_true_tensor=torch.tensor(y_true)
+    #print(pred_mean_tensor.size())
+    num_tech = len(experiment)
+    # initial uniform weights for starting point
+    uniform_weight = 1 / num_tech
+    weights = torch.full((num_tech,), uniform_weight, dtype=torch.double, 
+                         requires_grad=True)
+    #print(weights.size())
+    gmm_loss_fn = GMM_Loss()
+    hyper_optimizer = torch.optim.Adam([weights], lr=args.gmm_lr)
+    for epoch in range(args.gmm_epochs):
+        hyper_optimizer.zero_grad()
+        # Ensure the weights are normalized (sum to 1)
+        weights = weights / weights.sum()
+        # get the prediction means for the mixture of Gaussians
+        mixture_mean = torch.matmul(pred_mean_tensor, weights)
+        mixture_mean_expanded = mixture_mean.unsqueeze(1)  # (num_samples, 1)
+        mean_diff_squared = (pred_mean_tensor - mixture_mean_expanded) ** 2  
+        std_squared = pred_std_tensor ** 2 
+        mixture_var = torch.matmul(std_squared + mean_diff_squared, weights)
+        mixture_std = torch.sqrt(mixture_var)
+        #print(mixture_mean.size())
+        #print(mixture_std.size())
+        loss = gmm_loss_fn(mixture_mean, mixture_std, y_true_tensor, args.alpha)
+        loss.backward()
+        hyper_optimizer.step()
+
+    weights = weights / weights.sum()
+    mixture_mean = torch.matmul(pred_mean_tensor, weights)
+    mixture_mean_expanded = mixture_mean.unsqueeze(1)  # (num_samples, 1)
+    mean_diff_squared = (pred_mean_tensor - mixture_mean_expanded) ** 2  
+    std_squared = pred_std_tensor ** 2 
+    mixture_var = torch.matmul(std_squared + mean_diff_squared, weights)
+    mixture_std = torch.sqrt(mixture_var)
+    final_loss = gmm_loss_fn(mixture_mean, mixture_std, y_true_tensor, args.alpha)
+    weights = weights.cpu().detach().numpy()
+    weight_dict = {}
+    for i, index in enumerate(experiment):
+        technique = techniques[index]
+        weight_dict[technique] = weights[i]
     
+    return final_loss, weight_dict
+   
 def static_mixture(experiment, techniques, df_lst):
     # get uniform weights for models
     num_tech = len(experiment)
     uniform_weight = 1 / num_tech
+    # collect predictions for all components
     pred_mean_dict = {}
     pred_std_dict = {}
     weight_dict = {}
@@ -146,6 +217,8 @@ def main():
     parser = argparse.ArgumentParser(
         description='Use mixture of Gaussians to combine UQ techniques')
     parser.add_argument('--cfg', help='configuration for fitting GMM model.')
+    parser.add_argument('--style', default='uniform',
+                        help='weights for mixture components: uniform/dynamic')
     args = parser.parse_args()   
     root_path = os.getcwd()
     # read the relevant cfg file
@@ -155,7 +228,6 @@ def main():
     # set arguments
     args.dataset = cfg.get('dataset')
     args.model = cfg.get('model')
-    args.style = cfg.get('style')
     args.split = cfg.get('split')
     args.seed = cfg.get('seed')
     args.calibration_type = cfg.get('calibration_type')
@@ -163,6 +235,9 @@ def main():
     args.num_cal = cfg.get('num_models').get('calibration')
     args.num_spa = cfg.get('num_models').get('sparsification')
     args.num_sha = cfg.get('num_models').get('sharpness')
+    args.gmm_lr = cfg.get('gmm_lr')
+    args.gmm_epochs = cfg.get('gmm_epochs')
+    args.alpha = cfg.get('accuracy_emphasize')
     args.result_path = os.path.join(
         root_path, 'results', args.dataset, args.model)
     # get all validation dataframes created for the model
@@ -218,15 +293,17 @@ def main():
         final_indices.append(best_acc_index) 
     #print([techniques[i] for i in final_indices])
     #print(final_indices)
+    # get all the combinations with at least two components
     subsets = []
     for r in range(2, len(final_indices) + 1):
         subsets.extend(itertools.combinations(final_indices, r))
+    # Convert tuple of indices to lists for compuation
     experiments = [list(subset) for subset in subsets]
     #print(len(experiments))
     #print(experiments)
-    if args.style == 'uniform':
-        best_combination = get_best_combination(experiments, techniques, df_lst)
-        print(best_combination)
+    best_combination = get_best_combination(args, experiments, techniques, df_lst)
+    print(best_combination)
+
     # inference on validation set (for calibrated regression)
     mixture_inference(args, best_combination, techniques, df_lst)
     # inference on test set    
@@ -242,6 +319,7 @@ def main():
         test_df_lst.append(df)
     mixture_inference(args, best_combination, techniques, test_df_lst,
                       validation=False)
+
     
 
 
