@@ -112,7 +112,10 @@ class ConditionalGuidedModelFNN(nn.Module):
         y_t = y_t.view(-1,1)
         y_0_hat = y_0_hat.view(-1,1)
         # only the last window_cat_x events in the sequence
-        x = x[:, -self.window_cat_x:, :]
+        
+        if self.window_cat_x is not None:
+            # otherwise x not used by noise estimation network (no concat!)
+            x = x[:, -self.window_cat_x:, :]   
         x = x.view(x.shape[0],-1)   
         # define proper concatanation based on the config file
         if self.cat_x:

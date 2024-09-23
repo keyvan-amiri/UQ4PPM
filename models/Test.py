@@ -324,6 +324,9 @@ def test_model(model=None, models=None, uq_method=None, num_mc_samples=None,
         
     results_df = pd.DataFrame(all_results)
     if deterministic:
+        # for numerical stability
+        #epsilon=1e-8
+        #results_df['Total_Uncertainty']=results_df['Prediction']*std_mean_ratio+epsilon
         results_df['Total_Uncertainty']=results_df['Prediction']*std_mean_ratio
         
     if data_split=='holdout':
