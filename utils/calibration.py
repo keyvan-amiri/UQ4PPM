@@ -6,6 +6,7 @@ import os
 from datetime import datetime
 import pandas as pd
 import uncertainty_toolbox as uct
+import numpy as np
 from utils.utils import get_mean_std_truth, add_suffix_to_csv
 
 
@@ -31,12 +32,30 @@ def calibrated_regression(calibration_df_path=None, test_df_path=None,
     
     # Gaussian calibration on validation set
     # Compute scaling factor for the standard deviation
-    miscal_std_scaling = uct.recalibration.optimize_recalibration_ratio(
-      pred_mean, pred_std, y_true, criterion="miscal")
-    rms_cal_std_scaling = uct.recalibration.optimize_recalibration_ratio(
-      pred_mean, pred_std, y_true, criterion="rms_cal")
-    ma_cal_std_scaling = uct.recalibration.optimize_recalibration_ratio(
-      pred_mean, pred_std, y_true, criterion="ma_cal")
+    try:
+        miscal_std_scaling = uct.recalibration.optimize_recalibration_ratio(
+            pred_mean, pred_std, y_true, criterion="miscal")
+    except:
+        pred_std = np.where(pred_std <= 0, 1e-6, pred_std)
+        pred_mean = np.where(pred_mean <= 0, 1e-6, pred_mean)
+        miscal_std_scaling = uct.recalibration.optimize_recalibration_ratio(
+            pred_mean, pred_std, y_true, criterion="miscal")        
+    try:
+        rms_cal_std_scaling = uct.recalibration.optimize_recalibration_ratio(
+            pred_mean, pred_std, y_true, criterion="rms_cal")
+    except:
+        pred_std = np.where(pred_std <= 0, 1e-6, pred_std)
+        pred_mean = np.where(pred_mean <= 0, 1e-6, pred_mean)
+        rms_cal_std_scaling = uct.recalibration.optimize_recalibration_ratio(
+            pred_mean, pred_std, y_true, criterion="rms_cal")
+    try:
+        ma_cal_std_scaling = uct.recalibration.optimize_recalibration_ratio(
+            pred_mean, pred_std, y_true, criterion="ma_cal")
+    except:
+        pred_std = np.where(pred_std <= 0, 1e-6, pred_std)
+        pred_mean = np.where(pred_mean <= 0, 1e-6, pred_mean) 
+        ma_cal_std_scaling = uct.recalibration.optimize_recalibration_ratio(
+            pred_mean, pred_std, y_true, criterion="ma_cal")
     # get prediction means, standard deviations, and ground truths for test set
     (test_pred_mean, test_pred_std, test_y_true
      ) = get_mean_std_truth(df=test_df, uq_method=uq_method)

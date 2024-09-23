@@ -237,7 +237,7 @@ def test_model(model=None, models=None, uq_method=None, num_mc_samples=None,
             # convert tragets, outputs in case of normalization
             if normalization:
                 _y_truth = y_scaler * _y_truth
-                _y_pred = y_scaler * _y_pred        
+                _y_pred = y_scaler * _y_pred  
 
             # Compute batch loss
             absolute_error += F.l1_loss(_y_pred, _y_truth).item()
