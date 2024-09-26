@@ -6,16 +6,20 @@ tmux attach-session -t uq4ppm
 
 Pre-processing
 python preprocess.py --datasets HelpDesk Sepsis BPIC12 BPIC13I BPIC15_1 BPIC20DD BPIC20ID BPIC20PTC BPIC20RFP BPIC20TPD --model dalstm
+
 python comparison.py --dataset HelpDesk --model dalstm
 python comparison.py --dataset Sepsis --model dalstm
 python comparison.py --dataset BPIC15_1 --model dalstm
 python comparison.py --dataset BPIC20TPD --model dalstm
 
-python MixGaussian.py --cfg HelpDesk_GMM.yaml
+
 python MixGaussian.py --cfg BPIC20TPD_GMM.yaml 
 python MixGaussian.py --cfg BPIC20TPD_GMM.yaml --style dynamic 
 python MixGaussian.py --cfg BPIC15_1_GMM.yaml 
 python MixGaussian.py --cfg BPIC15_1_GMM.yaml --style dynamic 
+
+python helpdesk.py
+
 
 train and test:
 bash bash_scripts/01Experiment-1.sh
@@ -25,7 +29,7 @@ bash bash_scripts/04Experiment-4.sh
 
 
 bash bash_scripts/Experiment-3.sh
-bash bash_scripts/Experiment-4.sh
+bash bash_scripts/Experiment-5.sh
 
 
 
