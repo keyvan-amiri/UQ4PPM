@@ -1298,11 +1298,15 @@ class Diffusion(object):
                     # get probabilistic prediction:
                     # 1) prediction mean
                     mean_Predictions = np.mean(gen_y_unnormalized, axis=1)
-                    mean_Predictions = np.squeeze(mean_Predictions)                  
+                    # atleast_1d: if the result is scalar convert it to array
+                    mean_Predictions = np.atleast_1d(
+                        np.squeeze(mean_Predictions))
+                    #mean_Predictions = np.squeeze(mean_Predictions)                  
                     instance_results['Prediction'].extend(mean_Predictions)
                     # 2) prediction std = predicted uncertainty
                     std_Predictions = np.std(gen_y_unnormalized, axis=1)
-                    std_Predictions = np.squeeze(std_Predictions)
+                    #std_Predictions = np.squeeze(std_Predictions)
+                    std_Predictions = np.atleast_1d(np.squeeze(std_Predictions))                    
                     instance_results['Aleatoric_Uncertainty'].extend(
                         std_Predictions) 
                     # get absolute error
