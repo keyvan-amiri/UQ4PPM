@@ -320,7 +320,7 @@ def main():
                      and not f.startswith('GMM')]
     # Collect UQ technique names 
     techniques = [f.split('_'+args.split)[0] for f in test_df_names]
-    # Collect a list of dataframes for each val_df_path
+    # Collect a list of dataframes for each test_df_names
     test_df_lst = []
     for test_name in test_df_names:
         df = pd.read_csv(os.path.join(args.result_path, test_name))  

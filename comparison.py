@@ -31,12 +31,14 @@ class UQ_Comparison ():
                                         args.model)
         self.cal_path = os.path.join(root_path, 'results', args.dataset,
                                         args.model, 'recalibration')
+        self.pda_path = os.path.join(root_path, 'results', args.dataset,
+                                        args.model, 'PDA')
         self.comp_path = os.path.join(root_path, 'results', args.dataset,
                                         args.model, 'comparison')
         if not os.path.exists(self.comp_path):
             os.makedirs(self.comp_path)
         
-        # comparison for results before calibrated regression
+        # comparison for results before calibrated regression and PDA
         self.uq_df_path = os.path.join(self.comp_path, 
                                        self.dataset + '_uq_metrics.csv')   
         self.uq_dict_lst, self.init_uq_method_lst = self.load_uq_dicts(
@@ -60,6 +62,31 @@ class UQ_Comparison ():
                 self.plot_picp(self.uq_df)
             elif column=='aurg':
                 self.plot_aurg()
+                
+        # comparison for results after PDA
+        self.uq_df_path = os.path.join(self.comp_path, 
+                                       self.dataset + '_uq_metrics_pda.csv')   
+        self.uq_dict_lst, self.init_uq_method_lst = self.load_uq_dicts(
+            self.pda_path)         
+        (self.mae_lst, self.rmse_lst, self.mis_cal_lst, self.sharpness_lst,
+         self.nll_lst, self.crps_lst, self.ause_lst, self.aurg_lst, 
+         self.mpiw_lst, self.picp_lst, self.qice_lst, self.below_lst, 
+         self.more_than_lst) = self.extract_metrics(self.uq_dict_lst)        
+        self.uq_method_lst = self.replace_techniques()
+        self.uq_df_pda = self.lists_to_dataframe(
+            self.uq_method_lst, mae=self.mae_lst, rmse=self.rmse_lst, 
+            mis_cal=self.mis_cal_lst, sharpness=self.sharpness_lst,
+            nll=self.nll_lst, crps=self.crps_lst, ause=self.ause_lst,
+            aurg=self.aurg_lst, mpiw=self.mpiw_lst, picp=self.picp_lst,
+            qice=self.qice_lst, below=self.below_lst, 
+            more_than=self.more_than_lst)
+        for column in self.uq_df_pda.columns:
+            if not column in ['aurg', 'picp']:
+                self.plot_metrics(self.uq_df_pda, column, pda=True)
+            elif column=='picp':
+                self.plot_picp(self.uq_df_pda, pda=True)
+            elif column=='aurg':
+                self.plot_aurg(pda=True)
         
         # comparison for results after calibrated regression
         self.uq_df_path = os.path.join(
@@ -85,7 +112,8 @@ class UQ_Comparison ():
                 self.plot_metrics(self.uq_df_cal, column, calibration=True)
             elif column=='picp':
                 self.plot_picp(self.uq_df_cal, calibration=True)
-        
+                
+
         # visualize calibration effect
         self.plot_metric_comparison()
                 
@@ -190,7 +218,8 @@ class UQ_Comparison ():
     
     
     
-    def plot_metrics(self, df, metric, smaller_is_better=True, calibration=False):
+    def plot_metrics(self, df, metric, smaller_is_better=True,
+                     calibration=False, pda=False):
         str_metric = str(metric).upper()
         df_filtered = df[df.index != 'deterministic']
         # Get the value for the 'deterministic' technique
@@ -222,7 +251,10 @@ class UQ_Comparison ():
     
         # Save the plot as a PDF file
         if not calibration:
-            new_file_name = f'{self.dataset}_{str_metric}_comparison.pdf'
+            if not pda:
+                new_file_name = f'{self.dataset}_{str_metric}_comparison.pdf'
+            else:
+                new_file_name = f'{self.dataset}_{str_metric}_comparison_adjusted.pdf'
         else:
             new_file_name = f'{self.dataset}_{str_metric}_comparison_calibrated_{self.calibration}.pdf'
         new_file_path = os.path.join(self.comp_path, new_file_name)
@@ -233,7 +265,7 @@ class UQ_Comparison ():
         plt.clf()
         plt.close()
         
-    def plot_picp(self, df, calibration=False):
+    def plot_picp(self, df, calibration=False, pda=False):
         # Ideal value
         ideal_value = 0.95
         # Calculate distances from the ideal value
@@ -260,7 +292,10 @@ class UQ_Comparison ():
         
         # Save the plot as a PDF file
         if not calibration:
-            new_file_name = f'{self.dataset}_PICP_comparison.pdf'
+            if not pda:
+                new_file_name = f'{self.dataset}_PICP_comparison.pdf'
+            else:
+                new_file_name = f'{self.dataset}_PICP_comparison_adjusted.pdf'
         else:
             new_file_name = f'{self.dataset}_PICP_comparison_calibrated_{self.calibration}.pdf'
             
@@ -273,7 +308,7 @@ class UQ_Comparison ():
         plt.clf()
         plt.close()
     
-    def plot_aurg(self):
+    def plot_aurg(self, pda = False):
         # Create a list of colors: green for positive, red for negative values
         colors = ['green' if val > 0 else 'red' for val in self.uq_df['aurg']]
 
@@ -288,7 +323,10 @@ class UQ_Comparison ():
         plt.xticks(rotation=45, ha='right')
 
         # Save the plot as a PDF file
-        new_file_name = f'{self.dataset}_AURG_comparison.pdf'
+        if not pda:
+            new_file_name = f'{self.dataset}_AURG_comparison.pdf'
+        else:
+            new_file_name = f'{self.dataset}_AURG_comparison_adjusted.pdf'
         new_file_path = os.path.join(self.comp_path, new_file_name)
         plt.tight_layout()  # Adjust layout to fit labels
         plt.savefig(new_file_path, format='pdf')    
@@ -300,35 +338,41 @@ class UQ_Comparison ():
         metrics = self.uq_df.columns  # Get the list of metrics (columns)
         techniques = self.uq_df.index  # Get the list of techniques (index)
         for metric in metrics:
-            if not metric in ['aurg', 'mae', 'rmse', 'ause', 'distance']:
+            if not metric in ['distance']:
                 if metric not in self.uq_df_cal.columns:
                     print(f"Warning: '{metric}' not found in uq_df_cal. Skipping...")
                     continue
                 str_metric = str(metric).upper()
                 plt.figure(figsize=(10, 6))
                 # Get values before and after calibration for the current metric
-                before_calibration = self.uq_df[metric]
-                after_calibration = self.uq_df_cal[metric]
+                initial_result = self.uq_df[metric]
+                if not metric in ['aurg', 'mae', 'rmse', 'ause']:                
+                    after_calibration = self.uq_df_cal[metric]
+                else:
+                    after_calibration = initial_result
+                after_pda = self.uq_df_pda[metric]
                 # Set positions for the bars
                 x = np.arange(len(techniques))
-                width = 0.35  # Width of the bars
+                width = 0.24  # Width of the bars
                 # Plot bars for the metric
-                plt.bar(x - width/2, before_calibration, width, 
-                        label='Before Calibration', color='orange')
-                plt.bar(x + width/2, after_calibration, width, 
+                plt.bar(x - width, initial_result, width, 
+                        label='Initial Result', color='orange')                
+                plt.bar(x, after_calibration, width, 
                         label='After Calibration', color='blue')
+                plt.bar(x + width, after_pda, width, 
+                        label='After PDA', color='olive') 
 
                 # Add labels and title
                 plt.xlabel('Techniques')
                 plt.ylabel(metric)
-                plt.title(f'{self.dataset} Comparison of {metric} Before and After Calibration')
+                plt.title(f'{self.dataset} Comparison of {metric} Before and After Post-hoc improvement')
                 plt.xticks(x, techniques, rotation=45, ha='right')
                 plt.legend()
 
                 # Show the plot
                 plt.tight_layout()
                 # Save the plot as a PDF file
-                new_file_name = f'{self.dataset}_{str_metric}_calibration_effect.pdf'
+                new_file_name = f'{self.dataset}_{str_metric}_post-hoc_effect.pdf'
                 new_file_path = os.path.join(self.comp_path, new_file_name)
                 plt.tight_layout()  # Adjust layout to fit labels
                 plt.savefig(new_file_path, format='pdf')    
