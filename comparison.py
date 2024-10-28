@@ -314,8 +314,11 @@ class UQ_Comparison ():
 
         # Plot the bar chart for aurg
         plt.figure(figsize=(10, 6))
-        bars = plt.bar(self.uq_df.index, self.uq_df['aurg'], color=colors)
-    
+        if not pda:
+            bars = plt.bar(self.uq_df.index, self.uq_df['aurg'], color=colors)
+        else:
+            bars = plt.bar(self.uq_df_pda.index, self.uq_df_pda['aurg'], color=colors)
+            
         # Customize the plot
         plt.xlabel('Technique')
         plt.ylabel('AURG')

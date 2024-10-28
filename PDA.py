@@ -9,10 +9,12 @@ import pandas as pd
 import seaborn as sns
 import numpy as np
 import pickle
+import yaml
 from sklearn.neighbors import KernelDensity
 import matplotlib.pyplot as plt
 from sklearn.metrics import mean_absolute_error
 import uncertainty_toolbox as uct
+from scipy.optimize import minimize
 from utils.evaluation import evaluate_coverage
 
 def learn_transformation_function(y_val_true, y_val_pred, kernel='gaussian'):
@@ -29,6 +31,41 @@ def learn_transformation_function(y_val_true, y_val_pred, kernel='gaussian'):
         return np.interp(prob, gt_cdf, gt_sorted)
     
     return transformation_function
+
+def apply_binning(data, num_bins, method='same_distance'):
+    if  method=='same_distance':
+        bin_edges = np.linspace(np.min(data), np.max(data), num_bins + 1)
+    elif method=='quantile':
+        bin_edges = np.percentile(data, np.linspace(0, 100, num_bins + 1))
+    bin_indices = np.digitize(data, bin_edges) - 1
+    return bin_indices, bin_edges
+
+def MeanLT(y_hat, y):    
+    def mae_loss(params):
+        a, b = params
+        transformed_y_hat = a * y_hat + b
+        return np.mean(np.abs(transformed_y_hat - y))    
+    initial_guess = [1.0, 0.0]
+    result = minimize(mae_loss, initial_guess, method='Nelder-Mead')
+    a_opt, b_opt = result.x
+    return a_opt, b_opt
+
+# Function to apply linear transformation
+def apply_transform(data, transform_dict):
+    transformed_data = np.zeros_like(data, dtype=float)
+    # Loop over each element in the data
+    for i, element in enumerate(data):
+        # Find the appropriate boundary in the dictionary
+        for (lower_bound, upper_bound), (a, b) in transform_dict.items():
+            if lower_bound <= element < upper_bound:
+                # Apply the linear transformation
+                transformed_data[i] = a * element + b
+                break
+        else:
+            # Optional: Handle elements outside any boundaries
+            transformed_data[i] = element  # No transformation if no interval is found
+
+    return transformed_data
 
 def compute_mae(y_true, y_pred):
     return np.mean(np.abs(y_true - y_pred))
@@ -162,12 +199,41 @@ def apply_pda(args, pda_path):
 
         y_val_pred = df_val['Prediction'].values
         y_val_true = df_val['GroundTruth'].values
+        y_val_std = df_val[uncertainty_col].values
         y_test_pred = df['Prediction'].values
-        # Learn the transformation function from the validation set
-        transformation_func = learn_transformation_function(
-            y_val_true, y_val_pred, kernel=args.kernel)
-        # Apply the transformation to each test prediction
-        y_test_transformed = np.array([transformation_func(pred) for pred in y_test_pred])
+        
+        if args.style == 'kde':
+            # Learn the transformation function from the validation set
+            transformation_func = learn_transformation_function(
+                y_val_true, y_val_pred, kernel=args.kernel)
+            # Apply the transformation to each test prediction
+            y_test_transformed = np.array([transformation_func(pred) for pred in y_test_pred])
+        elif args.style == 'linear':
+            bin_indices, bin_edges = apply_binning(y_val_pred, args.num_bins,
+                                                   method=args.bin_method)            
+            # Create a dictionary to collect values for each bin
+            bin_data = {i: {'y_val_pred': [], 'y_val_std': [], 'y_val_true': []
+                            } for i in range(args.num_bins)}
+            # Populate the dictionary with values for each bin
+            for i, bin_idx in enumerate(bin_indices):
+                if 0 <= bin_idx < args.num_bins:  # Only consider valid bins
+                    bin_data[bin_idx]['y_val_pred'].append(y_val_pred[i])
+                    bin_data[bin_idx]['y_val_std'].append(y_val_std[i])
+                    bin_data[bin_idx]['y_val_true'].append(y_val_true[i])
+            for bin_idx, data in bin_data.items():
+                bin_data[bin_idx]['y_val_pred'] = np.asarray(data['y_val_pred'])
+                bin_data[bin_idx]['y_val_std'] = np.asarray(data['y_val_std'])
+                bin_data[bin_idx]['y_val_true'] = np.asarray(data['y_val_true'])
+            trans_dict = {}
+            for bin_idx, data in bin_data.items():
+                y_hat = data['y_val_pred']
+                y = data['y_val_true']
+                a_opt, b_opt = MeanLT(y_hat, y)
+                trans_dict[(bin_edges[bin_idx], bin_edges[bin_idx+1])] = (a_opt, b_opt)
+            #print(trans_dict)
+            # Apply transformation on test set to adjust predicted expected values
+            y_test_transformed = apply_transform(y_test_pred, trans_dict)
+    
         df['Transformed_Prediction'] = y_test_transformed
         df['Transformed_uncertainty'] = df[uncertainty_col]*df['Transformed_Prediction'] / df['Prediction']
         df.to_csv(os.path.join(pda_path, pda_test_name), index=False)
@@ -294,27 +360,31 @@ def apply_pda(args, pda_path):
             
     return methods, uq_adj_lst, uq_lst
 
-def compare_before_after():
-    pass
 
 def main():
     parser = argparse.ArgumentParser(
         description='Use Prediction Distribution Adjustment')
     parser.add_argument('--dataset', help='dataset that is used.')
-    parser.add_argument('--model', default='dalstm',
-                        help='backbone deterministic model that is used.')
-    parser.add_argument('--kernel', default='gaussian',
-                        help='Type of kernel that is used.')
-    parser.add_argument('--split', default='holdout',
-                        help='type of data split that is used.')
-    parser.add_argument('--seed', type=int, default=42,
-                        help='type of split that is used.')
+    parser.add_argument('--cfg', help='configuration for PDA.')
     args = parser.parse_args()
     root_path = os.getcwd()
     args.result_path = os.path.join(root_path, 'results', args.dataset, args.model)
     pda_path = os.path.join(args.result_path, 'PDA')
     if not os.path.exists(pda_path):
         os.makedirs(pda_path)
+    # read the relevant cfg file
+    cfg_file = os.path.join(root_path, 'cfg', args.cfg)
+    with open(cfg_file, 'r') as f:
+        cfg = yaml.safe_load(f) 
+    args.model = cfg.get('model')
+    args.split = cfg.get('split')
+    args.seed = cfg.get('seed')    
+    args.style = cfg.get('style')
+    args.kernel = cfg.get('kernel')
+    args.num_bins = cfg.get('num_bins')
+    args.bin_method = cfg.get('bin_method')
+
+    
     methods, uq_adj_lst, uq_lst = apply_pda(args, pda_path)
         
 if __name__ == '__main__':

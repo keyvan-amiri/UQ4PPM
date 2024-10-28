@@ -17,10 +17,14 @@ bash bash_scripts/06Experiment-6.sh
 bash bash_scripts/07Experiment-7.sh
 bash bash_scripts/08Experiment-8.sh
 bash bash_scripts/09Experiment-9.sh
+bash bash_scripts/mixture_pda_compare.sh
 
 bash bash_scripts/Experiment-3.sh
 bash bash_scripts/Experiment-5.sh
 bash bash_scripts/Experiment-6.sh
+bash bash_scripts/Experiment-13.sh
+bash bash_scripts/Experiment-14.sh
+
 
 mixture of gaussians:
 python MixGaussian.py --cfg BPIC20TPD_GMM.yaml 
@@ -29,36 +33,24 @@ python MixGaussian.py --cfg BPIC15_1_GMM.yaml
 python MixGaussian.py --cfg BPIC15_1_GMM.yaml --style dynamic
 python MixGaussian.py --cfg BPIC20ID_GMM.yaml
 python MixGaussian.py --cfg BPIC20ID_GMM.yaml --style dynamic
-python MixGaussian.py --cfg BPIC20DD_GMM.yaml
-python MixGaussian.py --cfg BPIC20DD_GMM.yaml --style dynamic
-python MixGaussian.py --cfg BPIC20PTC_GMM.yaml
-python MixGaussian.py --cfg BPIC20PTC_GMM.yaml --style dynamic
-python MixGaussian.py --cfg BPIC20RFP_GMM.yaml
-python MixGaussian.py --cfg BPIC20RFP_GMM.yaml --style dynamic
 python MixGaussian.py --cfg Sepsis_GMM.yaml
 python MixGaussian.py --cfg Sepsis_GMM.yaml --style dynamic
 python MixGaussian.py --cfg HelpDesk_GMM.yaml
 python MixGaussian.py --cfg HelpDesk_GMM.yaml --style dynamic
 
 
+#python MixGaussian.py --dataset BPIC20RFP --cfg GMM.yaml --selection keep_best
  
 
 python comparison.py --dataset BPIC15_1 --model dalstm
 python comparison.py --dataset BPIC20TPD --model dalstm
 python comparison.py --dataset BPIC20ID --model dalstm
-python comparison.py --dataset BPIC20DD --model dalstm
-python comparison.py --dataset BPIC20PTC --model dalstm
-python comparison.py --dataset BPIC20RFP --model dalstm
-python comparison.py --dataset Sepsis --model dalstm
-python comparison.py --dataset HelpDesk --model dalstm
+
+python comparison.py --dataset Sepsis --model dalstm 
 
 
 
- 
-
-python helpdesk.py
-
-
+Distribution calibration for regression
 
 
 
@@ -83,9 +75,6 @@ laplace-joint: LA is used to Jointly optimize MAP and hyperparameters
 
 loss functions: mae or rmse or mse or LogCoshLoss or Huber or smooth_mae 
 optimizers: NAdam/AdamW/Adam/RAdam/SGD
-
-
-
 
 
 

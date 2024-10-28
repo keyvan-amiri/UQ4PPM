@@ -113,7 +113,11 @@ def test_model(model=None, models=None, uq_method=None, num_mc_samples=None,
             batch_size = inputs.shape[0]            
             # get model outputs, and uncertainties if required
             if uq_method == 'deterministic':            
-                _y_pred = model(inputs)     
+                _y_pred = model(inputs)
+                # for numerical stability
+                # to ensure predictions are positive (necessary for calibration)
+                epsilon = 1e-8
+                _y_pred = torch.maximum(_y_pred, torch.tensor(epsilon))
             elif (uq_method == 'SQR'):
                 if sqr_q == 'all':
                     print('###########################')
@@ -324,9 +328,6 @@ def test_model(model=None, models=None, uq_method=None, num_mc_samples=None,
         
     results_df = pd.DataFrame(all_results)
     if deterministic:
-        # for numerical stability
-        #epsilon=1e-8
-        #results_df['Total_Uncertainty']=results_df['Prediction']*std_mean_ratio+epsilon
         results_df['Total_Uncertainty']=results_df['Prediction']*std_mean_ratio
         
     if data_split=='holdout':

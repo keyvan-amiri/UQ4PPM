@@ -173,6 +173,9 @@ def predict_rf(model=None, model_arch=None, aux_model=None, val_mode=False,
             _y_pred = np.mean(tree_pred, axis=0)
             # Compute standard devition of predictions (epistemic uncertainty)
             epistemic_std = np.std(tree_pred, axis=0)
+            # for numerical stability in recalibration
+            epsilon = 1e-8
+            epistemic_std = np.where(epistemic_std > 0, epistemic_std, epsilon)            
             # normalize tragets, outputs, epistemic uncertainty (if necessary)
             if normalization:                
                 _y_truth = y_scaler * _y_truth
