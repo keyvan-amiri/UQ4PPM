@@ -159,6 +159,19 @@ def apply_pda(args, pda_path):
         test_df_names.append(modified_string)
     # Collect UQ technique names 
     methods = [f.split('_'+args.split)[0] for f in val_df_names]
+    
+    # TODO: remove following temporary code
+    """
+    card_indices = [i for i, method in enumerate(methods) if 'CARD' in method]
+    methods_filtered = [method for i, method in enumerate(methods) if i not in card_indices]
+    val_df_filtered = [method for i, method in enumerate(val_df_names) if i not in card_indices]
+    test_df_filtered = [method for i, method in enumerate(test_df_names) if i not in card_indices]    
+    methods = methods_filtered
+    val_df_names = val_df_filtered
+    test_df_names = test_df_filtered
+    """
+
+    
     # Collect a list of dataframes for each val_df_path
     val_df_lst = []
     for val_name in val_df_names:
@@ -201,6 +214,7 @@ def apply_pda(args, pda_path):
         y_val_true = df_val['GroundTruth'].values
         y_val_std = df_val[uncertainty_col].values
         y_test_pred = df['Prediction'].values
+        y_test_std = df[uncertainty_col].values
         
         if args.style == 'kde':
             # Learn the transformation function from the validation set
@@ -233,9 +247,26 @@ def apply_pda(args, pda_path):
             #print(trans_dict)
             # Apply transformation on test set to adjust predicted expected values
             y_test_transformed = apply_transform(y_test_pred, trans_dict)
+            y_test_transformed = np.where(y_test_transformed <= 0, 1e-6, y_test_transformed)
+            
     
         df['Transformed_Prediction'] = y_test_transformed
-        df['Transformed_uncertainty'] = df[uncertainty_col]*df['Transformed_Prediction'] / df['Prediction']
+        # TODO: decide how we want to treat standard deviation.
+        # 1) simply scaling just like the mean:
+        #df['Transformed_uncertainty'] = df[uncertainty_col]*df['Transformed_Prediction'] / df['Prediction']
+        # 2) or apply calibration regression after adjusting the mean.
+        # Apply the same transformation on validation set
+        y_val_transformed = apply_transform(y_val_pred, trans_dict)
+        y_val_transformed = np.where(y_val_transformed <= 0, 1e-6, y_val_transformed)
+        try:
+            miscal_std_scaling = uct.recalibration.optimize_recalibration_ratio(
+                y_val_transformed, y_val_std, y_val_true, criterion="miscal")
+        except:
+            y_val_std = np.where(y_val_std <= 0, 1e-6, y_val_std)
+            miscal_std_scaling = uct.recalibration.optimize_recalibration_ratio(
+                y_val_transformed, y_val_std, y_val_true, criterion="miscal") 
+        df['Transformed_uncertainty']  = miscal_std_scaling * y_test_std       
+        
         df.to_csv(os.path.join(pda_path, pda_test_name), index=False)
         df['adjusted_error'] = (df['Transformed_Prediction'] - df['GroundTruth']).abs()
         
@@ -368,10 +399,6 @@ def main():
     parser.add_argument('--cfg', help='configuration for PDA.')
     args = parser.parse_args()
     root_path = os.getcwd()
-    args.result_path = os.path.join(root_path, 'results', args.dataset, args.model)
-    pda_path = os.path.join(args.result_path, 'PDA')
-    if not os.path.exists(pda_path):
-        os.makedirs(pda_path)
     # read the relevant cfg file
     cfg_file = os.path.join(root_path, 'cfg', args.cfg)
     with open(cfg_file, 'r') as f:
@@ -383,7 +410,10 @@ def main():
     args.kernel = cfg.get('kernel')
     args.num_bins = cfg.get('num_bins')
     args.bin_method = cfg.get('bin_method')
-
+    args.result_path = os.path.join(root_path, 'results', args.dataset, args.model)
+    pda_path = os.path.join(args.result_path, 'PDA')
+    if not os.path.exists(pda_path):
+        os.makedirs(pda_path)
     
     methods, uq_adj_lst, uq_lst = apply_pda(args, pda_path)
         

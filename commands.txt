@@ -19,9 +19,12 @@ bash bash_scripts/08Experiment-8.sh
 bash bash_scripts/09Experiment-9.sh
 bash bash_scripts/mixture_pda_compare.sh
 
+
 bash bash_scripts/Experiment-3.sh
 bash bash_scripts/Experiment-5.sh
 bash bash_scripts/Experiment-6.sh
+bash bash_scripts/Experiment-11.sh
+bash bash_scripts/Experiment-12.sh
 bash bash_scripts/Experiment-13.sh
 bash bash_scripts/Experiment-14.sh
 
@@ -47,8 +50,13 @@ python comparison.py --dataset BPIC20TPD --model dalstm
 python comparison.py --dataset BPIC20ID --model dalstm
 
 python comparison.py --dataset Sepsis --model dalstm 
+python PDA.py --dataset BPIC15_1 --cfg PDA.yaml 
 
 
+
+
+
+python check_calibration.py
 
 Distribution calibration for regression
 

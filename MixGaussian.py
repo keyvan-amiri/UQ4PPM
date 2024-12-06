@@ -73,10 +73,10 @@ def mixture_inference(args, best_combination, techniques, test_df_lst,
     if validation:
         mixture_df.to_csv(csv_val_path, index=False)
     else:
-        if args.style == 'uniform':
-            gmm_method = 'GMM'
-        else:
+        if args.style == 'dynamic':
             gmm_method = 'GMMD'
+        else:
+            gmm_method = 'GMM'
         mixture_df.to_csv(csv_test_path, index=False)
         _ = uq_eval(csv_test_path, gmm_method, report=True, verbose=True,
                     mixture_mode=True, mixture_info=best_combination)  
@@ -95,8 +95,8 @@ def get_best_combination(args, experiments, techniques, df_lst):
     # compute NLL for all combinations of techniques
     exp_dict = {}
     for experiment in experiments:
-        if args.style == 'uniform':
-            NLL_exp, weight_dict = static_mixture(
+        if args.style == 'uniform' or args.style == 'default':
+            NLL_exp, weight_dict = uniform_mixture(
                 experiment, techniques, df_lst)
             exp_dict[tuple(experiment)] = {
                 'score': NLL_exp, 'weights': weight_dict}
@@ -187,7 +187,7 @@ def dynamic_mixture(args, experiment, techniques, df_lst):
     
     return final_loss, weight_dict
    
-def static_mixture(experiment, techniques, df_lst):
+def uniform_mixture(experiment, techniques, df_lst):
     # get uniform weights for models
     num_tech = len(experiment)
     uniform_weight = 1 / num_tech
@@ -228,8 +228,8 @@ def main():
     parser.add_argument('--cfg', help='configuration for fitting GMM model.')
     parser.add_argument('--selection', default='remove_worst',
                         help='remove worst models or keep best models')
-    parser.add_argument('--style', default='uniform',
-                        help='weights for mixture components: uniform/dynamic')
+    parser.add_argument('--style', default='default',
+                        help='weights for mixture components: uniform/dynamic/default')
     args = parser.parse_args()   
     root_path = os.getcwd()
     # read the relevant cfg file
@@ -258,62 +258,65 @@ def main():
     for val_name in val_df_names:
         df = pd.read_csv(os.path.join(args.result_path, val_name))    
         df_lst.append(df)
-    # Get sparsification, miscalibration area, accuracy, sharpness scores.
-    ause_lst, aurg_lst, miscal_lst, accuracy_lst = [], [], [], []
-    for df, technique in zip(df_lst, techniques):
-        # get mean, standard deviation for predicted values, plus ground truths
-        pred_mean, pred_std, y_true = get_mean_std_truth(
-            df=df, uq_method=technique)   
-        # get AUSE and AURG for each technique
-        (ause, aurg) = get_sparsification(pred_mean=pred_mean, y_true=y_true, 
+    if args.style != 'default':   
+        # Get sparsification, miscalibration area, accuracy, sharpness scores.
+        ause_lst, aurg_lst, miscal_lst, accuracy_lst = [], [], [], []
+        for df, technique in zip(df_lst, techniques):
+            # get mean, standard deviation for predicted values, plus ground truths
+            pred_mean, pred_std, y_true = get_mean_std_truth(
+                df=df, uq_method=technique)   
+            # get AUSE and AURG for each technique
+            (ause, aurg) = get_sparsification(pred_mean=pred_mean, y_true=y_true, 
                                           pred_std=pred_std)
-        ause_lst.append(ause) 
-        aurg_lst.append(aurg)
-        miscal_lst.append(
-            miscalibration_area(pred_mean, pred_std, y_true, num_bins=100))
-        accuracy_lst.append(np.mean(np.abs(y_true - pred_mean)))
-    
-    ause_indices = sorted(range(len(ause_lst)), key=lambda i: ause_lst[i])
-    miscal_indices = sorted(range(len(miscal_lst)), key=lambda i: miscal_lst[i])
-    accuracy_indices = sorted(range(len(accuracy_lst)), key=lambda i: accuracy_lst[i])
-    performance_lists = [ause_indices, miscal_indices, accuracy_indices]  
-    # remove negative AURG (sparsification worse than random guess)
-    no_use_indices = [index for index, value in enumerate(aurg_lst) if value < 0]
-    if args.selection == 'remove_worst':
-        all_indices = list(range(len(techniques)))
-        filtered_indices = [item for item in all_indices if item not in no_use_indices]       
-        while len(filtered_indices) > args.search_num:
-            for lst in performance_lists:
-                worst_index = lst[-1]
-                if worst_index in filtered_indices:
-                    filtered_indices.remove(worst_index)
-                ause_indices.remove(worst_index)
-                miscal_indices.remove(worst_index)
-                accuracy_indices.remove(worst_index)
-                if len(filtered_indices) == args.search_num:
-                    break
-        final_indices = filtered_indices
-    else:
-        final_indices = []
-        while len(final_indices) < args.search_num:
-            for lst in performance_lists:
-                best_index = lst[0]
-                if ((best_index not in final_indices) and
-                    (best_index not in no_use_indices)):
-                    final_indices.append(best_index)
-                ause_indices.remove(best_index)
-                miscal_indices.remove(best_index)
-                accuracy_indices.remove(best_index)
-                if len(final_indices) == args.search_num:
+            ause_lst.append(ause) 
+            aurg_lst.append(aurg)
+            miscal_lst.append(
+                miscalibration_area(pred_mean, pred_std, y_true, num_bins=100))
+            accuracy_lst.append(np.mean(np.abs(y_true - pred_mean)))    
+        ause_indices = sorted(range(len(ause_lst)), key=lambda i: ause_lst[i])
+        miscal_indices = sorted(range(len(miscal_lst)), key=lambda i: miscal_lst[i])
+        accuracy_indices = sorted(range(len(accuracy_lst)), key=lambda i: accuracy_lst[i])
+        performance_lists = [ause_indices, miscal_indices, accuracy_indices]  
+        # remove negative AURG (sparsification worse than random guess)
+        no_use_indices = [index for index, value in enumerate(aurg_lst) if value < 0]
+        if args.selection == 'remove_worst':
+            all_indices = list(range(len(techniques)))
+            filtered_indices = [item for item in all_indices if item not in no_use_indices]       
+            while len(filtered_indices) > args.search_num:
+                for lst in performance_lists:
+                    worst_index = lst[-1]
+                    if worst_index in filtered_indices:
+                        filtered_indices.remove(worst_index)
+                    ause_indices.remove(worst_index)
+                    miscal_indices.remove(worst_index)
+                    accuracy_indices.remove(worst_index)
+                    if len(filtered_indices) == args.search_num:
+                        break
+            final_indices = filtered_indices
+        else:
+            final_indices = []
+            while len(final_indices) < args.search_num:
+                for lst in performance_lists:
+                    best_index = lst[0]
+                    if ((best_index not in final_indices) and
+                        (best_index not in no_use_indices)):
+                        final_indices.append(best_index)
+                    ause_indices.remove(best_index)
+                    miscal_indices.remove(best_index)
+                    accuracy_indices.remove(best_index)
+                    if len(final_indices) == args.search_num:
                         break                
-    #removed_techniques = [techniques[i] for i in no_use_indices]
-    #selected_techniques = [techniques[i] for i in final_indices]    
-    #print(selected_techniques)
-    #print(removed_techniques)
+        #removed_techniques = [techniques[i] for i in no_use_indices]
+        #selected_techniques = [techniques[i] for i in final_indices]    
+        #print(selected_techniques)
+        #print(removed_techniques)
+    else:
+        light_weight_models = ['deterministic', 'LA', 'RF', 'mve']
+        final_indices = [i for i, x in enumerate(techniques) if x in light_weight_models]
     
     # get all the combinations with at least two components
     subsets = []
-    for r in range(2, len(final_indices) + 1):
+    for r in range(1, len(final_indices) + 1):
         subsets.extend(itertools.combinations(final_indices, r))
     # Convert tuple of indices to lists for compuation
     experiments = [list(subset) for subset in subsets]
