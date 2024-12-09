@@ -1,31 +1,23 @@
 data:
     dataset: "ppm" # In our setting is always ppm
-    dir: "BPIC12"
+    dir: "BPIC15_1"
     n_splits: 1
     num_workers: 0
 
 model:
     type: dalstm
     target_norm: False # whether to use normalization for target attribute or not
-    cat_x: True # whether to concatanate data features (x) to the input of noise estimation network or not
-    window_cat_x: 3 # if concatanate x, how many events to be included (if noise estimation network is FNN)
-    feature_dim: 128 # dimension for linear layer used in noise estimation network
     var_type: fixedlarge # fixedlarge or fixedsmall
     ema_rate: 0.9999
     ema: True
 
 diffusion:
-    beta_schedule: linear # linear or cosine or cosine_anneal or cosine_reverse or sigmoid or jsd or quad or const
-    beta_start: 0.000001 # 0.0001
-    beta_end: 0.0002 #0.02
     timesteps: 1000
     vis_step: 100
     num_figs: 10
     noise_architecture: "FNN" # LSTM or FNN 
     noise_prior_approach: median # zero: N(0,I) or median: N(normalized median,I) or mean: N(normalized mean,I) 
     nonlinear_guidance:
-        pre_train: False # if True: first train point estimator, then use it as prior for diffusion model
-        joint_train: True
         n_pretrain_epochs: 300
         logging_interval: 10
         n_layers: 2 # number of LSTM layers in both guidance and noise estimation models
@@ -38,12 +30,11 @@ diffusion:
         delta: 0  # hyperparameter for improvement measurement in the early stopping scheme
 
 training:
-    batch_size: 64
-    n_epochs: 5000 
-    n_iters: 100000 
+    batch_size: 16
+    n_iters: 100000
     snapshot_freq: 1000000000 
-    logging_freq: 2000 
-    validation_freq: 20000 
+    logging_freq: 2000
+    validation_freq: 20000
     image_folder: 'training_image_samples'
 
 testing:

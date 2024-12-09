@@ -1,0 +1,10 @@
+model: dalstm
+split: holdout
+seed: 42
+style: linear # kde linear
+kernel: gaussian # only used for kde style
+num_bins: 10 # only used for linear style
+bin_method: same_distance # quantile same_distance (only used for linear style)
+
+
+

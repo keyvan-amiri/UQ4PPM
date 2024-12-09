@@ -10,13 +10,17 @@ model:
     dropout: True
     dropout_prob: 0.1
 uncertainty:
-  union:
-    loss_function: [squared_error] #[squared_error, absolute_error, friedman_mse, poisson] 
-    n_estimators: [10, 25, 50, 75, 100, 125, 150, 200] 
-    depth_control: [False, True] 
-    max_depth: [3, 6, 9, 12] # if depth_control is True use this as the maximum depth in Random Forest
-    min_samples_split: 2
-    min_samples_leaf: 1
+  laplace:
+    last_layer_name: linear1
+    hessian_structure: [full, kron] #[full, kron, diag]
+    empirical_bayes: [True]        
+    epochs: [200]
+    lr: [0.01]
+    sigma_noise: [0.5, 1.0, 2.0] #  
+    stat_noise: [False] # if True, then standard deviation, and quantiles of target attribute will affect sigma noise!
+    prior_precision: [1.0, 5.0, 10.0, 20.0, 30.0]   
+    temperature: [0.5, 1.0, 2.0, 4.0, 8.0]         
+    n_samples: [100] 
 train:
   loss_function: mae   
   max_epochs: 200

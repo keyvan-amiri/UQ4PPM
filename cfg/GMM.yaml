@@ -1,0 +1,11 @@
+model: dalstm
+split: holdout
+seed: 42
+calibration_type: all # all miscal rms ma isotonic
+gmm_lr: 0.01
+gmm_epochs: 200
+accuracy_emphasize: 0.4 # the emphasize on accuracy in accuracy-NLL balance within GMM_Loss
+search_num: 6 # number of models for searching in all subsets of them 
+
+
+

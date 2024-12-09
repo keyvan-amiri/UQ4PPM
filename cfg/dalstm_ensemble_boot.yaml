@@ -1,10 +1,9 @@
 data:
   normalization: False
 uncertainty:
-  dropout_approximation:
-    weight_regularizer: 0.000001
-    dropout_regularizer: 0.00001
-    num_stochastic_forward_path: [50]
+  ensemble:
+    num_models: [3, 4, 5, 6, 7, 8, 9, 10, 12, 14, 16, 18, 20, 24, 28, 32, 40]
+    Bootstrapping_ratio: [0.25]
 HPO_metric: nll # nll mae rmse sharp crps
 HPO_radom_ratio: 1.0
 calibration_type: all # all miscal rms ma isotonic
@@ -18,7 +17,7 @@ train:
   loss_function: mae   
   max_epochs: 200
   batch_size: 64
-  early_stop: [True]
+  early_stop: True
   early_stop.patience: 50
   early_stop.min_delta: 0
 optimizer:
