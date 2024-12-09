@@ -23,3 +23,50 @@ conda activate horoscope
 pip install -r requirements.txt
 conda clean --all
 ```
+
+### Feature Extraction
+In order to train the deterministic backbone model, or any probabilistic model in the uncertainty module, we need to first transform event data into feature vectors. In principle, our framework supports any kind of neural networks as the backbone model. However, our expriments are based on  
+[Data aware LSTM approach](https://ieeexplore.ieee.org/abstract/document/8285184) . Feature extraction for all event logs included in our experiments can be achieved by executing the following script:
+
+```
+python preprocess.py --datasets BPIC20DD BPIC20ID BPIC20PTC BPIC20RFP BPIC20TPD BPIC15_1 BPIC13I BPIC12 HelpDesk Sepsis   --model dalstm
+```
+
+#### Training and evaluation for a probabilistic model
+In order to train and evaluate a probabilistic model, and replicate our experiments, the following script should be executed:
+
+```
+bash bash_scripts/Train_eval_calib.sh
+```
+
+This bash script, include all execution commands for training and evaluation of all UQ configurations. It also automatically applies calirated regression (CR) on top of the probabilistic model. The bash script, include several commands for executing the main script: **main.py**. The main script accept the following structrure for configuration options:
+```
+python main.py --dataset BPIC20DD --model dalstm --UQ deterministic --cfg dalstm_deterministic.yaml --seed 42 --device 1
+```
+More precisely, the configuration options which should be specified by the user aligns with the followin structure:
+
+**dataset** specifies the event log that training and evaluation is conducted for it (e.g., BPIC20DD).
+
+**model** specifies the architecture of the backbone model (i.e., dalstm).
+
+**UQ** specifies the uncertainty quantification (UQ) configuration. For instance, in the above example, the deterministic backbone is trained which is a mandatory step for post-hoc UQ techniques like Laplace approximation (LA), and embedding-based random forest (E-RF). User can easily decide on the UQ configuration by changing the value for this option. For instance, to train and evaluate Laplace approximation the following example should be changed as per follows:
+
+```
+python main.py --dataset BPIC20DD --model dalstm --UQ LA --cfg dalstm_LA.yaml --seed 42 --device 1
+```
+
+**cfg** specifies the configuration file that is used to save all important parameters with respect to training and evaluation of the model.
+
+**n_splits** this configuration is only applicable to CARD (diffusion based UQ technique). Note that in all of our experiments, we used n_splits=1 which is equivalent to holdout data split. Any value larger than one specifies the number of folds in cross-fold validation data split. 
+
+**seed** specifies the random seed that is used. With the exception of ensembles which requires multiple seed, our expriments are based on the single seed=42.
+
+**device** specifies the machine (GPU) that is used for training and evaluation.
+
+To apply range-based prediction adjustment (RPA), and replicate our experiments, the following script should be executed:
+
+```
+bash bash_scripts/RPA_Compare.sh
+```
+
+This bash script, include all execution commands for RPA post-hoc improvement methods, as well as vizualization and comparisons for the final results of different UQ configurations.
