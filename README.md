@@ -4,7 +4,7 @@ This is the supplementary githob repository of the paper: "Horoscope: A Probabil
 Our framework consists of two important modules: the uncertainty module, and the post-hoc improvement module, and can be integrated into a machine learning pipeline as per following figure:
 
 <p align="center">
-  <img src="https://github.com/keyvan-amiri/PGTNet/blob/main/Framework.jpg">
+  <img src="https://github.com/keyvan-amiri/PGTNet/blob/main/Framework.png">
 </p>
 
 ## Installation
