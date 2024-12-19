@@ -72,7 +72,7 @@ def compute_mae(y_true, y_pred):
 
 def sparsification_analysis(pred_mean=None, y_true=None, pred_std=None,
                             pred_mean_adj = None, pred_std_adj = None,
-                            pda_path = None, method=None, kernel=None):
+                            rpa_path = None, method=None, kernel=None):
     n_samples = len(pred_mean)
     n_steps = 100
     step_size = int(n_samples / n_steps)
@@ -142,7 +142,7 @@ def sparsification_analysis(pred_mean=None, y_true=None, pred_std=None,
     #plt.text(0.6, max(mae_oracle) * 0.80, f'AUSE-adjusted: {ause_adj:.4f}', color='black', fontsize=12)
     #plt.text(0.6, max(mae_oracle) * 0.75, f'AURG-adjusted: {aurg_adj:.4f}', color='black', fontsize=12)    
     new_file_name = method + '_' + kernel + '_sparsification_plot' + '.pdf'
-    new_file_path = os.path.join(pda_path, new_file_name)
+    new_file_path = os.path.join(rpa_path, new_file_name)
     plt.savefig(new_file_path, format='pdf')
     plt.clf()
     plt.close()   
@@ -150,7 +150,7 @@ def sparsification_analysis(pred_mean=None, y_true=None, pred_std=None,
     return (ause, aurg, ause_adj, aurg_adj)
 
 
-def apply_pda(args, pda_path):
+def apply_rpa(args, rpa_path):
     val_df_names = [f for f in os.listdir(args.result_path)
                     if f.endswith('inference_result_validation_.csv')]
     test_df_names = []
@@ -176,14 +176,14 @@ def apply_pda(args, pda_path):
         method = methods[i]
         df_val = val_df_lst[i]
         df = test_df_lst[i]
-        pda_test_name = test_df_names[i].replace('.csv', 'pda_.csv')
-        report_name = pda_test_name.replace('.csv', 'uq_metrics.txt')
-        uq_dict_name = pda_test_name.replace('.csv', 'uq_metrics.pkl')
-        before_uq_dict_name = uq_dict_name.replace('pda_uq_metrics.pkl',
+        rpa_test_name = test_df_names[i].replace('.csv', 'rpa_.csv')
+        report_name = rpa_test_name.replace('.csv', 'uq_metrics.txt')
+        uq_dict_name = rpa_test_name.replace('.csv', 'uq_metrics.pkl')
+        before_uq_dict_name = uq_dict_name.replace('rpa_uq_metrics.pkl',
                                                    'uq_metrics.pkl')
         before_uq_dict_path = os.path.join(args.result_path, before_uq_dict_name)
-        report_path = os.path.join(pda_path, report_name)
-        uq_dict_path = os.path.join(pda_path, uq_dict_name)
+        report_path = os.path.join(rpa_path, report_name)
+        uq_dict_path = os.path.join(rpa_path, uq_dict_name)
         uq_adj_lst.append(uq_dict_path)
         uq_lst.append(before_uq_dict_path)
         
@@ -239,10 +239,7 @@ def apply_pda(args, pda_path):
             
     
         df['Transformed_Prediction'] = y_test_transformed
-        # TODO: decide how we want to treat standard deviation.
-        # 1) simply scaling just like the mean:
-        #df['Transformed_uncertainty'] = df[uncertainty_col]*df['Transformed_Prediction'] / df['Prediction']
-        # 2) or apply calibration regression after adjusting the mean.
+        # Apply calibration regression after adjusting the mean.
         # Apply the same transformation on validation set
         y_val_transformed = apply_transform(y_val_pred, trans_dict)
         y_val_transformed = np.where(y_val_transformed <= 0, 1e-6, y_val_transformed)
@@ -255,7 +252,7 @@ def apply_pda(args, pda_path):
                 y_val_transformed, y_val_std, y_val_true, criterion="miscal") 
         df['Transformed_uncertainty']  = miscal_std_scaling * y_test_std       
         
-        df.to_csv(os.path.join(pda_path, pda_test_name), index=False)
+        df.to_csv(os.path.join(rpa_path, rpa_test_name), index=False)
         df['adjusted_error'] = (df['Transformed_Prediction'] - df['GroundTruth']).abs()
         
         ground_truth = df['GroundTruth'].values
@@ -283,7 +280,7 @@ def apply_pda(args, pda_path):
         plt.title(f'Distribution of Ground Truth and Predictions for {method}')
         plt.legend(loc='best')
         adj_name = method + '_' + args.kernel + '_Prediction_PDF.pdf'
-        adj_path = os.path.join(pda_path, adj_name)
+        adj_path = os.path.join(rpa_path, adj_name)
         plt.savefig(adj_path, format='pdf')
         plt.close()
         # Visualization: PDF for uncertainty, adjusted uncertainty
@@ -295,7 +292,7 @@ def apply_pda(args, pda_path):
         plt.title(f'Distribution of Estimated Uncertainty and its adjusted version for {method}')
         plt.legend(loc='best')
         adj_std_name = method + '_' + args.kernel + '_Uncertainty_PDF.pdf'
-        adj_std_path = os.path.join(pda_path, adj_std_name)
+        adj_std_path = os.path.join(rpa_path, adj_std_name)
         plt.savefig(adj_std_path, format='pdf')
         plt.close()
         # Visualization: CDF for ground truth, prediction, adjusted prediction
@@ -310,7 +307,7 @@ def apply_pda(args, pda_path):
         plt.legend(loc='best')
         plt.grid()
         cdf_name = method + '_' + args.kernel + '_Prediction_CDF.pdf'
-        cdf_path = os.path.join(pda_path, cdf_name)
+        cdf_path = os.path.join(rpa_path, cdf_name)
         plt.savefig(cdf_path, format='pdf')
         plt.close()  
         # Visualization: earliness of predictions
@@ -330,21 +327,21 @@ def apply_pda(args, pda_path):
         plt.plot(mean_pred.index, mean_pred.values, linestyle='--', color='green', 
                  label='Mean Predicted Value')
         plt.plot(mean_pred_adj.index, mean_pred_adj.values, linestyle='-',
-                 color='olive', label='Mean Predicted Value- after PDA')        
+                 color='olive', label='Mean Predicted Value- after RPA')        
         plt.plot(mean_abs_error.index, mean_abs_error.values, linestyle='--', 
                  color='blue', label='Mean Absolute Error')
         plt.plot(mean_error_adj.index, mean_error_adj.values, linestyle='-', 
-                 color='cyan', label='Mean Absolute Error- after PDA')
+                 color='cyan', label='Mean Absolute Error- after RPA')
         plt.plot(mean_std.index, mean_std.values, linestyle='--', color='purple', 
                  label='Mean Posterior Standard Deviation')
         plt.plot(mean_std_adj.index, mean_std_adj.values, linestyle='-', color='pink', 
-                 label='Mean Posterior Standard Deviation- after PDA')
+                 label='Mean Posterior Standard Deviation- after RPA')
         plt.title(f'{method}: Mean Absolute Error, Mean Uncertainty vs Prefix Length')
         plt.xlabel('Prefix Length')
         plt.ylabel('MAE / Mean Uncertainty / Mean predictions')
         plt.legend()
         early_name = method + '_' + args.kernel + '_Earliness.pdf'
-        early_path = os.path.join(pda_path, early_name)
+        early_path = os.path.join(rpa_path, early_name)
         plt.savefig(early_path, format='pdf')
         plt.clf()
         plt.close()
@@ -352,7 +349,7 @@ def apply_pda(args, pda_path):
         (ause, aurg, ause_adj, aurg_adj) = sparsification_analysis(
             pred_mean=predictions, y_true=ground_truth, pred_std=uncertainties,
             pred_mean_adj = adjusted_predictions, 
-            pred_std_adj = adjusted_uncertainties, pda_path = pda_path, 
+            pred_std_adj = adjusted_uncertainties, rpa_path = rpa_path, 
             method=method, kernel=args.kernel)
         # get all metrics after adjustment
         adjusted_uncertainties = np.maximum(adjusted_uncertainties, 1e-6)        
@@ -384,7 +381,7 @@ def main():
     parser = argparse.ArgumentParser(
         description='Use Prediction Distribution Adjustment')
     parser.add_argument('--dataset', help='dataset that is used.')
-    parser.add_argument('--cfg', help='configuration for PDA.')
+    parser.add_argument('--cfg', help='configuration for RPA.')
     args = parser.parse_args()
     root_path = os.getcwd()
     # read the relevant cfg file
@@ -399,11 +396,11 @@ def main():
     args.num_bins = cfg.get('num_bins')
     args.bin_method = cfg.get('bin_method')
     args.result_path = os.path.join(root_path, 'results', args.dataset, args.model)
-    pda_path = os.path.join(args.result_path, 'PDA')
-    if not os.path.exists(pda_path):
-        os.makedirs(pda_path)
+    rpa_path = os.path.join(args.result_path, 'RPA')
+    if not os.path.exists(rpa_path):
+        os.makedirs(rpa_path)
     
-    methods, uq_adj_lst, uq_lst = apply_pda(args, pda_path)
+    methods, uq_adj_lst, uq_lst = apply_rpa(args, rpa_path)
         
 if __name__ == '__main__':
     main()
