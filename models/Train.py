@@ -19,12 +19,12 @@ def train_model(model=None, uq_method=None, train_loader=None, val_loader=None,
     """
     This function is used for the following UQ techniques:
         1) Deterministic point estimate.
-        2) Dropout approximation
-        3) Heteroscedastic regression
-        combinations of 2,3
-        4) Simultaneous Quantile Regression
-        5) Ensembles (Traditional/Bootstrapping)
-        combinations of 5,3
+        2) Dropout approximation (DA, CDA)
+        3) Heteroscedastic regression (H)
+        combinations of 2,3 (DA+H , CDA+H)
+        4) Simultaneous Quantile Regression (SQR)
+        5) Deep and Bootstrapping Ensembles (DE, BE) 
+        combinations of 5,3 (DE+H, BE+H)
     """
     
     # get optimizer parameters to be used in retraining with train+val data
@@ -100,8 +100,8 @@ def train_model(model=None, uq_method=None, train_loader=None, val_loader=None,
             inputs = batch[0].to(device)
             targets = batch[1].to(device)
             optimizer.zero_grad() # Resets the gradients
-            if (uq_method == 'deterministic' or uq_method == 'en_t' or 
-                uq_method == 'en_b'):
+            if (uq_method == 'deterministic' or uq_method == 'DE' or 
+                uq_method == 'BE'):
                 outputs = model(inputs)
                 loss = criterion(outputs, targets)
             elif (uq_method == 'SQR'):
@@ -120,14 +120,14 @@ def train_model(model=None, uq_method=None, train_loader=None, val_loader=None,
                             aug_type='RNN', device=device))               
                 loss = criterion(outputs, targets, taus)
             elif (uq_method == 'DA' or uq_method == 'CDA' or
-                  uq_method == 'DA_A' or uq_method == 'CDA_A'):
+                  uq_method == 'DA+H' or uq_method == 'CDA+H'):
                 mean, log_var, regularization = model(inputs) 
-                if (uq_method == 'DA_A' or uq_method == 'CDA_A'):
+                if (uq_method == 'DA+H' or uq_method == 'CDA+H'):
                     loss = criterion(targets, mean, log_var) + regularization
                 else:
                     loss = criterion(mean, targets) + regularization
-            elif (uq_method == 'mve' or uq_method == 'en_t_mve' or
-                  uq_method == 'en_b_mve'):                
+            elif (uq_method == 'H' or uq_method == 'DE+H' or
+                  uq_method == 'BE+H'):                
                 mean, log_var = model(inputs)
                 loss = criterion(targets, mean, log_var)                
             # Backward pass and optimization
@@ -142,8 +142,8 @@ def train_model(model=None, uq_method=None, train_loader=None, val_loader=None,
             for batch in val_loader:
                 inputs = batch[0].to(device)
                 targets = batch[1].to(device)
-                if (uq_method == 'deterministic' or uq_method == 'en_t' or
-                    uq_method == 'en_b'):
+                if (uq_method == 'deterministic' or uq_method == 'DE' or
+                    uq_method == 'BE'):
                     outputs = model(inputs)
                     valid_loss = criterion(outputs, targets)
                 elif (uq_method == 'SQR'):
@@ -162,15 +162,15 @@ def train_model(model=None, uq_method=None, train_loader=None, val_loader=None,
                     taus = taus.to(device)
                     valid_loss = criterion(outputs, targets, taus)
                 elif (uq_method == 'DA' or uq_method == 'CDA' or
-                      uq_method == 'DA_A' or uq_method == 'CDA_A'):
+                      uq_method == 'DA+H' or uq_method == 'CDA+H'):
                     mean, log_var, regularization = model(inputs)
-                    if (uq_method == 'DA_A' or uq_method == 'CDA_A'):
+                    if (uq_method == 'DA+H' or uq_method == 'CDA+H'):
                         valid_loss = criterion(targets, mean,
                                                log_var) + regularization
                     else:
                         valid_loss = criterion(mean, targets) + regularization
-                elif (uq_method == 'mve' or uq_method == 'en_t_mve' or
-                      uq_method == 'en_b_mve'):
+                elif (uq_method == 'H' or uq_method == 'DE+H' or
+                      uq_method == 'BE+H'):
                     mean, log_var = model(inputs)
                     valid_loss = criterion(targets, mean, log_var)                    
                 total_valid_loss += valid_loss.item()                    
@@ -243,8 +243,8 @@ def train_model(model=None, uq_method=None, train_loader=None, val_loader=None,
                 inputs = batch[0].to(device)
                 targets = batch[1].to(device)
                 optimizer.zero_grad() # Resets the gradients
-                if (uq_method == 'deterministic' or uq_method == 'en_t' or 
-                    uq_method == 'en_b'):
+                if (uq_method == 'deterministic' or uq_method == 'DE' or 
+                    uq_method == 'BE'):
                     outputs = model(inputs)
                     loss = criterion(outputs, targets)
                 elif (uq_method == 'SQR'):
@@ -263,14 +263,14 @@ def train_model(model=None, uq_method=None, train_loader=None, val_loader=None,
                                 aug_type='RNN', device=device))               
                     loss = criterion(outputs, targets, taus)
                 elif (uq_method == 'DA' or uq_method == 'CDA' or
-                      uq_method == 'DA_A' or uq_method == 'CDA_A'):
+                      uq_method == 'DA+H' or uq_method == 'CDA+H'):
                     mean, log_var, regularization = model(inputs) 
-                    if (uq_method == 'DA_A' or uq_method == 'CDA_A'):
+                    if (uq_method == 'DA+H' or uq_method == 'CDA+H'):
                         loss = criterion(targets, mean, log_var) + regularization
                     else:
                         loss = criterion(mean, targets) + regularization
-                elif (uq_method == 'mve' or uq_method == 'en_t_mve' or
-                      uq_method == 'en_b_mve'):                
+                elif (uq_method == 'H' or uq_method == 'DE+H' or
+                      uq_method == 'BE+H'):                
                     mean, log_var = model(inputs)
                     loss = criterion(targets, mean, log_var)                
                 # Backward pass and optimization

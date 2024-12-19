@@ -277,12 +277,7 @@ def main():
                
         if args.model == 'dalstm':
             DALSTM_train_evaluate(cfg=cfg)
-        elif args.model == 'pgtnet':
-            pass
-        else:
-            if (args.model == 'cnn' or args.model == 'pt'):
-                print(f'{args.model} architecture will be added in future.')
-            print(f'The backebone model {args.model} is not supported.') 
+            
     
 if __name__ == '__main__':
     main()

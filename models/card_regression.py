@@ -5,16 +5,6 @@ This python script is adapted from the origninal script:
     Huangjie Zheng, and Mingyuan Zhou.
 """
 
-#TODO: use this code to access pre-trained checkpoint
-"""
-        # PGTNet: get the address of the checkpoint for guidance model
-        if args.model == 'pgtnet':           
-            only_seed = args.seed[0]
-            checkpoint_path = os.path.join(args.instance_path, only_seed, 'ckpt',
-                                         '0.ckpt')
-"""
-
-
 import os
 import logging
 import time
@@ -63,7 +53,6 @@ class Diffusion(object):
                                    start=config.diffusion.beta_start,
                                    end=config.diffusion.beta_end)
         betas = self.betas = betas.float().to(self.device)
-        #TODO: understand how the followings correspond to the formulas in the original paper.
         self.betas_sqrt = torch.sqrt(betas)
         alphas = 1.0 - betas
         self.alphas = alphas
@@ -109,12 +98,9 @@ class Diffusion(object):
                 dropout=config.diffusion.nonlinear_guidance.dropout,
                 p_fix=config.diffusion.nonlinear_guidance.dropout_rate).to(
                     self.device)                          
-        elif config.model.type == 'pgtnet':
-            #TODO: add model similar to dalstm
-            pass
         else:
-            #TODO: implementation for ProcessTransformer and PGTNet
-            print('Currently only DALSTM and PGTNet models are supported.')
+            # implementation for other architectures can be added here.
+            print('Currently only DALSTM model is supported.')
 
     ##########################################################################
     ################# Auxiliary functions for train and test #################
@@ -140,9 +126,8 @@ class Diffusion(object):
         if self.config.model.target_norm:
             max_target_value = dataset_object.return_max_target_arrtibute() 
     
-        for batch in dataset_loader:
-            
-            # TODO: The folloing is only applicable for dalstm, implement for pgtnet
+        for batch in dataset_loader:            
+            # This part of code should be adjusted for other architectures
             x_batch = batch[0].to(self.device)
             y_batch = batch[1].to(self.device)
             
@@ -220,7 +205,7 @@ class Diffusion(object):
                 aux_loss = self.nonlinear_guidance_model_train_step(
                     x_batch, y_batch, aux_optimizer)
         else:
-            #TODO: implementation for ProcessTransformer and PGTNet
+            # implementation for other architectures can be added here.
             print('Currently only DALSTM model is supported.')
         if epoch % self.config.diffusion.nonlinear_guidance.logging_interval == 0:
             logging.info(f"epoch: {epoch}, non-linear guidance model \
@@ -234,7 +219,7 @@ class Diffusion(object):
                             torch.tensor([cur_t - 1])).detach().cpu()
         return y_t_p_sample, y_t_true
 
-    #TODO: check why called unnorm, if it not necessary change the name
+
     def compute_unnorm_y(self, cur_y, testing, max_targ):
         if testing:
             y_mean = cur_y.cpu().reshape(-1,
@@ -248,7 +233,7 @@ class Diffusion(object):
             y_t_unnorm = y_mean
         return y_t_unnorm
 
-    #TODO: check the resultant plots, and if necessary adjust compute_unnorm_y. is it really unnorm?
+
     def make_subplot_at_timestep_t(self, cur_t, cur_y, y_i, y_0, axs, ax_idx,
                                    prior=False, testing=True, max_targ=None):
         y_0_unnorm = self.compute_unnorm_y(y_0, testing, max_targ)
@@ -277,8 +262,6 @@ class Diffusion(object):
     def compute_Prediction_SE_AE(self, config, dataset_object, y_batch,
                                  generated_y, return_pred_mean=False):
         # generated_y: has a shape of (current_batch_size, n_z_samples, dim_y)
-        #TODO: check functionality of trimmed_mean_range
-        # if it is always constant remove it from config file
         low, high = config.testing.trimmed_mean_range
         y_true = y_batch.cpu().detach().numpy()
         y_pred_mean = None  # to be used to compute MAE/RMSE
@@ -366,7 +349,8 @@ class Diffusion(object):
         the array of corresponding time step.
         """
         current_t = self.num_timesteps - idx
-        #TODO: check wheteher it is the same for other models: PGTNet, PT,...
+        # This part of the code might require some changes based on the
+        # neural architecture used in future.
         # in original implementation: config.model.y_dim is used instead of 1.
         gen_y = y_tile_seq[idx].reshape(current_batch_size,
                                         config.testing.n_z_samples,
@@ -401,7 +385,7 @@ class Diffusion(object):
                 y_batch=y_batch, generated_y=gen_y)
             if len(y_se_by_batch_list[current_t]) == 0:
                 y_se_by_batch_list[current_t] = y_se
-            # TODO: resolve the problem without padding if it is possible!
+            # it is more briliant to resolve the problem without padding!
             else:
                 try:
                     y_se_by_batch_list[current_t] = np.concatenate(
@@ -422,7 +406,7 @@ class Diffusion(object):
                 y_batch=y_batch, generated_y=gen_y)
             if len(y_ae_by_batch_list[current_t]) == 0:
                 y_ae_by_batch_list[current_t] = y_ae
-            # TODO: resolve the problem without padding if it is possible!
+            # it is more briliant to resolve the problem without padding!
             else:
                 try:
                     y_ae_by_batch_list[current_t] = np.concatenate(
@@ -486,21 +470,19 @@ class Diffusion(object):
                 nll_by_batch_list[current_t] = np.concatenate(
                     [nll_by_batch_list[current_t], nll], axis=0)
             except:
-                # TODO: check the root cause and if possible handle without padding
-                # handle exception for the last minibatch by padding
+                # it is more briliant to resolve the problem without padding!
                 pad_value = int(config.testing.batch_size - nll.shape[1])
                 nll_resized = np.pad(nll, ((0, 0), (0, pad_value)))    
                 nll_by_batch_list[current_t] = np.concatenate(
                     [nll_by_batch_list[current_t], nll_resized], axis=0)
         return nll_by_batch_list
 
-    # TODO: the following condition does not work for ppm datasets: should be adjusted
+
     def set_NLL_global_precision(self, dataset_object=None, test_var=True,
                                  max_targ=None):
         if test_var:
             # compute test set sample variance
             if self.config.model.target_norm:
-                #TODO: it there is some error: try removinf astype
                 y_test_unnorm = (max_targ * dataset_object.y_test).astype(
                     np.float32)
             else:
@@ -594,7 +576,6 @@ class Diffusion(object):
         aux_optimizer = get_optimizer(
             self.config.aux_optim, self.cond_pred_model.parameters())
         
-        # TODO: check what the ema does in the model
         if self.config.model.ema:
             ema_helper = EMA(mu=self.config.model.ema_rate)
             ema_helper.register(model)
@@ -737,8 +718,10 @@ class Diffusion(object):
                 data_start = time.time()
                 data_time = 0               
                 for i, xy_0 in enumerate(train_loader):
-                    # TODO: change the followings for other models PGTNet, PT,...
-                    # it depends on how batches include x,y information!
+                    # this part of the code requires adjustment for other 
+                    # neural network arcitectures that might be used as the 
+                    # deterministic backbone. Generally, this part depends on 
+                    # how data batches include x,y information!
                     if config.model.type == 'dalstm':
                         n = xy_0[0].size(0)
                     data_time += time.time() - data_start
@@ -751,8 +734,9 @@ class Diffusion(object):
                     ).to(self.device)
                     t = torch.cat([t, self.num_timesteps - 1 - t], dim=0)[:n]
                     
-                    #TODO: add necessary code for PGTNET, 
-                    # it depends on how x,y are saved in data batches!
+                    # this part depends on how x,y are saved in data batches! 
+                    # therefore, if another architecture is used as the backbone
+                    # model this part of the could should be adjusted. 
                     if config.model.type == 'dalstm':
                         x_batch = xy_0[0].to(self.device)
                         y_batch = xy_0[1].to(self.device)                        
@@ -803,7 +787,6 @@ class Diffusion(object):
                     output = model(x_batch, y_t_batch, y_0_hat_batch, t)
                     # noise estimation loss
                     # use the same noise sample e during training to compute loss
-                    #TODO: check the meaning of the following to see whether related to L1 OR L2 loss or not
                     loss = (e - output).square().mean()  
                     #loss = (e - output).abs().mean() 
 
@@ -826,7 +809,6 @@ class Diffusion(object):
                     optimizer.step()
                     if self.config.model.ema:
                         ema_helper.update(model)
-                    # TODO: check the possibility of joint training!
                     # optimize non-linear guidance model
                     if config.diffusion.nonlinear_guidance.joint_train:
                         self.cond_pred_model.train()
@@ -880,7 +862,7 @@ class Diffusion(object):
                         # plot Prediction and ground truth
                         with torch.no_grad():
                             if config.model.type == 'dalstm':
-                                #TODO: check if possible move squeeze operations to the model!
+                                # it might be more briliant if squeeze operations are moved to the model!
                                 y_p_seq = p_sample_loop(
                                     model, x_batch, y_batch, y_T_mean,
                                     self.num_timesteps, self.alphas,
@@ -1058,7 +1040,8 @@ class Diffusion(object):
         dataset_check = dataset_object.return_dataset(split='train')
         # use the first 50 samples for sanity check
         dataset_check = dataset_check[:50] 
-        #TODO: check whether the followings also work for PGTNet, PT, ...
+        # this part might require some changes in case other architecturs are
+        # used as the backbone model.
         x_check = dataset_check[0]
         y_check = dataset_check[1]
         y_check = y_check.to(self.device)
@@ -1089,7 +1072,7 @@ class Diffusion(object):
                         self.device)
                         
         with torch.no_grad():
-            # TODO: check whether the squeeze=True also works for PGTNET, PT, ..
+            # if other architectures are used then squeeze=True might require changes.
             y_p_seq = p_sample_loop(
                 model, x_check.to(self.device), y_0_hat_check, y_T_mean_check,
                 self.num_timesteps, self.alphas, self.one_minus_alphas_bar_sqrt,
@@ -1169,7 +1152,7 @@ class Diffusion(object):
             index_indicator = 0 
 
             for step, xy_batch in enumerate(test_loader):
-                # TODO: Apply necessary changes for other architectures
+                # This part of the code require adjustments for other architectures
                 current_batch_size = xy_batch[0].shape[0]
                 x_batch = xy_batch[0].to(self.device)
                 y_batch = xy_batch[1].to(self.device)
@@ -1179,7 +1162,7 @@ class Diffusion(object):
                 true_y_by_batch_list.append(y_batch.cpu().numpy()) 
                 # contain y samples through reverse diffusion
                 # some pytorch version might not have torch.tile
-                # TODO: Apply necessary changes for other architectures
+                # This part of the code require adjustments for other architectures
                 y_0_tile = (y_batch.repeat(
                     config.testing.n_z_samples, 1, 1).transpose(0, 1)).to(
                         self.device).flatten(0, 1).view(-1)
@@ -1214,8 +1197,6 @@ class Diffusion(object):
                               
                 n_samples_gen_y_for_plot = 2 
                 if config.testing.plot_gen:
-                    # TODO: check when this part is called and revise it like 
-                    # the previous lines accordingly!
                     x_repeated = (x_batch.repeat(
                         n_samples_gen_y_for_plot, 1, 1).transpose(0, 1)).to(
                         self.device).flatten(0, 1)
@@ -1223,7 +1204,7 @@ class Diffusion(object):
                 
                 # generate samples from all time steps for current mini-batch
                 minibatch_sample_start = time.time()
-                # TODO: in the original implementation there was no squeeze=True
+                # in the original implementation there was no squeeze=True
                 # but we needed it for DALSTM model. Check whether it is also
                 # applicable to other architectures or not.
                 y_tile_seq = p_sample_loop(

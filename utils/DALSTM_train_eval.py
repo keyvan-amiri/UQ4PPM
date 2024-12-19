@@ -85,11 +85,11 @@ class DALSTM_train_evaluate ():
         self.early_stop_patience = cfg.get('train').get('early_stop.patience')
         self.early_stop_min_delta = cfg.get('train').get('early_stop.min_delta')        
         if not (self.uq_method == 'DA' or self.uq_method == 'CDA' or
-                self.uq_method == 'DA_A' or self.uq_method == 'CDA_A' or 
-                self.uq_method == 'mve'):
+                self.uq_method == 'DA+H' or self.uq_method == 'CDA+H' or 
+                self.uq_method == 'H'):
             # in case of of these methods is chosen, we get these values
             # as parameters for HPO. it means we only test True, and False
-            # for early stopping for dropout methods. For mve, we only have
+            # for early stopping for dropout methods. For "H", we only have
             # one experiment.
             self.num_mcmc = None      
             self.early_stop = cfg.get('train').get('early_stop')
@@ -97,8 +97,8 @@ class DALSTM_train_evaluate ():
         ##########   experiments for hyperparameter optimization   ###########
         ######################################################################
         HPO_radom_ratio = cfg.get('HPO_radom_ratio')
-        if (self.uq_method == 'en_b' or self.uq_method == 'en_b_mve' or
-            self.uq_method == 'en_t' or self.uq_method == 'en_t_mve'):
+        if (self.uq_method == 'BE' or self.uq_method == 'BE+H' or
+            self.uq_method == 'DE' or self.uq_method == 'DE+H'):
             # set the experiments considering grid search over parameters
             self.experiments, self.max_model_num = get_exp(
                 uq_method=self.uq_method, cfg=cfg)
@@ -122,10 +122,10 @@ class DALSTM_train_evaluate ():
         ######################################################################
         ########################   Ensemble setting   ########################
         ######################################################################
-        if (self.uq_method == 'en_b' or self.uq_method == 'en_b_mve' or
-            self.uq_method == 'en_t' or self.uq_method == 'en_t_mve'):
+        if (self.uq_method == 'BE' or self.uq_method == 'BE+H' or
+            self.uq_method == 'DE' or self.uq_method == 'DE+H'):
             self.ensemble_mode = True
-            if (self.uq_method == 'en_b' or self.uq_method == 'en_b_mve'):
+            if (self.uq_method == 'BE' or self.uq_method == 'BE+H'):
                 self.bootstrapping = True
             else:
                 self.bootstrapping = False
@@ -137,7 +137,7 @@ class DALSTM_train_evaluate ():
         ######################################################################
         # define parameters required for dropout approximation
         if (self.uq_method == 'DA' or self.uq_method == 'CDA' or
-              self.uq_method == 'DA_A' or self.uq_method == 'CDA_A'):
+              self.uq_method == 'DA+H' or self.uq_method == 'CDA+H'):
             # hard-coded parameters since we have separate deterministic model
             self.dropout = True
             self.Bayes = True
@@ -147,7 +147,7 @@ class DALSTM_train_evaluate ():
             self.dropout_regularizer = cfg.get('uncertainty').get(
                 'dropout_approximation').get('dropout_regularizer')
             # Set the parameter for concrete dropout
-            if (self.uq_method == 'DA' or self.uq_method == 'DA_A'):
+            if (self.uq_method == 'DA' or self.uq_method == 'DA+H'):
                 self.concrete_dropout = False
             else:
                 self.concrete_dropout = True
@@ -160,7 +160,7 @@ class DALSTM_train_evaluate ():
         ######################################################################
         #####################   Random Forest setting   ######################
         ######################################################################
-        if self.uq_method == 'RF':
+        if self.uq_method == 'E-RF':
             self.union_mode = True
         else:
             self.union_mode = False
@@ -175,13 +175,13 @@ class DALSTM_train_evaluate ():
         #########   Loss function  (heteroscedastic/homoscedastic)  ##########
         ######################################################################
         if (self.uq_method == 'deterministic' or self.uq_method == 'DA'
-            or self.uq_method == 'CDA' or self.uq_method == 'en_t' or
-            self.uq_method == 'en_b'):
+            or self.uq_method == 'CDA' or self.uq_method == 'DE' or
+            self.uq_method == 'BE'):
             self.criterion = set_loss(
                 loss_func=cfg.get('train').get('loss_function'))            
-        elif (self.uq_method == 'DA_A' or self.uq_method == 'CDA_A' or
-            self.uq_method == 'mve' or self.uq_method == 'en_t_mve' or
-            self.uq_method == 'en_b_mve'):
+        elif (self.uq_method == 'DA+H' or self.uq_method == 'CDA+H' or
+            self.uq_method == 'H' or self.uq_method == 'DE+H' or
+            self.uq_method == 'BE+H'):
             self.criterion = set_loss(
                 loss_func=cfg.get('train').get('loss_function'),
                 heteroscedastic=True) 
@@ -419,9 +419,9 @@ class DALSTM_train_evaluate ():
                         ensemble_mode=True, ensemble_size=self.experiments[
                             self.min_exp_id].get('num_models'),
                         exp_id=self.min_exp_id+1)
-                elif (self.uq_method == 'DA' or self.uq_method == 'DA_A' or 
-                      self.uq_method == 'CDA' or self.uq_method == 'CDA_A' or 
-                      self.uq_method == 'mve'):
+                elif (self.uq_method == 'DA' or self.uq_method == 'DA+H' or 
+                      self.uq_method == 'CDA' or self.uq_method == 'CDA+H' or 
+                      self.uq_method == 'H'):
                     final_result = test_model(
                         model=self.model, uq_method=self.uq_method, 
                         num_mc_samples=self.num_mcmc, 
@@ -458,7 +458,7 @@ class DALSTM_train_evaluate ():
                         exp_id=self.min_exp_id+1, deterministic=True, 
                         std_mean_ratio=self.experiments[
                             self.min_exp_id].get('std_mean_ratio'))
-                elif self.uq_method == 'RF':
+                elif self.uq_method == 'E-RF':
                     final_result = predict_rf(
                         model_arch=self.model, val_loader=self.val_loader,
                         test_loader=self.test_loader, 
@@ -567,9 +567,9 @@ class DALSTM_train_evaluate ():
         
     
     def baseline_approach(self, exp_id, experiment):
-        if (self.uq_method == 'DA' or self.uq_method == 'DA_A' or 
-            self.uq_method == 'CDA' or self.uq_method == 'CDA_A' or 
-            self.uq_method == 'mve'):
+        if (self.uq_method == 'DA' or self.uq_method == 'DA+H' or 
+            self.uq_method == 'CDA' or self.uq_method == 'CDA+H' or 
+            self.uq_method == 'H'):
             # get early-stopping condition, and number of Monte Carlo samples
             self.num_mcmc = experiment.get('num_mcmc') 
             self.early_stop = experiment.get('early_stop')

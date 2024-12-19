@@ -4,20 +4,20 @@ import argparse
 import random
 import itertools
 import numpy as np
-import pandas as pd
 from scipy.stats import norm, spearmanr, pearsonr
 from sklearn.feature_selection import mutual_info_regression
 import torch
 import torch.optim as optim
 from models.dalstm import DALSTMModel, DALSTMModelMve, dalstm_init_weights
 from models.stochastic_dalstm import StochasticDALSTM
+#import pandas as pd
 
 
 # a method to define exeriments for hyper-parameter tuning
 def get_exp(uq_method=None, cfg=None, is_random=False, random_ratio=0.1):
     
-    if (uq_method == 'en_b' or uq_method == 'en_b_mve' or
-        uq_method == 'en_t' or uq_method == 'en_t_mve'): 
+    if (uq_method == 'BE' or uq_method == 'BE+H' or
+        uq_method == 'DE' or uq_method == 'DE+H'): 
         num_model_lst = cfg.get('uncertainty').get('ensemble').get('num_models')
         if not isinstance(num_model_lst, list):
             raise ValueError('number of models should be a list.')
@@ -30,8 +30,8 @@ def get_exp(uq_method=None, cfg=None, is_random=False, random_ratio=0.1):
         hyperparameters = {'num_models': num_model_lst, 
                            'Bootstrapping_ratio': boot_ratio_lst}
 
-    elif (uq_method == 'DA' or uq_method == 'DA_A' or uq_method == 'CDA'
-          or uq_method == 'CDA_A' or uq_method == 'mve'):
+    elif (uq_method == 'DA' or uq_method == 'DA+H' or uq_method == 'CDA'
+          or uq_method == 'CDA+H' or uq_method == 'H'):
         num_mc_lst = cfg.get('uncertainty').get('dropout_approximation').get(
             'num_stochastic_forward_path')
         print(type(num_mc_lst))
@@ -48,7 +48,7 @@ def get_exp(uq_method=None, cfg=None, is_random=False, random_ratio=0.1):
         early_stop_lst = [True]
         hyperparameters = {'deterministic': deterministc_lst, 
                            'early_stop': early_stop_lst} 
-    if uq_method == 'RF': 
+    if uq_method == 'E-RF': 
         # define loss funciton options for fitting the auxiliary model
         loss_lst = cfg.get('uncertainty').get('union').get('loss_function')
         if not isinstance(loss_lst, list):
@@ -143,7 +143,7 @@ def get_exp(uq_method=None, cfg=None, is_random=False, random_ratio=0.1):
         hyperparameters = {'tau': tau_lst, 'max_epochs': max_epochs_lst,
                            'sqr_factor': sqr_factor_lst} 
     # get experiment list based on hyper-parameter combinations               
-    if uq_method != 'RF':
+    if uq_method != 'E-RF':
         keys = hyperparameters.keys()
         values = hyperparameters.values()
         combinations = list(itertools.product(*values))
@@ -176,8 +176,8 @@ def get_exp(uq_method=None, cfg=None, is_random=False, random_ratio=0.1):
             experiments, int(len(experiments)*random_ratio))
         experiments = random_selected_experiments
         
-    if (uq_method == 'en_b' or uq_method == 'en_b_mve' or
-        uq_method == 'en_t' or uq_method == 'en_t_mve'): 
+    if (uq_method == 'BE' or uq_method == 'BE+H' or
+        uq_method == 'DE' or uq_method == 'DE+H'): 
         return experiments, max_model_num
     else:
         return experiments
@@ -200,7 +200,7 @@ def get_model(uq_method=None, input_size=None, hidden_size=None, n_layers=None,
                             n_layers=n_layers, max_len=max_len, dropout=dropout,
                             p_fix=dropout_prob).to(device) 
         return model
-    elif uq_method == 'RF':
+    elif uq_method == 'E-RF':
         model = DALSTMModel(input_size=input_size, hidden_size=hidden_size,
                             n_layers=n_layers, max_len=max_len, dropout=dropout,
                             p_fix=dropout_prob, exclude_last_layer=True).to(device) 
@@ -227,7 +227,7 @@ def get_model(uq_method=None, input_size=None, hidden_size=None, n_layers=None,
             device=device).to(device)
         return model
     # dropout approximation with heteroscedastic regression
-    elif (uq_method == 'DA_A' or uq_method == 'CDA_A'):
+    elif (uq_method == 'DA+H' or uq_method == 'CDA+H'):
         model = StochasticDALSTM(
             input_size=input_size,
             hidden_size=hidden_size,
@@ -243,18 +243,18 @@ def get_model(uq_method=None, input_size=None, hidden_size=None, n_layers=None,
             device=device).to(device)
         return model
     # heteroscedastic regression also known as mean variance estimation
-    elif uq_method == 'mve':                
+    elif uq_method == 'H':                
         model = DALSTMModelMve(input_size=input_size, hidden_size=hidden_size,
                                n_layers=n_layers, max_len=max_len,
                                dropout=dropout, p_fix=dropout_prob).to(device)
         return model
     
     # b: Bootstrapping ensemble: multiple models, same initialization.            
-    elif (uq_method == 'en_b' or uq_method == 'en_b_mve'):
+    elif (uq_method == 'BE' or uq_method == 'BE+H'):
         # empty lists (ensemble of) models, optimizers, schedulers
         models = []
         for i in range(num_models):
-            if uq_method == 'en_b':
+            if uq_method == 'BE':
                 # each ensemble member is a deterministic model
                 model = DALSTMModel(
                             input_size=input_size,
@@ -275,7 +275,7 @@ def get_model(uq_method=None, input_size=None, hidden_size=None, n_layers=None,
             models.append(model) 
         return models
     # t: Traditional ensemble: multiple models, different initialization.
-    elif (uq_method == 'en_t' or uq_method == 'en_t_mve'):
+    elif (uq_method == 'DE' or uq_method == 'DE+H'):
         # empty lists (ensemble of) models, optimizers, schedulers
         models = []      
         # Original random state (before initializing models)
@@ -284,7 +284,7 @@ def get_model(uq_method=None, input_size=None, hidden_size=None, n_layers=None,
             # Set a unique seed for each model's initialization
             unique_seed = i + 100  
             torch.manual_seed(unique_seed)
-            if uq_method == 'en_t':
+            if uq_method == 'DE':
                 # each ensemble member is a deterministic model
                 model = DALSTMModel(
                             input_size=input_size,
@@ -354,7 +354,7 @@ def set_random_seed(seed):
         torch.backends.cudnn.deterministic = True
         torch.backends.cudnn.benchmark = False
   
-# TODO: combine these two methods for better code structure
+# combine these two methods for better code structure
 # functions to set the optimizer object
 def set_optimizer (model, optimizer_type, base_lr, eps, weight_decay):
     eps = float(eps) #ensure to having a floating number
@@ -405,7 +405,7 @@ def get_optimizer_params(optimizer):
     return base_lr, eps, weight_decay
 
 # optimize disk usage: remove unnecessary data inputs
-# TODO: this method should be changed data_root is removed from configurations!
+# this method should be changed data_root is removed from configurations!
 def delete_preprocessd_tensors (config):
     _DATA_DIRECTORY_PATH = os.path.join(config.data.data_root,
                                         config.data.dir, "data")      
@@ -488,14 +488,14 @@ def add_suffix_to_csv(csv_file, added_suffix=None):
 def get_mean_std_truth (df=None, uq_method=None):
     pred_mean = df['Prediction'].values 
     y_true = df['GroundTruth'].values
-    if (uq_method=='DA_A' or uq_method=='CDA_A' or
-        uq_method == 'en_t_mve' or uq_method == 'en_b_mve' or
+    if (uq_method=='DA+H' or uq_method=='CDA+H' or
+        uq_method == 'DE+H' or uq_method == 'BE+H' or
         uq_method=='deterministic' or uq_method=='GMM' or uq_method=='GMMD'):
         pred_std = df['Total_Uncertainty'].values 
-    elif (uq_method=='CARD' or uq_method=='mve' or uq_method=='SQR'):
+    elif (uq_method=='CARD' or uq_method=='H' or uq_method=='SQR'):
         pred_std = df['Aleatoric_Uncertainty'].values
-    elif (uq_method=='DA' or uq_method=='CDA' or uq_method == 'en_t' or
-          uq_method == 'en_b' or uq_method == 'RF' or uq_method == 'LA'):
+    elif (uq_method=='DA' or uq_method=='CDA' or uq_method == 'DE' or
+          uq_method == 'BE' or uq_method == 'E-RF' or uq_method == 'LA'):
         pred_std = df['Epistemic_Uncertainty'].values
     else:
         raise NotImplementedError(
@@ -504,27 +504,27 @@ def get_mean_std_truth (df=None, uq_method=None):
 
 # get label for plots
 def uq_label_plot (uq_method=None):
-    if uq_method=='DA_A':
+    if uq_method=='DA+H':
         uq_label = 'Dropout + Heteroscedastic'
-    elif uq_method=='CDA_A':
+    elif uq_method=='CDA+H':
         uq_label = 'Concrete Dropout + Heteroscedastic'
-    elif uq_method=='en_t_mve':
+    elif uq_method=='DE+H':
         uq_label = 'Traditional Ensemble + Heteroscedastic'
-    elif uq_method == 'en_b_mve':
+    elif uq_method == 'BE+H':
         uq_label = 'Bootstrapping Ensemble + Heteroscedastic'
     if uq_method=='DA':
         uq_label = 'Dropout'
     elif uq_method=='CDA':
         uq_label = 'Concrete Dropout'
-    elif uq_method=='en_t':
+    elif uq_method=='DE':
         uq_label = 'Traditional Ensemble'
-    elif uq_method == 'en_b':
+    elif uq_method == 'BE':
         uq_label = 'Bootstrapping Ensemble'
-    if uq_method=='RF':
+    if uq_method=='E-RF':
         uq_label = 'Random Forest On Embedding'
     elif uq_method=='LA':
         uq_label = 'Laplace Approximation'
-    elif uq_method=='mve':
+    elif uq_method=='H':
         uq_label = 'Heteroscedastic'
     elif uq_method == 'CARD':
         uq_label = 'CARD Model'

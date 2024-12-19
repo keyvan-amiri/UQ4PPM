@@ -155,13 +155,13 @@ class UQ_Comparison ():
     def replace_techniques(self):
         # Define the replacements in a dictionary
         replacements = {
-        'en_b_mve': 'En (B) + H',
-        'en_t': 'En (T)',
-        'DA_A': 'DA + H',
-        'CDA_A': 'CDA + H',
-        'en_t_mve': 'En (T) + H',
-        'en_b': 'En (B)',
-        'mve': 'H'
+        'BE+H': 'BE+H',
+        'DE': 'DE',
+        'DA+H': 'DA+H',
+        'CDA+H': 'CDA+H',
+        'DE+H': 'DE+H',
+        'BE': 'BE',
+        'H': 'H'
         }    
         # Use list comprehension to replace elements in the list
         updated_list = [replacements.get(item, item) for 

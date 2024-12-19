@@ -33,7 +33,7 @@ def fit_rf(model=None, cfg=None, val_loader=None, criterion=None,
             result_path,
             'deterministic_{}_seed_{}_best_model.pt'.format(split, seed))
         rf_path = os.path.join(
-            result_path, 'RF_{}_seed_{}_exp_{}_best_model.pkl'.format(
+            result_path, 'E-RF_{}_seed_{}_exp_{}_best_model.pkl'.format(
                 split, seed, exp_id)) 
     else:
         deterministic_checkpoint_path = os.path.join(
@@ -41,7 +41,7 @@ def fit_rf(model=None, cfg=None, val_loader=None, criterion=None,
             'deterministic_{}_fold{}_seed_{}_best_model.pt'.format(
                 split, fold, seed))
         rf_path = os.path.join(
-            result_path, 'RF_{}_fold{}_seed_{}_exp_{}_best_model.pkl'.format(
+            result_path, 'E-RF_{}_fold{}_seed_{}_exp_{}_best_model.pkl'.format(
                 split, fold, seed, exp_id)) 
         
     # create a path for embedding
@@ -238,10 +238,10 @@ def predict_rf(model=None, model_arch=None, aux_model=None, val_mode=False,
     results_df = pd.DataFrame(all_results)
     
     if split=='holdout':
-        csv_filename = 'RF_{}_seed_{}_exp_{}_inference_result_.csv'.format(
+        csv_filename = 'E-RF_{}_seed_{}_exp_{}_inference_result_.csv'.format(
             split,seed, exp_id)
     else:
-        csv_filename = 'RF_{}_fold{}_seed_{}_exp_{}_inference_result_.csv'.format(
+        csv_filename = 'E-RF_{}_fold{}_seed_{}_exp_{}_inference_result_.csv'.format(
             split, fold, seed, exp_id)
     if val_mode:
         csv_filename = add_suffix_to_csv(csv_filename, 

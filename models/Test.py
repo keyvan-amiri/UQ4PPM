@@ -69,19 +69,19 @@ def test_model(model=None, models=None, uq_method=None, num_mc_samples=None,
         all_results = {'GroundTruth': [], 'Prediction': [], 
                        'Absolute_error': [], 'Absolute_percentage_error': []}
     # UQ methods capturing Epistemic Uncertainty
-    elif (uq_method == 'DA' or uq_method == 'CDA' or uq_method == 'en_t' or
-          uq_method =='en_b'):
+    elif (uq_method == 'DA' or uq_method == 'CDA' or uq_method == 'DE' or
+          uq_method =='BE'):
         all_results = {'GroundTruth': [], 'Prediction': [],
                        'Epistemic_Uncertainty': [], 'Absolute_error': [],
                        'Absolute_percentage_error': []}
     # UQ methods capturing Aleatoric Uncertainty
-    elif (uq_method == 'mve' or uq_method == 'SQR'):
+    elif (uq_method == 'H' or uq_method == 'SQR'):
         all_results = {'GroundTruth': [], 'Prediction': [],
                        'Aleatoric_Uncertainty': [], 'Absolute_error': [],
                        'Absolute_percentage_error': []}
     # UQ methods capturing both Epistemic & Aleatoric Uncertainties    
-    elif (uq_method == 'DA_A' or uq_method == 'CDA_A' or 
-          uq_method == 'en_t_mve' or uq_method == 'en_b_mve'):
+    elif (uq_method == 'DA+H' or uq_method == 'CDA+H' or 
+          uq_method == 'DE+H' or uq_method == 'BE+H'):
         all_results = {'GroundTruth': [], 'Prediction': [],
                        'Epistemic_Uncertainty': [], 'Aleatoric_Uncertainty': [],
                        'Total_Uncertainty': [], 'Absolute_error': [],
@@ -168,7 +168,7 @@ def test_model(model=None, models=None, uq_method=None, num_mc_samples=None,
                 if normalization:
                     aleatoric_std = y_scaler * aleatoric_std                     
             elif (uq_method == 'DA' or uq_method == 'CDA' or
-                  uq_method == 'DA_A' or uq_method == 'CDA_A'):
+                  uq_method == 'DA+H' or uq_method == 'CDA+H'):
                 means_list, logvar_list =[], []
                 # conduct Monte Carlo sampling
                 for i in range (num_mc_samples): 
@@ -187,7 +187,7 @@ def test_model(model=None, models=None, uq_method=None, num_mc_samples=None,
                 if normalization:
                     epistemic_std = y_scaler * epistemic_std
                 # now obtain aleatoric uncertainty
-                if (uq_method == 'DA_A' or uq_method == 'CDA_A'):
+                if (uq_method == 'DA+H' or uq_method == 'CDA+H'):
                     stacked_log_var = torch.stack(logvar_list, dim=0)
                     stacked_var = torch.exp(stacked_log_var)
                     mean_var = torch.mean(stacked_var, dim=0)
@@ -196,13 +196,13 @@ def test_model(model=None, models=None, uq_method=None, num_mc_samples=None,
                     if normalization:
                         aleatoric_std = y_scaler * aleatoric_std
                     total_std = epistemic_std + aleatoric_std
-            elif uq_method == 'mve':
+            elif uq_method == 'H':
                 _y_pred, log_var = model(inputs)
                 aleatoric_std = torch.sqrt(torch.exp(log_var))
                 # normalize aleatoric uncertainty if necessary
                 if normalization:
                     aleatoric_std = y_scaler * aleatoric_std 
-            elif (uq_method == 'en_t' or uq_method == 'en_b'):
+            elif (uq_method == 'DE' or uq_method == 'BE'):
                 # empty list to collect predictions of all members of ensemble
                 prediction_list = []
                 for model_idx in range(1, ensemble_size+1):
@@ -216,7 +216,7 @@ def test_model(model=None, models=None, uq_method=None, num_mc_samples=None,
                 # normalize epistemic uncertainty if necessary
                 if normalization:
                     epistemic_std = y_scaler * epistemic_std
-            elif (uq_method == 'en_t_mve' or uq_method == 'en_b_mve'):
+            elif (uq_method == 'DE+H' or uq_method == 'BE+H'):
                 # collect prediction means & aleatoric std: all ensemble members
                 mean_pred_list, aleatoric_std_list = [], []
                 for model_idx in range(1, ensemble_size+1):
@@ -270,26 +270,26 @@ def test_model(model=None, models=None, uq_method=None, num_mc_samples=None,
             
             # set uncertainty columns based on UQ method
             if (uq_method == 'DA' or uq_method == 'CDA' or
-                  uq_method == 'DA_A' or uq_method == 'CDA_A'):
+                  uq_method == 'DA+H' or uq_method == 'CDA+H'):
                 epistemic_std = epistemic_std.detach().cpu().numpy()
                 all_results['Epistemic_Uncertainty'].extend(
                     epistemic_std.tolist()) 
-                if (uq_method == 'DA_A' or uq_method == 'CDA_A'):
+                if (uq_method == 'DA+H' or uq_method == 'CDA+H'):
                     aleatoric_std = aleatoric_std.detach().cpu().numpy()
                     total_std = total_std.detach().cpu().numpy()
                     all_results['Aleatoric_Uncertainty'].extend(
                         aleatoric_std.tolist())
                     all_results['Total_Uncertainty'].extend(
                         total_std.tolist()) 
-            elif (uq_method == 'mve' or uq_method == 'SQR'):
+            elif (uq_method == 'H' or uq_method == 'SQR'):
                 aleatoric_std = aleatoric_std.detach().cpu().numpy()
                 all_results['Aleatoric_Uncertainty'].extend(
                     aleatoric_std.tolist())   
-            elif (uq_method == 'en_t' or uq_method == 'en_b'):
+            elif (uq_method == 'DE' or uq_method == 'BE'):
                 epistemic_std = epistemic_std.detach().cpu().numpy()
                 all_results['Epistemic_Uncertainty'].extend(
                     epistemic_std.tolist())
-            elif (uq_method == 'en_t_mve' or uq_method == 'en_b_mve'):
+            elif (uq_method == 'DE+H' or uq_method == 'BE+H'):
                 epistemic_std = epistemic_std.detach().cpu().numpy()
                 aleatoric_std = aleatoric_std.detach().cpu().numpy()
                 total_std = total_std.detach().cpu().numpy()

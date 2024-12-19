@@ -159,19 +159,7 @@ def apply_pda(args, pda_path):
         test_df_names.append(modified_string)
     # Collect UQ technique names 
     methods = [f.split('_'+args.split)[0] for f in val_df_names]
-    
-    # TODO: remove following temporary code
-    """
-    card_indices = [i for i, method in enumerate(methods) if 'CARD' in method]
-    methods_filtered = [method for i, method in enumerate(methods) if i not in card_indices]
-    val_df_filtered = [method for i, method in enumerate(val_df_names) if i not in card_indices]
-    test_df_filtered = [method for i, method in enumerate(test_df_names) if i not in card_indices]    
-    methods = methods_filtered
-    val_df_names = val_df_filtered
-    test_df_names = test_df_filtered
-    """
-
-    
+       
     # Collect a list of dataframes for each val_df_path
     val_df_lst = []
     for val_name in val_df_names:
@@ -200,14 +188,14 @@ def apply_pda(args, pda_path):
         uq_lst.append(before_uq_dict_path)
         
         # set the uncertainty column        
-        if (method=='DA_A' or method=='CDA_A' or method == 'en_t_mve' or 
-            method == 'en_b_mve' or method=='deterministic' or 
+        if (method=='DA+H' or method=='CDA+H' or method == 'DE+H' or 
+            method == 'BE+H' or method=='deterministic' or 
             method=='GMM_uniform' or method=='GMM_dynamic'):
             uncertainty_col = 'Total_Uncertainty'
-        elif (method=='CARD' or method=='mve' or method=='SQR'):
+        elif (method=='CARD' or method=='H' or method=='SQR'):
             uncertainty_col = 'Aleatoric_Uncertainty'
-        elif (method=='DA' or method=='CDA' or method == 'en_t' or 
-              method == 'en_b' or method == 'RF' or method == 'LA'):
+        elif (method=='DA' or method=='CDA' or method == 'DE' or 
+              method == 'BE' or method == 'E-RF' or method == 'LA'):
             uncertainty_col = 'Epistemic_Uncertainty'
 
         y_val_pred = df_val['Prediction'].values

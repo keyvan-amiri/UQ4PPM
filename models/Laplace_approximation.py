@@ -90,7 +90,7 @@ def post_hoc_laplace(model=None, cfg=None, y_train_val=None,
         model_checkpoint_path = os.path.join(
             result_path,
             'deterministic_{}_seed_{}_best_model.pt'.format(split, seed))
-        # TODO: check type of the save and decide on following line:
+        # there are two different types that the model can be saved.
         la_path = os.path.join(
             result_path,
             'LA_{}_seed_{}_exp_{}_best_model.pt'.format(split, seed, exp_id)) 
@@ -100,7 +100,7 @@ def post_hoc_laplace(model=None, cfg=None, y_train_val=None,
             result_path,
             'deterministic_{}_fold{}_seed_{}_best_model.pt'.format(
                 split, fold, seed))
-        # TODO: check type of the save and decide on following line:
+        # there are two different types that the model can be saved.
         la_path = os.path.join(
             result_path, 'LA_{}_fold{}_seed_{}_exp_{}_best_model.pt'.format(
                 split, fold, seed, exp_id)) 
@@ -178,8 +178,6 @@ def post_hoc_laplace(model=None, cfg=None, y_train_val=None,
                         i+1, la_epochs, neg_marglik, log_prior, log_sigma))     
     
     #save the Laplace model
-    # TODO: Resolve serialization problem and decide on the following!
-    #torch.save(la.state_dict(), la_path)
     torch.save(la, la_path, pickle_module=dill)
     
     training_time = (datetime.now()-start).total_seconds()

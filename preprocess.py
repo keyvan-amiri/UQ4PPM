@@ -47,19 +47,6 @@ def main():
             else:
                 DALSTM_preprocessing(dataset_name=dataset, seed=args.seed,
                                      cv=args.cv, threshold=args.filter_ratio)
-        """
-        # create graph dataset representation of the event log for PGTNet
-        elif args.model == 'pgtnet':      
-            # if normalization is included in command line arguments:
-            if args.normalization_pgtnet:                   
-                PGTNet_convertor_case_centric(dataset_name=dataset)
-            else:           
-                PGTNet_convertor_case_centric(
-                    dataset_name=dataset,
-                    normalization=args.normalization_pgtnet)
-        else:
-            print(f'{args.model} architecture is currently not supported.')
-        """
     
 if __name__ == '__main__':
     main()

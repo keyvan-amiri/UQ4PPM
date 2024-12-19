@@ -298,9 +298,9 @@ def get_model_and_loss(args=None, cfg=None, input_size=None, max_len=None,
     Returns
     -------
     model : In case of non-ensembl approaches (including all variations of 
-    drop out approaximation, and MVE approach), it returns a predictive model
-    that is used for training and inference. This model will be used to load 
-    a checkpoint file (pre-trained model that is ready for inference.)
+    drop out approaximation, and heteroscedastic approach), it returns a 
+    predictive model that is used for training and inference. This model will
+    be used to load a checkpoint file (pre-trained model ready for inference.)
     criterion : The loss function that is used in Backpropagation.
     num_mcmc : Number of Monte-carlo samples that is used for inference with
     dropout approximation.
@@ -318,15 +318,15 @@ def get_model_and_loss(args=None, cfg=None, input_size=None, max_len=None,
     normalization = cfg.get('data').get('normalization')
     
     # set parameters for dropout approximation
-    if (args.UQ == 'DA' or args.UQ == 'CDA' or args.UQ == 'DA_A' or 
-          args.UQ == 'CDA_A'): 
+    if (args.UQ == 'DA' or args.UQ == 'CDA' or args.UQ == 'DA+H' or 
+          args.UQ == 'CDA+H'): 
         num_mcmc = cfg.get('uncertainty').get('dropout_approximation').get(
             'num_stochastic_forward_path')
         weight_regularizer = cfg.get('uncertainty').get(
             'dropout_approximation').get('weight_regularizer')
         dropout_regularizer = cfg.get('uncertainty').get(
             'dropout_approximation').get('dropout_regularizer')
-        if (args.UQ == 'DA' or args.UQ == 'DA_A'):
+        if (args.UQ == 'DA' or args.UQ == 'DA+H'):
             concrete_dropout = False
         else:
             concrete_dropout = True
@@ -335,11 +335,11 @@ def get_model_and_loss(args=None, cfg=None, input_size=None, max_len=None,
         num_mcmc = None
     
     # define loss function (heteroscedastic/homoscedastic):
-    if (args.UQ == 'DA' or args.UQ == 'CDA' or args.UQ == 'en_t' or
-        args.UQ == 'en_b'):
+    if (args.UQ == 'DA' or args.UQ == 'CDA' or args.UQ == 'DE' or
+        args.UQ == 'BE'):
         criterion = set_loss(loss_func=cfg.get('train').get('loss_function'))          
-    elif (args.UQ == 'DA_A' or args.UQ == 'CDA_A' or args.UQ == 'mve' or
-        args.UQ == 'en_t_mve' or args.UQ == 'en_b_mve'):
+    elif (args.UQ == 'DA+H' or args.UQ == 'CDA+H' or args.UQ == 'H' or
+        args.UQ == 'DE+H' or args.UQ == 'BE+H'):
         criterion = set_loss(loss_func=cfg.get('train').get('loss_function'),
                              heteroscedastic=True) 
     elif args.UQ == 'SQR':
@@ -349,7 +349,7 @@ def get_model_and_loss(args=None, cfg=None, input_size=None, max_len=None,
     # an emtpy list for ensemble of models
     model_list = []  # in case of single models remains empty
     if not ensemble_mode:
-        if args.UQ == 'mve':
+        if args.UQ == 'H':
             model = DALSTMModelMve(
                 input_size=input_size, hidden_size=hidden_size,
                 n_layers=n_layers, max_len=max_len, dropout=dropout,
@@ -368,7 +368,7 @@ def get_model_and_loss(args=None, cfg=None, input_size=None, max_len=None,
                 weight_regularizer=weight_regularizer,
                 dropout_regularizer=dropout_regularizer, 
                 hs=False, Bayes=True, device=device).to(device)
-        elif (args.UQ == 'DA_A' or args.UQ == 'CDA_A'):
+        elif (args.UQ == 'DA+H' or args.UQ == 'CDA+H'):
             # hs (heteroscedastic) is set to True
             model = StochasticDALSTM(
                 input_size=input_size, hidden_size=hidden_size, 
@@ -380,12 +380,12 @@ def get_model_and_loss(args=None, cfg=None, input_size=None, max_len=None,
     else:
         #print(num_models)
         for i in range(num_models):
-            if (args.UQ == 'en_t' or args.UQ == 'en_b'):
+            if (args.UQ == 'DE' or args.UQ == 'BE'):
                 model = DALSTMModel(
                     input_size=input_size, hidden_size=hidden_size,
                     n_layers=n_layers, max_len=max_len, dropout=dropout,
                     p_fix=dropout_prob).to(device)
-            elif (args.UQ == 'en_t_mve' or args.UQ == 'en_b_mve'):
+            elif (args.UQ == 'DE+H' or args.UQ == 'BE+H'):
                 model = DALSTMModelMve(
                     input_size=input_size, hidden_size=hidden_size,
                     n_layers=n_layers, max_len=max_len, dropout=dropout,
@@ -394,7 +394,7 @@ def get_model_and_loss(args=None, cfg=None, input_size=None, max_len=None,
     return (model, criterion, num_mcmc, normalization, model_list)
 
 
-# inference for validation for DA, CDA,DA_A, CDA_A, mve approaches
+# inference for validation for DA, CDA,DA+H, CDA+H, H approaches
 def inference_on_validation(args=None, cfg=None, model=None, model_list=None,
                             checkpoint_path=None, checkpoint_paths_list=None,
                             calibration_loader=None, num_mc_samples=None,
@@ -418,15 +418,15 @@ def inference_on_validation(args=None, cfg=None, model=None, model_list=None,
     
     # setstructure of instance-level results
     if (args.UQ == 'DA' or args.UQ == 'CDA' or 
-        args.UQ == 'en_t' or args.UQ == 'en_b'):
+        args.UQ == 'DE' or args.UQ == 'BE'):
         res_dict = {'GroundTruth': [], 'Prediction': [],
                     'Epistemic_Uncertainty': []}
-    elif (args.UQ == 'DA_A' or args.UQ == 'CDA_A' or
-          args.UQ == 'en_t_mve' or args.UQ == 'en_b_mve'):
+    elif (args.UQ == 'DA+H' or args.UQ == 'CDA+H' or
+          args.UQ == 'DE+H' or args.UQ == 'BE+H'):
         res_dict = {'GroundTruth': [], 'Prediction': [], 
                     'Epistemic_Uncertainty': [], 'Aleatoric_Uncertainty': [],
                     'Total_Uncertainty': []} 
-    elif (args.UQ == 'mve' or args.UQ == 'SQR'):
+    elif (args.UQ == 'H' or args.UQ == 'SQR'):
         res_dict = {'GroundTruth': [], 'Prediction': [],
                     'Aleatoric_Uncertainty': []}
     
@@ -451,8 +451,8 @@ def inference_on_validation(args=None, cfg=None, model=None, model_list=None,
             inputs = calibration_batch[0].to(device)
             _y_truth = calibration_batch[1].to(device)  
             # get model outputs, and uncertainties
-            if (args.UQ == 'DA' or args.UQ == 'CDA' or args.UQ == 'DA_A' or
-                args.UQ == 'CDA_A'):
+            if (args.UQ == 'DA' or args.UQ == 'CDA' or args.UQ == 'DA+H' or
+                args.UQ == 'CDA+H'):
                 means_list, logvar_list =[], []
                 # conduct Monte Carlo sampling
                 for i in range (num_mc_samples): 
@@ -471,7 +471,7 @@ def inference_on_validation(args=None, cfg=None, model=None, model_list=None,
                 if normalization:
                     epistemic_std = y_scaler * epistemic_std
                 # now obtain aleatoric uncertainty
-                if (args.UQ == 'DA_A' or args.UQ == 'CDA_A'):
+                if (args.UQ == 'DA+H' or args.UQ == 'CDA+H'):
                     stacked_log_var = torch.stack(logvar_list, dim=0)
                     stacked_var = torch.exp(stacked_log_var)
                     mean_var = torch.mean(stacked_var, dim=0)
@@ -480,7 +480,7 @@ def inference_on_validation(args=None, cfg=None, model=None, model_list=None,
                     if normalization:
                         aleatoric_std = y_scaler * aleatoric_std
                     total_std = epistemic_std + aleatoric_std
-            elif args.UQ == 'mve':
+            elif args.UQ == 'H':
                 _y_pred, log_var = model(inputs)
                 aleatoric_std = torch.sqrt(torch.exp(log_var))
                 # normalize aleatoric uncertainty if necessary
@@ -500,7 +500,7 @@ def inference_on_validation(args=None, cfg=None, model=None, model_list=None,
                                  (2*z_alpha_half))
                 if normalization:
                     aleatoric_std = y_scaler * aleatoric_std                  
-            elif (args.UQ == 'en_t' or args.UQ == 'en_b'):
+            elif (args.UQ == 'DE' or args.UQ == 'BE'):
                 # empty list to collect predictions of all members of ensemble
                 prediction_list = []
                 for model_idx in range(num_models):
@@ -514,7 +514,7 @@ def inference_on_validation(args=None, cfg=None, model=None, model_list=None,
                 # normalize epistemic uncertainty if necessary
                 if normalization:
                     epistemic_std = y_scaler * epistemic_std
-            elif (args.UQ == 'en_t_mve' or args.UQ == 'en_b_mve'):
+            elif (args.UQ == 'DE+H' or args.UQ == 'BE+H'):
                 # collect prediction means & aleatoric std: all ensemble members
                 mean_pred_list, aleatoric_std_list = [], []
                 for model_idx in range(num_models):
@@ -546,18 +546,18 @@ def inference_on_validation(args=None, cfg=None, model=None, model_list=None,
             # collect inference result in all_result dict.
             res_dict['GroundTruth'].extend(_y_truth.tolist())
             res_dict['Prediction'].extend(_y_pred.tolist())
-            if (args.UQ == 'DA' or args.UQ == 'CDA' or args.UQ == 'DA_A' or 
-                args.UQ == 'CDA_A' or args.UQ == 'en_t' or args.UQ == 'en_b' or
-                args.UQ == 'en_t_mve' or args.UQ == 'en_b_mve'):
+            if (args.UQ == 'DA' or args.UQ == 'CDA' or args.UQ == 'DA+H' or 
+                args.UQ == 'CDA+H' or args.UQ == 'DE' or args.UQ == 'BE' or
+                args.UQ == 'DE+H' or args.UQ == 'BE+H'):
                 epistemic_std = epistemic_std.detach().cpu().numpy()
                 res_dict['Epistemic_Uncertainty'].extend(epistemic_std.tolist()) 
-                if (args.UQ == 'DA_A' or args.UQ == 'CDA_A' or 
-                    args.UQ == 'en_t_mve' or args.UQ == 'en_b_mve'):
+                if (args.UQ == 'DA+H' or args.UQ == 'CDA+H' or 
+                    args.UQ == 'DE+H' or args.UQ == 'BE+H'):
                     aleatoric_std = aleatoric_std.detach().cpu().numpy()
                     total_std = total_std.detach().cpu().numpy()
                     res_dict['Aleatoric_Uncertainty'].extend(aleatoric_std.tolist())
                     res_dict['Total_Uncertainty'].extend(total_std.tolist()) 
-            elif (args.UQ == 'mve' or args.UQ == 'SQR'):
+            elif (args.UQ == 'H' or args.UQ == 'SQR'):
                 aleatoric_std = aleatoric_std.detach().cpu().numpy()
                 res_dict['Aleatoric_Uncertainty'].extend(aleatoric_std.tolist())
     validation_df = pd.DataFrame(res_dict)
@@ -596,13 +596,13 @@ def recalibration_evaluation (args=None, calibrated_test_def=None,
     pred_mean = calibrated_test_def['Prediction'].values
     y_true = calibrated_test_def['GroundTruth'].values
     # get prediction standard deviation before recalibration
-    if (args.UQ=='DA_A' or args.UQ=='CDA_A' or 
-        args.UQ == 'en_t_mve' or args.UQ == 'en_b_mve'):
+    if (args.UQ=='DA+H' or args.UQ=='CDA+H' or 
+        args.UQ == 'DE+H' or args.UQ == 'BE+H'):
         pred_std = calibrated_test_def['Total_Uncertainty'].values 
-    elif (args.UQ=='CARD' or args.UQ=='mve' or args.UQ=='SQR'):
+    elif (args.UQ=='CARD' or args.UQ=='H' or args.UQ=='SQR'):
         pred_std = calibrated_test_def['Aleatoric_Uncertainty'].values
-    elif (args.UQ=='DA' or args.UQ=='CDA' or args.UQ == 'en_t' or 
-          args.UQ == 'en_b' or args.UQ == 'RF' or args.UQ == 'LA'):
+    elif (args.UQ=='DA' or args.UQ=='CDA' or args.UQ == 'DE' or 
+          args.UQ == 'BE' or args.UQ == 'E-RF' or args.UQ == 'LA'):
         pred_std = calibrated_test_def['Epistemic_Uncertainty'].values
          
     # Non-Gaussian calibration: expected proportions and observed proportions
@@ -622,13 +622,13 @@ def recalibration_evaluation (args=None, calibrated_test_def=None,
     sorted_df = calibrated_test_def.sort_values(by='Absolute_error')
     sorted_pred_mean = sorted_df['Prediction'].values
     sorted_errors = sorted_df['Absolute_error'].values
-    if (args.UQ=='DA_A' or args.UQ=='CDA_A' or 
-        args.UQ == 'en_t_mve' or args.UQ == 'en_b_mve'):
+    if (args.UQ=='DA+H' or args.UQ=='CDA+H' or 
+        args.UQ == 'DE+H' or args.UQ == 'BE+H'):
         sorted_pred_std = sorted_df['Total_Uncertainty'].values 
-    elif (args.UQ=='CARD' or args.UQ=='mve' or args.UQ=='SQR'):
+    elif (args.UQ=='CARD' or args.UQ=='H' or args.UQ=='SQR'):
         sorted_pred_std = sorted_df['Aleatoric_Uncertainty'].values
-    elif (args.UQ=='DA' or args.UQ=='CDA' or args.UQ == 'en_t' or 
-          args.UQ == 'en_b' or args.UQ == 'RF' or args.UQ == 'LA'):
+    elif (args.UQ=='DA' or args.UQ=='CDA' or args.UQ == 'DE' or 
+          args.UQ == 'BE' or args.UQ == 'E-RF' or args.UQ == 'LA'):
         sorted_pred_std = sorted_df['Epistemic_Uncertainty'].values
     # now compare confidence intervals before and after calibration
     orig_bounds = uct.metrics_calibration.get_prediction_interval(
@@ -657,13 +657,13 @@ def recalibration_evaluation (args=None, calibrated_test_def=None,
     sorted_df = calibrated_test_def.sort_values(by='Prefix_length')
     sorted_pred_mean = sorted_df['Prediction'].values
     sorted_lengths = sorted_df['Prefix_length'].values
-    if (args.UQ=='DA_A' or args.UQ=='CDA_A' or 
-        args.UQ == 'en_t_mve' or args.UQ == 'en_b_mve'):
+    if (args.UQ=='DA+H' or args.UQ=='CDA+H' or 
+        args.UQ == 'DE+H' or args.UQ == 'BE+H'):
         sorted_pred_std = sorted_df['Total_Uncertainty'].values 
-    elif (args.UQ=='CARD' or args.UQ=='mve' or args.UQ=='SQR'):
+    elif (args.UQ=='CARD' or args.UQ=='H' or args.UQ=='SQR'):
         sorted_pred_std = sorted_df['Aleatoric_Uncertainty'].values
-    elif (args.UQ=='DA' or args.UQ=='CDA' or args.UQ == 'en_t' or
-          args.UQ == 'en_b' or args.UQ == 'RF' or args.UQ == 'LA'):
+    elif (args.UQ=='DA' or args.UQ=='CDA' or args.UQ == 'DE' or
+          args.UQ == 'BE' or args.UQ == 'E-RF' or args.UQ == 'LA'):
         sorted_pred_std = sorted_df['Epistemic_Uncertainty'].values
     # now compare confidence intervals before and after calibration
     orig_bounds = uct.metrics_calibration.get_prediction_interval(
@@ -692,13 +692,13 @@ def recalibration_evaluation (args=None, calibrated_test_def=None,
     sorted_df = calibrated_test_def.sort_values(by='GroundTruth')
     sorted_pred_mean = sorted_df['Prediction'].values
     sorted_rem_time = sorted_df['GroundTruth'].values
-    if (args.UQ=='DA_A' or args.UQ=='CDA_A' or 
-        args.UQ == 'en_t_mve' or args.UQ == 'en_b_mve'):
+    if (args.UQ=='DA+H' or args.UQ=='CDA+H' or 
+        args.UQ == 'DE+H' or args.UQ == 'BE+H'):
         sorted_pred_std = sorted_df['Total_Uncertainty'].values 
-    elif (args.UQ=='CARD' or args.UQ=='mve' or args.UQ=='SQR'):
+    elif (args.UQ=='CARD' or args.UQ=='H' or args.UQ=='SQR'):
         sorted_pred_std = sorted_df['Aleatoric_Uncertainty'].values
-    elif (args.UQ=='DA' or args.UQ=='CDA' or args.UQ == 'en_t' or 
-          args.UQ == 'en_b' or args.UQ == 'RF' or args.UQ == 'LA'):
+    elif (args.UQ=='DA' or args.UQ=='CDA' or args.UQ == 'DE' or 
+          args.UQ == 'BE' or args.UQ == 'E-RF' or args.UQ == 'LA'):
         sorted_pred_std = sorted_df['Epistemic_Uncertainty'].values
     # now compare confidence intervals before and after calibration
     orig_bounds = uct.metrics_calibration.get_prediction_interval(
@@ -874,13 +874,13 @@ def recalibration_evaluation (args=None, calibrated_test_def=None,
 def get_mean_std_truth (df=None, uq_method=None):
     pred_mean = df['Prediction'].values 
     y_true = df['GroundTruth'].values
-    if (uq_method=='DA_A' or uq_method=='CDA_A' or
-        uq_method == 'en_t_mve' or uq_method == 'en_b_mve'):
+    if (uq_method=='DA+H' or uq_method=='CDA+H' or
+        uq_method == 'DE+H' or uq_method == 'BE+H'):
         pred_std = df['Total_Uncertainty'].values 
-    elif (uq_method=='CARD' or uq_method=='mve' or uq_method=='SQR'):
+    elif (uq_method=='CARD' or uq_method=='H' or uq_method=='SQR'):
         pred_std = df['Aleatoric_Uncertainty'].values
-    elif (uq_method=='DA' or uq_method=='CDA' or uq_method == 'en_t' or
-          uq_method == 'en_b' or uq_method == 'RF' or uq_method == 'LA'):
+    elif (uq_method=='DA' or uq_method=='CDA' or uq_method == 'DE' or
+          uq_method == 'BE' or uq_method == 'E-RF' or uq_method == 'LA'):
         pred_std = df['Epistemic_Uncertainty'].values
     else:
         raise NotImplementedError(

@@ -9,32 +9,32 @@ export CFG=dalstm_deterministic.yaml
 export UQ=deterministic
 python main.py --dataset ${DATASET} --model ${MODEL} --UQ ${UQ} --cfg ${CFG} --seed ${SEEDS} --device ${DEVICE_ID}
 export CFG=dalstm_mve.yaml
-export UQ=mve
+export UQ=H
 python main.py --dataset ${DATASET} --model ${MODEL} --UQ ${UQ} --cfg ${CFG} --seed ${SEEDS} --device ${DEVICE_ID}
 export CFG=dalstm_LA.yaml
 export UQ=LA
 python main.py --dataset ${DATASET} --model ${MODEL} --UQ ${UQ} --cfg ${CFG} --seed ${SEEDS} --device ${DEVICE_ID}
 export CFG=dalstm_RF.yaml
-export UQ=RF
+export UQ=E-RF
 python main.py --dataset ${DATASET} --model ${MODEL} --UQ ${UQ} --cfg ${CFG} --seed ${SEEDS} --device ${DEVICE_ID}
 export CFG=dalstm_dropout.yaml
 export UQ=DA
 python main.py --dataset ${DATASET} --model ${MODEL} --UQ ${UQ} --cfg ${CFG} --seed ${SEEDS} --device ${DEVICE_ID}
 export UQ=CDA
 python main.py --dataset ${DATASET} --model ${MODEL} --UQ ${UQ} --cfg ${CFG} --seed ${SEEDS} --device ${DEVICE_ID}
-export UQ=DA_A
+export UQ=DA+H
 python main.py --dataset ${DATASET} --model ${MODEL} --UQ ${UQ} --cfg ${CFG} --seed ${SEEDS} --device ${DEVICE_ID}
-export UQ=CDA_A
+export UQ=CDA+H
 python main.py --dataset ${DATASET} --model ${MODEL} --UQ ${UQ} --cfg ${CFG} --seed ${SEEDS} --device ${DEVICE_ID}
 export CFG=dalstm_ensemble_trad.yaml
-export UQ=en_t
+export UQ=DE
 python main.py --dataset ${DATASET} --model ${MODEL} --UQ ${UQ} --cfg ${CFG} --seed ${SEEDS} --device ${DEVICE_ID}
-export UQ=en_t_mve
+export UQ=DE+H
 python main.py --dataset ${DATASET} --model ${MODEL} --UQ ${UQ} --cfg ${CFG} --seed ${SEEDS} --device ${DEVICE_ID}
 export CFG=dalstm_ensemble_boot.yaml
-export UQ=en_b
+export UQ=BE
 python main.py --dataset ${DATASET} --model ${MODEL} --UQ ${UQ} --cfg ${CFG} --seed ${SEEDS} --device ${DEVICE_ID}
-export UQ=en_b_mve
+export UQ=BE+H
 python main.py --dataset ${DATASET} --model ${MODEL} --UQ ${UQ} --cfg ${CFG} --seed ${SEEDS} --device ${DEVICE_ID}
 export CFG=dalstm_CARD.yaml
 export UQ=CARD
@@ -46,32 +46,32 @@ export CFG=dalstm_deterministic.yaml
 export UQ=deterministic
 python main.py --dataset ${DATASET} --model ${MODEL} --UQ ${UQ} --cfg ${CFG} --seed ${SEEDS} --device ${DEVICE_ID}
 export CFG=dalstm_mve.yaml
-export UQ=mve
+export UQ=H
 python main.py --dataset ${DATASET} --model ${MODEL} --UQ ${UQ} --cfg ${CFG} --seed ${SEEDS} --device ${DEVICE_ID}
 export CFG=dalstm_LA.yaml
 export UQ=LA
 python main.py --dataset ${DATASET} --model ${MODEL} --UQ ${UQ} --cfg ${CFG} --seed ${SEEDS} --device ${DEVICE_ID}
 export CFG=dalstm_RF.yaml
-export UQ=RF
+export UQ=E-RF
 python main.py --dataset ${DATASET} --model ${MODEL} --UQ ${UQ} --cfg ${CFG} --seed ${SEEDS} --device ${DEVICE_ID}
 export CFG=dalstm_dropout.yaml
 export UQ=DA
 python main.py --dataset ${DATASET} --model ${MODEL} --UQ ${UQ} --cfg ${CFG} --seed ${SEEDS} --device ${DEVICE_ID}
 export UQ=CDA
 python main.py --dataset ${DATASET} --model ${MODEL} --UQ ${UQ} --cfg ${CFG} --seed ${SEEDS} --device ${DEVICE_ID}
-export UQ=DA_A
+export UQ=DA+H
 python main.py --dataset ${DATASET} --model ${MODEL} --UQ ${UQ} --cfg ${CFG} --seed ${SEEDS} --device ${DEVICE_ID}
-export UQ=CDA_A
+export UQ=CDA+H
 python main.py --dataset ${DATASET} --model ${MODEL} --UQ ${UQ} --cfg ${CFG} --seed ${SEEDS} --device ${DEVICE_ID}
 export CFG=dalstm_ensemble_trad.yaml
-export UQ=en_t
+export UQ=DE
 python main.py --dataset ${DATASET} --model ${MODEL} --UQ ${UQ} --cfg ${CFG} --seed ${SEEDS} --device ${DEVICE_ID}
-export UQ=en_t_mve
+export UQ=DE+H
 python main.py --dataset ${DATASET} --model ${MODEL} --UQ ${UQ} --cfg ${CFG} --seed ${SEEDS} --device ${DEVICE_ID}
 export CFG=dalstm_ensemble_boot.yaml
-export UQ=en_b
+export UQ=BE
 python main.py --dataset ${DATASET} --model ${MODEL} --UQ ${UQ} --cfg ${CFG} --seed ${SEEDS} --device ${DEVICE_ID}
-export UQ=en_b_mve
+export UQ=BE+H
 python main.py --dataset ${DATASET} --model ${MODEL} --UQ ${UQ} --cfg ${CFG} --seed ${SEEDS} --device ${DEVICE_ID}
 export CFG=dalstm_CARD.yaml
 export UQ=CARD
@@ -83,32 +83,32 @@ export CFG=dalstm_deterministic.yaml
 export UQ=deterministic
 python main.py --dataset ${DATASET} --model ${MODEL} --UQ ${UQ} --cfg ${CFG} --seed ${SEEDS} --device ${DEVICE_ID}
 export CFG=dalstm_mve.yaml
-export UQ=mve
+export UQ=H
 python main.py --dataset ${DATASET} --model ${MODEL} --UQ ${UQ} --cfg ${CFG} --seed ${SEEDS} --device ${DEVICE_ID}
 export CFG=dalstm_LA.yaml
 export UQ=LA
 python main.py --dataset ${DATASET} --model ${MODEL} --UQ ${UQ} --cfg ${CFG} --seed ${SEEDS} --device ${DEVICE_ID}
 export CFG=dalstm_RF.yaml
-export UQ=RF
+export UQ=E-RF
 python main.py --dataset ${DATASET} --model ${MODEL} --UQ ${UQ} --cfg ${CFG} --seed ${SEEDS} --device ${DEVICE_ID}
 export CFG=dalstm_dropout.yaml
 export UQ=DA
 python main.py --dataset ${DATASET} --model ${MODEL} --UQ ${UQ} --cfg ${CFG} --seed ${SEEDS} --device ${DEVICE_ID}
 export UQ=CDA
 python main.py --dataset ${DATASET} --model ${MODEL} --UQ ${UQ} --cfg ${CFG} --seed ${SEEDS} --device ${DEVICE_ID}
-export UQ=DA_A
+export UQ=DA+H
 python main.py --dataset ${DATASET} --model ${MODEL} --UQ ${UQ} --cfg ${CFG} --seed ${SEEDS} --device ${DEVICE_ID}
-export UQ=CDA_A
+export UQ=CDA+H
 python main.py --dataset ${DATASET} --model ${MODEL} --UQ ${UQ} --cfg ${CFG} --seed ${SEEDS} --device ${DEVICE_ID}
 export CFG=dalstm_ensemble_trad.yaml
-export UQ=en_t
+export UQ=DE
 python main.py --dataset ${DATASET} --model ${MODEL} --UQ ${UQ} --cfg ${CFG} --seed ${SEEDS} --device ${DEVICE_ID}
-export UQ=en_t_mve
+export UQ=DE+H
 python main.py --dataset ${DATASET} --model ${MODEL} --UQ ${UQ} --cfg ${CFG} --seed ${SEEDS} --device ${DEVICE_ID}
 export CFG=dalstm_ensemble_boot.yaml
-export UQ=en_b
+export UQ=BE
 python main.py --dataset ${DATASET} --model ${MODEL} --UQ ${UQ} --cfg ${CFG} --seed ${SEEDS} --device ${DEVICE_ID}
-export UQ=en_b_mve
+export UQ=BE+H
 python main.py --dataset ${DATASET} --model ${MODEL} --UQ ${UQ} --cfg ${CFG} --seed ${SEEDS} --device ${DEVICE_ID}
 export CFG=dalstm_CARD.yaml
 export UQ=CARD
@@ -120,32 +120,32 @@ export CFG=dalstm_deterministic.yaml
 export UQ=deterministic
 python main.py --dataset ${DATASET} --model ${MODEL} --UQ ${UQ} --cfg ${CFG} --seed ${SEEDS} --device ${DEVICE_ID}
 export CFG=dalstm_mve.yaml
-export UQ=mve
+export UQ=H
 python main.py --dataset ${DATASET} --model ${MODEL} --UQ ${UQ} --cfg ${CFG} --seed ${SEEDS} --device ${DEVICE_ID}
 export CFG=dalstm_LA.yaml
 export UQ=LA
 python main.py --dataset ${DATASET} --model ${MODEL} --UQ ${UQ} --cfg ${CFG} --seed ${SEEDS} --device ${DEVICE_ID}
 export CFG=dalstm_RF.yaml
-export UQ=RF
+export UQ=E-RF
 python main.py --dataset ${DATASET} --model ${MODEL} --UQ ${UQ} --cfg ${CFG} --seed ${SEEDS} --device ${DEVICE_ID}
 export CFG=dalstm_dropout.yaml
 export UQ=DA
 python main.py --dataset ${DATASET} --model ${MODEL} --UQ ${UQ} --cfg ${CFG} --seed ${SEEDS} --device ${DEVICE_ID}
 export UQ=CDA
 python main.py --dataset ${DATASET} --model ${MODEL} --UQ ${UQ} --cfg ${CFG} --seed ${SEEDS} --device ${DEVICE_ID}
-export UQ=DA_A
+export UQ=DA+H
 python main.py --dataset ${DATASET} --model ${MODEL} --UQ ${UQ} --cfg ${CFG} --seed ${SEEDS} --device ${DEVICE_ID}
-export UQ=CDA_A
+export UQ=CDA+H
 python main.py --dataset ${DATASET} --model ${MODEL} --UQ ${UQ} --cfg ${CFG} --seed ${SEEDS} --device ${DEVICE_ID}
 export CFG=dalstm_ensemble_trad.yaml
-export UQ=en_t
+export UQ=DE
 python main.py --dataset ${DATASET} --model ${MODEL} --UQ ${UQ} --cfg ${CFG} --seed ${SEEDS} --device ${DEVICE_ID}
-export UQ=en_t_mve
+export UQ=DE+H
 python main.py --dataset ${DATASET} --model ${MODEL} --UQ ${UQ} --cfg ${CFG} --seed ${SEEDS} --device ${DEVICE_ID}
 export CFG=dalstm_ensemble_boot.yaml
-export UQ=en_b
+export UQ=BE
 python main.py --dataset ${DATASET} --model ${MODEL} --UQ ${UQ} --cfg ${CFG} --seed ${SEEDS} --device ${DEVICE_ID}
-export UQ=en_b_mve
+export UQ=BE+H
 python main.py --dataset ${DATASET} --model ${MODEL} --UQ ${UQ} --cfg ${CFG} --seed ${SEEDS} --device ${DEVICE_ID}
 export CFG=dalstm_CARD.yaml
 export UQ=CARD
@@ -157,32 +157,32 @@ export CFG=dalstm_deterministic.yaml
 export UQ=deterministic
 python main.py --dataset ${DATASET} --model ${MODEL} --UQ ${UQ} --cfg ${CFG} --seed ${SEEDS} --device ${DEVICE_ID}
 export CFG=dalstm_mve.yaml
-export UQ=mve
+export UQ=H
 python main.py --dataset ${DATASET} --model ${MODEL} --UQ ${UQ} --cfg ${CFG} --seed ${SEEDS} --device ${DEVICE_ID}
 export CFG=dalstm_LA.yaml
 export UQ=LA
 python main.py --dataset ${DATASET} --model ${MODEL} --UQ ${UQ} --cfg ${CFG} --seed ${SEEDS} --device ${DEVICE_ID}
 export CFG=dalstm_RF.yaml
-export UQ=RF
+export UQ=E-RF
 python main.py --dataset ${DATASET} --model ${MODEL} --UQ ${UQ} --cfg ${CFG} --seed ${SEEDS} --device ${DEVICE_ID}
 export CFG=dalstm_dropout.yaml
 export UQ=DA
 python main.py --dataset ${DATASET} --model ${MODEL} --UQ ${UQ} --cfg ${CFG} --seed ${SEEDS} --device ${DEVICE_ID}
 export UQ=CDA
 python main.py --dataset ${DATASET} --model ${MODEL} --UQ ${UQ} --cfg ${CFG} --seed ${SEEDS} --device ${DEVICE_ID}
-export UQ=DA_A
+export UQ=DA+H
 python main.py --dataset ${DATASET} --model ${MODEL} --UQ ${UQ} --cfg ${CFG} --seed ${SEEDS} --device ${DEVICE_ID}
-export UQ=CDA_A
+export UQ=CDA+H
 python main.py --dataset ${DATASET} --model ${MODEL} --UQ ${UQ} --cfg ${CFG} --seed ${SEEDS} --device ${DEVICE_ID}
 export CFG=dalstm_ensemble_trad.yaml
-export UQ=en_t
+export UQ=DE
 python main.py --dataset ${DATASET} --model ${MODEL} --UQ ${UQ} --cfg ${CFG} --seed ${SEEDS} --device ${DEVICE_ID}
-export UQ=en_t_mve
+export UQ=DE+H
 python main.py --dataset ${DATASET} --model ${MODEL} --UQ ${UQ} --cfg ${CFG} --seed ${SEEDS} --device ${DEVICE_ID}
 export CFG=dalstm_ensemble_boot.yaml
-export UQ=en_b
+export UQ=BE
 python main.py --dataset ${DATASET} --model ${MODEL} --UQ ${UQ} --cfg ${CFG} --seed ${SEEDS} --device ${DEVICE_ID}
-export UQ=en_b_mve
+export UQ=BE+H
 python main.py --dataset ${DATASET} --model ${MODEL} --UQ ${UQ} --cfg ${CFG} --seed ${SEEDS} --device ${DEVICE_ID}
 export CFG=dalstm_CARD.yaml
 export UQ=CARD
@@ -194,32 +194,32 @@ export CFG=dalstm_deterministic.yaml
 export UQ=deterministic
 python main.py --dataset ${DATASET} --model ${MODEL} --UQ ${UQ} --cfg ${CFG} --seed ${SEEDS} --device ${DEVICE_ID}
 export CFG=dalstm_mve.yaml
-export UQ=mve
+export UQ=H
 python main.py --dataset ${DATASET} --model ${MODEL} --UQ ${UQ} --cfg ${CFG} --seed ${SEEDS} --device ${DEVICE_ID}
 export CFG=dalstm_LA.yaml
 export UQ=LA
 python main.py --dataset ${DATASET} --model ${MODEL} --UQ ${UQ} --cfg ${CFG} --seed ${SEEDS} --device ${DEVICE_ID}
 export CFG=dalstm_RF.yaml
-export UQ=RF
+export UQ=E-RF
 python main.py --dataset ${DATASET} --model ${MODEL} --UQ ${UQ} --cfg ${CFG} --seed ${SEEDS} --device ${DEVICE_ID}
 export CFG=dalstm_dropout.yaml
 export UQ=DA
 python main.py --dataset ${DATASET} --model ${MODEL} --UQ ${UQ} --cfg ${CFG} --seed ${SEEDS} --device ${DEVICE_ID}
 export UQ=CDA
 python main.py --dataset ${DATASET} --model ${MODEL} --UQ ${UQ} --cfg ${CFG} --seed ${SEEDS} --device ${DEVICE_ID}
-export UQ=DA_A
+export UQ=DA+H
 python main.py --dataset ${DATASET} --model ${MODEL} --UQ ${UQ} --cfg ${CFG} --seed ${SEEDS} --device ${DEVICE_ID}
-export UQ=CDA_A
+export UQ=CDA+H
 python main.py --dataset ${DATASET} --model ${MODEL} --UQ ${UQ} --cfg ${CFG} --seed ${SEEDS} --device ${DEVICE_ID}
 export CFG=dalstm_ensemble_trad.yaml
-export UQ=en_t
+export UQ=DE
 python main.py --dataset ${DATASET} --model ${MODEL} --UQ ${UQ} --cfg ${CFG} --seed ${SEEDS} --device ${DEVICE_ID}
-export UQ=en_t_mve
+export UQ=DE+H
 python main.py --dataset ${DATASET} --model ${MODEL} --UQ ${UQ} --cfg ${CFG} --seed ${SEEDS} --device ${DEVICE_ID}
 export CFG=dalstm_ensemble_boot.yaml
-export UQ=en_b
+export UQ=BE
 python main.py --dataset ${DATASET} --model ${MODEL} --UQ ${UQ} --cfg ${CFG} --seed ${SEEDS} --device ${DEVICE_ID}
-export UQ=en_b_mve
+export UQ=BE+H
 python main.py --dataset ${DATASET} --model ${MODEL} --UQ ${UQ} --cfg ${CFG} --seed ${SEEDS} --device ${DEVICE_ID}
 export CFG=dalstm_CARD.yaml
 export UQ=CARD
@@ -231,32 +231,32 @@ export CFG=dalstm_deterministic.yaml
 export UQ=deterministic
 python main.py --dataset ${DATASET} --model ${MODEL} --UQ ${UQ} --cfg ${CFG} --seed ${SEEDS} --device ${DEVICE_ID}
 export CFG=dalstm_mve.yaml
-export UQ=mve
+export UQ=H
 python main.py --dataset ${DATASET} --model ${MODEL} --UQ ${UQ} --cfg ${CFG} --seed ${SEEDS} --device ${DEVICE_ID}
 export CFG=dalstm_LA.yaml
 export UQ=LA
 python main.py --dataset ${DATASET} --model ${MODEL} --UQ ${UQ} --cfg ${CFG} --seed ${SEEDS} --device ${DEVICE_ID}
 export CFG=dalstm_RF.yaml
-export UQ=RF
+export UQ=E-RF
 python main.py --dataset ${DATASET} --model ${MODEL} --UQ ${UQ} --cfg ${CFG} --seed ${SEEDS} --device ${DEVICE_ID}
 export CFG=dalstm_dropout.yaml
 export UQ=DA
 python main.py --dataset ${DATASET} --model ${MODEL} --UQ ${UQ} --cfg ${CFG} --seed ${SEEDS} --device ${DEVICE_ID}
 export UQ=CDA
 python main.py --dataset ${DATASET} --model ${MODEL} --UQ ${UQ} --cfg ${CFG} --seed ${SEEDS} --device ${DEVICE_ID}
-export UQ=DA_A
+export UQ=DA+H
 python main.py --dataset ${DATASET} --model ${MODEL} --UQ ${UQ} --cfg ${CFG} --seed ${SEEDS} --device ${DEVICE_ID}
-export UQ=CDA_A
+export UQ=CDA+H
 python main.py --dataset ${DATASET} --model ${MODEL} --UQ ${UQ} --cfg ${CFG} --seed ${SEEDS} --device ${DEVICE_ID}
 export CFG=dalstm_ensemble_trad.yaml
-export UQ=en_t
+export UQ=DE
 python main.py --dataset ${DATASET} --model ${MODEL} --UQ ${UQ} --cfg ${CFG} --seed ${SEEDS} --device ${DEVICE_ID}
-export UQ=en_t_mve
+export UQ=DE+H
 python main.py --dataset ${DATASET} --model ${MODEL} --UQ ${UQ} --cfg ${CFG} --seed ${SEEDS} --device ${DEVICE_ID}
 export CFG=dalstm_ensemble_boot.yaml
-export UQ=en_b
+export UQ=BE
 python main.py --dataset ${DATASET} --model ${MODEL} --UQ ${UQ} --cfg ${CFG} --seed ${SEEDS} --device ${DEVICE_ID}
-export UQ=en_b_mve
+export UQ=BE+H
 python main.py --dataset ${DATASET} --model ${MODEL} --UQ ${UQ} --cfg ${CFG} --seed ${SEEDS} --device ${DEVICE_ID}
 export CFG=dalstm_CARD.yaml
 export UQ=CARD
@@ -268,32 +268,32 @@ export CFG=dalstm_deterministic.yaml
 export UQ=deterministic
 python main.py --dataset ${DATASET} --model ${MODEL} --UQ ${UQ} --cfg ${CFG} --seed ${SEEDS} --device ${DEVICE_ID}
 export CFG=dalstm_mve.yaml
-export UQ=mve
+export UQ=H
 python main.py --dataset ${DATASET} --model ${MODEL} --UQ ${UQ} --cfg ${CFG} --seed ${SEEDS} --device ${DEVICE_ID}
 export CFG=dalstm_LA.yaml
 export UQ=LA
 python main.py --dataset ${DATASET} --model ${MODEL} --UQ ${UQ} --cfg ${CFG} --seed ${SEEDS} --device ${DEVICE_ID}
 export CFG=dalstm_RF.yaml
-export UQ=RF
+export UQ=E-RF
 python main.py --dataset ${DATASET} --model ${MODEL} --UQ ${UQ} --cfg ${CFG} --seed ${SEEDS} --device ${DEVICE_ID}
 export CFG=dalstm_dropout.yaml
 export UQ=DA
 python main.py --dataset ${DATASET} --model ${MODEL} --UQ ${UQ} --cfg ${CFG} --seed ${SEEDS} --device ${DEVICE_ID}
 export UQ=CDA
 python main.py --dataset ${DATASET} --model ${MODEL} --UQ ${UQ} --cfg ${CFG} --seed ${SEEDS} --device ${DEVICE_ID}
-export UQ=DA_A
+export UQ=DA+H
 python main.py --dataset ${DATASET} --model ${MODEL} --UQ ${UQ} --cfg ${CFG} --seed ${SEEDS} --device ${DEVICE_ID}
-export UQ=CDA_A
+export UQ=CDA+H
 python main.py --dataset ${DATASET} --model ${MODEL} --UQ ${UQ} --cfg ${CFG} --seed ${SEEDS} --device ${DEVICE_ID}
 export CFG=dalstm_ensemble_trad.yaml
-export UQ=en_t
+export UQ=DE
 python main.py --dataset ${DATASET} --model ${MODEL} --UQ ${UQ} --cfg ${CFG} --seed ${SEEDS} --device ${DEVICE_ID}
-export UQ=en_t_mve
+export UQ=DE+H
 python main.py --dataset ${DATASET} --model ${MODEL} --UQ ${UQ} --cfg ${CFG} --seed ${SEEDS} --device ${DEVICE_ID}
 export CFG=dalstm_ensemble_boot.yaml
-export UQ=en_b
+export UQ=BE
 python main.py --dataset ${DATASET} --model ${MODEL} --UQ ${UQ} --cfg ${CFG} --seed ${SEEDS} --device ${DEVICE_ID}
-export UQ=en_b_mve
+export UQ=BE+H
 python main.py --dataset ${DATASET} --model ${MODEL} --UQ ${UQ} --cfg ${CFG} --seed ${SEEDS} --device ${DEVICE_ID}
 export CFG=dalstm_CARD.yaml
 export UQ=CARD
@@ -305,32 +305,32 @@ export CFG=dalstm_deterministic.yaml
 export UQ=deterministic
 python main.py --dataset ${DATASET} --model ${MODEL} --UQ ${UQ} --cfg ${CFG} --seed ${SEEDS} --device ${DEVICE_ID}
 export CFG=dalstm_mve.yaml
-export UQ=mve
+export UQ=H
 python main.py --dataset ${DATASET} --model ${MODEL} --UQ ${UQ} --cfg ${CFG} --seed ${SEEDS} --device ${DEVICE_ID}
 export CFG=dalstm_LA.yaml
 export UQ=LA
 python main.py --dataset ${DATASET} --model ${MODEL} --UQ ${UQ} --cfg ${CFG} --seed ${SEEDS} --device ${DEVICE_ID}
 export CFG=dalstm_RF.yaml
-export UQ=RF
+export UQ=E-RF
 python main.py --dataset ${DATASET} --model ${MODEL} --UQ ${UQ} --cfg ${CFG} --seed ${SEEDS} --device ${DEVICE_ID}
 export CFG=dalstm_dropout.yaml
 export UQ=DA
 python main.py --dataset ${DATASET} --model ${MODEL} --UQ ${UQ} --cfg ${CFG} --seed ${SEEDS} --device ${DEVICE_ID}
 export UQ=CDA
 python main.py --dataset ${DATASET} --model ${MODEL} --UQ ${UQ} --cfg ${CFG} --seed ${SEEDS} --device ${DEVICE_ID}
-export UQ=DA_A
+export UQ=DA+H
 python main.py --dataset ${DATASET} --model ${MODEL} --UQ ${UQ} --cfg ${CFG} --seed ${SEEDS} --device ${DEVICE_ID}
-export UQ=CDA_A
+export UQ=CDA+H
 python main.py --dataset ${DATASET} --model ${MODEL} --UQ ${UQ} --cfg ${CFG} --seed ${SEEDS} --device ${DEVICE_ID}
 export CFG=dalstm_ensemble_trad.yaml
-export UQ=en_t
+export UQ=DE
 python main.py --dataset ${DATASET} --model ${MODEL} --UQ ${UQ} --cfg ${CFG} --seed ${SEEDS} --device ${DEVICE_ID}
-export UQ=en_t_mve
+export UQ=DE+H
 python main.py --dataset ${DATASET} --model ${MODEL} --UQ ${UQ} --cfg ${CFG} --seed ${SEEDS} --device ${DEVICE_ID}
 export CFG=dalstm_ensemble_boot.yaml
-export UQ=en_b
+export UQ=BE
 python main.py --dataset ${DATASET} --model ${MODEL} --UQ ${UQ} --cfg ${CFG} --seed ${SEEDS} --device ${DEVICE_ID}
-export UQ=en_b_mve
+export UQ=BE+H
 python main.py --dataset ${DATASET} --model ${MODEL} --UQ ${UQ} --cfg ${CFG} --seed ${SEEDS} --device ${DEVICE_ID}
 export CFG=dalstm_CARD.yaml
 export UQ=CARD
@@ -342,37 +342,33 @@ export CFG=dalstm_deterministic.yaml
 export UQ=deterministic
 python main.py --dataset ${DATASET} --model ${MODEL} --UQ ${UQ} --cfg ${CFG} --seed ${SEEDS} --device ${DEVICE_ID}
 export CFG=dalstm_mve.yaml
-export UQ=mve
+export UQ=H
 python main.py --dataset ${DATASET} --model ${MODEL} --UQ ${UQ} --cfg ${CFG} --seed ${SEEDS} --device ${DEVICE_ID}
 export CFG=dalstm_LA.yaml
 export UQ=LA
 python main.py --dataset ${DATASET} --model ${MODEL} --UQ ${UQ} --cfg ${CFG} --seed ${SEEDS} --device ${DEVICE_ID}
 export CFG=dalstm_RF.yaml
-export UQ=RF
+export UQ=E-RF
 python main.py --dataset ${DATASET} --model ${MODEL} --UQ ${UQ} --cfg ${CFG} --seed ${SEEDS} --device ${DEVICE_ID}
 export CFG=dalstm_dropout.yaml
 export UQ=DA
 python main.py --dataset ${DATASET} --model ${MODEL} --UQ ${UQ} --cfg ${CFG} --seed ${SEEDS} --device ${DEVICE_ID}
 export UQ=CDA
 python main.py --dataset ${DATASET} --model ${MODEL} --UQ ${UQ} --cfg ${CFG} --seed ${SEEDS} --device ${DEVICE_ID}
-export UQ=DA_A
+export UQ=DA+H
 python main.py --dataset ${DATASET} --model ${MODEL} --UQ ${UQ} --cfg ${CFG} --seed ${SEEDS} --device ${DEVICE_ID}
-export UQ=CDA_A
+export UQ=CDA+H
 python main.py --dataset ${DATASET} --model ${MODEL} --UQ ${UQ} --cfg ${CFG} --seed ${SEEDS} --device ${DEVICE_ID}
 export CFG=dalstm_ensemble_trad.yaml
-export UQ=en_t
+export UQ=DE
 python main.py --dataset ${DATASET} --model ${MODEL} --UQ ${UQ} --cfg ${CFG} --seed ${SEEDS} --device ${DEVICE_ID}
-export UQ=en_t_mve
+export UQ=DE+H
 python main.py --dataset ${DATASET} --model ${MODEL} --UQ ${UQ} --cfg ${CFG} --seed ${SEEDS} --device ${DEVICE_ID}
 export CFG=dalstm_ensemble_boot.yaml
-export UQ=en_b
+export UQ=BE
 python main.py --dataset ${DATASET} --model ${MODEL} --UQ ${UQ} --cfg ${CFG} --seed ${SEEDS} --device ${DEVICE_ID}
-export UQ=en_b_mve
+export UQ=BE+H
 python main.py --dataset ${DATASET} --model ${MODEL} --UQ ${UQ} --cfg ${CFG} --seed ${SEEDS} --device ${DEVICE_ID}
 export CFG=dalstm_CARD.yaml
 export UQ=CARD
 python main.py --dataset ${DATASET} --model ${MODEL} --UQ ${UQ} --cfg ${CFG} --n_splits ${N_SPLITS} --seed ${SEEDS} --device ${DEVICE_ID}
-
-
-
-

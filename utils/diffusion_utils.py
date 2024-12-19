@@ -409,7 +409,7 @@ def adjust_arguments(args, main_cfg, test=False, validation=False,
     args.calibration_type = main_cfg.get('calibration_type')
     return args
 
-#TODO: to experiment with other beta schedulers
+#It might be interesting to conduct experiments with other beta schedulers
 def make_beta_schedule(schedule="linear", num_timesteps=1000,
                        start=1e-5, end=1e-2):
     if schedule == "linear":
@@ -480,7 +480,7 @@ def extract(input, t, x):
     reshape = [t.shape[0]] + [1] * (len(shape) - 1)
     return out.reshape(*reshape)
 
-#TODO: understand what does q_sample do?
+
 # Forward functions
 def q_sample(y, y_0_hat, alphas_bar_sqrt, one_minus_alphas_bar_sqrt,
              t, noise=None):
