@@ -1,11 +1,5 @@
-# Horoscope: A Probabilistic Remaining Time Prediction Framework for Business Processes
-This is the supplementary githob repository of the paper: "Horoscope: A Probabilistic Remaining Time Prediction Framework for Business Processes".
-
-Our framework consists of two important modules: the uncertainty module, and the post-hoc improvement module, and can be integrated into a machine learning pipeline as per following figure:
-
-<p align="center">
-  <img src="https://github.com/keyvan-amiri/UQ4PPM/blob/main/Framework.png">
-</p>
+# A Simple and Calibrated Approach for Uncertainty-Aware Remaining Time Prediction
+This is the supplementary githob repository of the paper: "A Simple and Calibrated Approach for Uncertainty-Aware Remaining Time Prediction".
 
 ## Installation
 
@@ -25,7 +19,7 @@ conda clean --all
 ```
 
 ### Feature Extraction
-In order to train the deterministic backbone model, or any probabilistic model in the uncertainty module, we need to first transform event data into feature vectors. In principle, our framework supports any kind of neural networks as the backbone model. However, our expriments are based on  
+In order to train the deterministic backbone model, or any probabilistic model in the uncertainty module, we need to first transform event data into feature vectors. In principle, our approach supports any kind of neural networks as the backbone model. However, our expriments are based on  
 [Data aware LSTM approach](https://ieeexplore.ieee.org/abstract/document/8285184) . Feature extraction for all event logs included in our experiments can be achieved by executing the following script:
 
 ```
@@ -39,7 +33,7 @@ In order to train and evaluate a probabilistic model, and replicate our experime
 bash bash_scripts/Train_eval_calib.sh
 ```
 
-This bash script, include all execution commands for training and evaluation of all UQ configurations. It also automatically applies calirated regression (CR) on top of the probabilistic model. The bash script, include several commands for executing the main script: **main.py**. The main script accept the following structrure for configuration options:
+This bash script, include all execution commands for training and evaluation of all UQ techniques included in our experiments. It also automatically applies calirated regression (CR) on top of the probabilistic model. The bash script, include several commands for executing the main script: **main.py**. The main script accept the following structrure for configuration options:
 ```
 python main.py --dataset BPIC20DD --model dalstm --UQ deterministic --cfg dalstm_deterministic.yaml --seed 42 --device 1
 ```
@@ -49,7 +43,7 @@ More precisely, the configuration options which should be specified by the user 
 
 **model** specifies the architecture of the backbone model (i.e., dalstm).
 
-**UQ** specifies the uncertainty quantification (UQ) configuration. For instance, in the above example, the deterministic backbone is trained which is a mandatory step for post-hoc UQ techniques like Laplace approximation (LA), and embedding-based random forest (E-RF). User can easily decide on the UQ configuration by changing the value for this option. For instance, to train and evaluate Laplace approximation the following example should be changed as per follows:
+**UQ** specifies the uncertainty quantification (UQ) technique. For instance, in the above example, the deterministic backbone is trained which is a mandatory step for Laplace approximation (LA). User can easily decide on the UQ technqiue by changing the value for this option. For instance, to train and evaluate Laplace approximation the following example should be changed as per follows:
 
 ```
 python main.py --dataset BPIC20DD --model dalstm --UQ LA --cfg dalstm_LA.yaml --seed 42 --device 1
@@ -62,11 +56,3 @@ python main.py --dataset BPIC20DD --model dalstm --UQ LA --cfg dalstm_LA.yaml --
 **seed** specifies the random seed that is used. With the exception of ensembles which requires multiple seed, our expriments are based on the single seed=42.
 
 **device** specifies the machine (GPU) that is used for training and evaluation.
-
-To apply range-based prediction adjustment (RPA), and replicate our experiments, the following script should be executed:
-
-```
-bash bash_scripts/RPA_Compare.sh
-```
-
-This bash script, include all execution commands for RPA post-hoc improvement methods, as well as vizualization and comparisons for the final results of different UQ configurations.
