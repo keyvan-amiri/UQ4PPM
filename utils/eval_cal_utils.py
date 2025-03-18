@@ -597,12 +597,12 @@ def recalibration_evaluation (args=None, calibrated_test_def=None,
     y_true = calibrated_test_def['GroundTruth'].values
     # get prediction standard deviation before recalibration
     if (args.UQ=='DA+H' or args.UQ=='CDA+H' or 
-        args.UQ == 'DE+H' or args.UQ == 'BE+H'):
+        args.UQ == 'DE+H' or args.UQ == 'BE+H' or args.UQ == 'LA'):
         pred_std = calibrated_test_def['Total_Uncertainty'].values 
     elif (args.UQ=='CARD' or args.UQ=='H' or args.UQ=='SQR'):
         pred_std = calibrated_test_def['Aleatoric_Uncertainty'].values
     elif (args.UQ=='DA' or args.UQ=='CDA' or args.UQ == 'DE' or 
-          args.UQ == 'BE' or args.UQ == 'E-RF' or args.UQ == 'LA'):
+          args.UQ == 'BE' or args.UQ == 'E-RF'):
         pred_std = calibrated_test_def['Epistemic_Uncertainty'].values
          
     # Non-Gaussian calibration: expected proportions and observed proportions
@@ -623,12 +623,12 @@ def recalibration_evaluation (args=None, calibrated_test_def=None,
     sorted_pred_mean = sorted_df['Prediction'].values
     sorted_errors = sorted_df['Absolute_error'].values
     if (args.UQ=='DA+H' or args.UQ=='CDA+H' or 
-        args.UQ == 'DE+H' or args.UQ == 'BE+H'):
+        args.UQ == 'DE+H' or args.UQ == 'BE+H' or args.UQ == 'LA'):
         sorted_pred_std = sorted_df['Total_Uncertainty'].values 
     elif (args.UQ=='CARD' or args.UQ=='H' or args.UQ=='SQR'):
         sorted_pred_std = sorted_df['Aleatoric_Uncertainty'].values
     elif (args.UQ=='DA' or args.UQ=='CDA' or args.UQ == 'DE' or 
-          args.UQ == 'BE' or args.UQ == 'E-RF' or args.UQ == 'LA'):
+          args.UQ == 'BE' or args.UQ == 'E-RF'):
         sorted_pred_std = sorted_df['Epistemic_Uncertainty'].values
     # now compare confidence intervals before and after calibration
     orig_bounds = uct.metrics_calibration.get_prediction_interval(
@@ -658,12 +658,12 @@ def recalibration_evaluation (args=None, calibrated_test_def=None,
     sorted_pred_mean = sorted_df['Prediction'].values
     sorted_lengths = sorted_df['Prefix_length'].values
     if (args.UQ=='DA+H' or args.UQ=='CDA+H' or 
-        args.UQ == 'DE+H' or args.UQ == 'BE+H'):
+        args.UQ == 'DE+H' or args.UQ == 'BE+H' or args.UQ == 'LA'):
         sorted_pred_std = sorted_df['Total_Uncertainty'].values 
     elif (args.UQ=='CARD' or args.UQ=='H' or args.UQ=='SQR'):
         sorted_pred_std = sorted_df['Aleatoric_Uncertainty'].values
     elif (args.UQ=='DA' or args.UQ=='CDA' or args.UQ == 'DE' or
-          args.UQ == 'BE' or args.UQ == 'E-RF' or args.UQ == 'LA'):
+          args.UQ == 'BE' or args.UQ == 'E-RF'):
         sorted_pred_std = sorted_df['Epistemic_Uncertainty'].values
     # now compare confidence intervals before and after calibration
     orig_bounds = uct.metrics_calibration.get_prediction_interval(
@@ -693,12 +693,12 @@ def recalibration_evaluation (args=None, calibrated_test_def=None,
     sorted_pred_mean = sorted_df['Prediction'].values
     sorted_rem_time = sorted_df['GroundTruth'].values
     if (args.UQ=='DA+H' or args.UQ=='CDA+H' or 
-        args.UQ == 'DE+H' or args.UQ == 'BE+H'):
+        args.UQ == 'DE+H' or args.UQ == 'BE+H'  or args.UQ == 'LA'):
         sorted_pred_std = sorted_df['Total_Uncertainty'].values 
     elif (args.UQ=='CARD' or args.UQ=='H' or args.UQ=='SQR'):
         sorted_pred_std = sorted_df['Aleatoric_Uncertainty'].values
     elif (args.UQ=='DA' or args.UQ=='CDA' or args.UQ == 'DE' or 
-          args.UQ == 'BE' or args.UQ == 'E-RF' or args.UQ == 'LA'):
+          args.UQ == 'BE' or args.UQ == 'E-RF'):
         sorted_pred_std = sorted_df['Epistemic_Uncertainty'].values
     # now compare confidence intervals before and after calibration
     orig_bounds = uct.metrics_calibration.get_prediction_interval(
@@ -875,12 +875,12 @@ def get_mean_std_truth (df=None, uq_method=None):
     pred_mean = df['Prediction'].values 
     y_true = df['GroundTruth'].values
     if (uq_method=='DA+H' or uq_method=='CDA+H' or
-        uq_method == 'DE+H' or uq_method == 'BE+H'):
+        uq_method == 'DE+H' or uq_method == 'BE+H' or uq_method == 'LA'):
         pred_std = df['Total_Uncertainty'].values 
     elif (uq_method=='CARD' or uq_method=='H' or uq_method=='SQR'):
         pred_std = df['Aleatoric_Uncertainty'].values
     elif (uq_method=='DA' or uq_method=='CDA' or uq_method == 'DE' or
-          uq_method == 'BE' or uq_method == 'E-RF' or uq_method == 'LA'):
+          uq_method == 'BE' or uq_method == 'E-RF'):
         pred_std = df['Epistemic_Uncertainty'].values
     else:
         raise NotImplementedError(

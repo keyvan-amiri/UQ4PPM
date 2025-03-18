@@ -13,6 +13,7 @@ from loss.QuantileLoss import QuantileLoss
 from utils.utils import (get_model, get_optimizer_scheduler, set_random_seed,
                          get_exp, add_suffix_to_csv, adjust_model_name)
 from utils.evaluation import uq_eval
+#from utils.evaluation import min_max_unc
 from utils.calibration import calibrated_regression
 
 
@@ -338,6 +339,7 @@ class DALSTM_train_evaluate ():
                 hpo_results[key] = []
             additional_keys = ['mae', 'rmse', 'nll', 'crps', 'sharp', 'ause',
                                'aurg', 'miscal_area', 'check', 'interval']
+            #additional_keys = ['mae', 'rmse', 'nll', 'crps', 'sharp', 'ause', 'aurg', 'miscal_area', 'check', 'interval', 'diff']
             for key in additional_keys:
                 hpo_results[key] = []
             for exp_id, experiment in enumerate(self.experiments):
@@ -367,6 +369,9 @@ class DALSTM_train_evaluate ():
                     uq_metrics.get('scoring_rule').get('check'))
                 hpo_results['interval'].append(
                     uq_metrics.get('scoring_rule').get('interval'))
+                
+                #difference = min_max_unc(self.all_val_results[exp_id])
+                #hpo_results['diff'].append(difference)
 
             hpo_df = pd.DataFrame(hpo_results)
             csv_filename = os.path.join(
@@ -473,7 +478,8 @@ class DALSTM_train_evaluate ():
                         y_val_path=self.y_val_path)
                 elif self.uq_method == 'LA':
                     final_result = inference_laplace(
-                        model=self.model, test_loader=self.test_loader, 
+                        cfg=self.cfg, model=self.model,
+                        test_loader=self.test_loader, 
                         test_original_lengths=self.test_lengths,
                         y_train_val=self.y_train_val,
                         y_scaler=self.max_train_val, 
@@ -534,7 +540,7 @@ class DALSTM_train_evaluate ():
         self.all_checkpoints.append(la_path)
         
         res_df = inference_laplace(
-            la=la_model, val_mode=True, test_loader=self.val_loader, 
+            la=la_model, cfg=self.cfg, val_mode=True, test_loader=self.val_loader, 
             y_scaler=self.max_train_val, normalization=self.normalization,
             report_path=self.report_path, result_path=self.result_path,
             seed=self.seed, device=self.device, exp_id=exp_id+1)

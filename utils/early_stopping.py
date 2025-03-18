@@ -1,10 +1,3 @@
-"""
-This python script is adapted from the origninal script:
-    https://github.com/XzwHan/CARD
-    CARD: Classification and Regression Diffusion Models by Xizewen Han,
-    Huangjie Zheng, and Mingyuan Zhou.
-"""
-
 # early stopping scheme for hyperparameter tuning
 class EarlyStopping:
     """

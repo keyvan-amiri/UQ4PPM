@@ -125,8 +125,8 @@ def uq_eval(csv_file, prefix, report=False, verbose=False,
         plot_label = uq_label_plot(uq_method=prefix)
         
         # Plot sparsification error only before calibration. 
-        # Note that this plot is not affected by calibration, since Gaussian 
-        # valibration is simply scaling the standard deviation.
+        # Note that this plot is not affected by calibration, since CR simply 
+        # scales the standard deviation.
         if not calibration_mode:
             try:
                 n_samples = len(pred_mean)
@@ -202,13 +202,13 @@ def uq_eval(csv_file, prefix, report=False, verbose=False,
                 
             # create earliness analysis plot
             if (prefix=='DA+H' or prefix=='CDA+H' or prefix == 'DE+H' or 
-                prefix == 'BE+H' or prefix=='deterministic' or 
+                prefix == 'BE+H' or prefix == 'LA' or prefix=='deterministic' or 
                 prefix=='GMM' or prefix=='GMMD'):
                 uncertainty_col = 'Total_Uncertainty'
             elif (prefix=='CARD' or prefix=='H' or prefix=='SQR'):
                 uncertainty_col = 'Aleatoric_Uncertainty'
             elif (prefix=='DA' or prefix=='CDA' or prefix == 'DE' or 
-                  prefix == 'BE' or prefix == 'E-RF' or prefix == 'LA'):
+                  prefix == 'BE' or prefix == 'E-RF' ):
                 uncertainty_col = 'Epistemic_Uncertainty'
             
             df_filtered = df[df['Prefix_length'] >= 2]
@@ -303,13 +303,13 @@ def uq_eval(csv_file, prefix, report=False, verbose=False,
             sorted_pred_mean = sorted_df['Prediction'].values           
             sorted_errors = sorted_df['Absolute_error'].values
             if (prefix=='DA+H' or prefix=='CDA+H' or 
-                prefix == 'DE+H' or prefix == 'BE+H' or
+                prefix == 'DE+H' or prefix == 'BE+H'  or prefix == 'LA' or
                 prefix=='deterministic' or prefix=='GMM' or prefix=='GMMD'):
                 sorted_pred_std = sorted_df['Total_Uncertainty'].values 
             elif (prefix=='CARD' or prefix=='H' or prefix=='SQR'):
                 sorted_pred_std = sorted_df['Aleatoric_Uncertainty'].values
             elif (prefix=='DA' or prefix=='CDA' or prefix == 'DE' or 
-                  prefix == 'BE' or prefix == 'E-RF' or prefix == 'LA'):
+                  prefix == 'BE' or prefix == 'E-RF'):
                 sorted_pred_std = sorted_df['Epistemic_Uncertainty'].values
             # now compare confidence intervals before and after calibration
             orig_bounds = uct.metrics_calibration.get_prediction_interval(
@@ -342,13 +342,13 @@ def uq_eval(csv_file, prefix, report=False, verbose=False,
             sorted_pred_mean = sorted_df['Prediction'].values
             sorted_lengths = sorted_df['Prefix_length'].values
             if (prefix=='DA+H' or prefix=='CDA+H' or 
-                prefix == 'DE+H' or prefix == 'BE+H' or 
+                prefix == 'DE+H' or prefix == 'BE+H' or prefix == 'LA' or 
                 prefix=='deterministic' or prefix=='GMM' or prefix=='GMMD'):
                 sorted_pred_std = sorted_df['Total_Uncertainty'].values 
             elif (prefix=='CARD' or prefix=='H' or prefix=='SQR'):
                 sorted_pred_std = sorted_df['Aleatoric_Uncertainty'].values
             elif (prefix=='DA' or prefix=='CDA' or prefix == 'DE' or
-                  prefix == 'BE' or prefix == 'E-RF' or prefix == 'LA'):
+                  prefix == 'BE' or prefix == 'E-RF'):
                 sorted_pred_std = sorted_df['Epistemic_Uncertainty'].values
             # now compare confidence intervals before and after calibration
             orig_bounds = uct.metrics_calibration.get_prediction_interval(
@@ -381,13 +381,13 @@ def uq_eval(csv_file, prefix, report=False, verbose=False,
             sorted_pred_mean = sorted_df['Prediction'].values
             sorted_rem_time = sorted_df['GroundTruth'].values
             if (prefix=='DA+H' or prefix=='CDA+H' or 
-                prefix == 'DE+H' or prefix == 'BE+H' or 
+                prefix == 'DE+H' or prefix == 'BE+H' or prefix == 'LA' or 
                 prefix=='deterministic' or prefix=='GMM' or prefix=='GMMD'):
                 sorted_pred_std = sorted_df['Total_Uncertainty'].values 
             elif (prefix=='CARD' or prefix=='H' or prefix=='SQR'):
                 sorted_pred_std = sorted_df['Aleatoric_Uncertainty'].values
             elif (prefix=='DA' or prefix=='CDA' or prefix == 'DE' or 
-                  prefix == 'BE' or prefix == 'E-RF' or prefix == 'LA'):
+                  prefix == 'BE' or prefix == 'E-RF'):
                 sorted_pred_std = sorted_df['Epistemic_Uncertainty'].values
             # now compare confidence intervals before and after calibration
             orig_bounds = uct.metrics_calibration.get_prediction_interval(

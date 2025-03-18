@@ -69,6 +69,7 @@ def post_hoc_laplace(model=None, cfg=None, y_train_val=None,
     device : device that is used in experiment.
     exp_id : an id to specify the experiment.
     """
+    print(sigma_noise, prior_precision, temperature, empirical_bayes)
     torch.backends.cudnn.enabled = False
     # get current time (as start) to compute training time
     start=datetime.now()
@@ -111,7 +112,9 @@ def post_hoc_laplace(model=None, cfg=None, y_train_val=None,
         raise FileNotFoundError('Deterministic model must be trained first')
     else:
         # load the checkpoint except the last layer
-        checkpoint = torch.load(model_checkpoint_path)
+        #checkpoint = torch.load(model_checkpoint_path)
+        checkpoint = torch.load(model_checkpoint_path, map_location=cfg['device'])
+        
         model.load_state_dict(checkpoint['model_state_dict'])
 
     if stat_noise:
@@ -170,8 +173,7 @@ def post_hoc_laplace(model=None, cfg=None, y_train_val=None,
             neg_marglik.backward()
             hyper_optimizer.step()
             # print the results       
-            print(f'Epoch {i + 1}/{la_epochs},', 
-                  f'NLL: {neg_marglik}, log prior: {log_prior}, log sigma: {log_sigma}')
+            #print(f'Epoch {i + 1}/{la_epochs},', f'NLL: {neg_marglik}, log prior: {log_prior}, log sigma: {log_sigma}')
             with open(report_path, 'a') as file:
                 file.write(
                     'Epoch {}/{} NLL: {}, log prior: {}, log sigma: {}.\n'.format(
@@ -192,7 +194,7 @@ def post_hoc_laplace(model=None, cfg=None, y_train_val=None,
     return la, la_path
     
     
-def inference_laplace(la=None, model=None, val_mode=False, test_loader=None, 
+def inference_laplace(la=None, cfg=None, model=None, val_mode=False, test_loader=None, 
                       test_original_lengths=None, y_train_val=None, 
                       y_scaler=None, normalization=False, 
                       subset_of_weights='last_layer', last_layer_name=None, 
@@ -200,7 +202,7 @@ def inference_laplace(la=None, model=None, val_mode=False, test_loader=None,
                       sigma_noise=None, stat_noise=None, prior_precision=None,
                       temperature=None, pred_type='glm',
                       report_path=None, result_path=None, split='holdout',
-                      fold=None, seed=None, device=None, exp_id=None):    
+                      fold=None, seed=None, device=None, exp_id=None): 
     """
     A method to fit a Laplace model, and optimize its preior precision.
     
@@ -270,7 +272,8 @@ def inference_laplace(la=None, model=None, val_mode=False, test_loader=None,
             y_gold = (y_std + 3*y_IQR)/4
             sigma_noise=sigma_noise*y_gold
 
-        checkpoint = torch.load(model_checkpoint_path)
+        #checkpoint = torch.load(model_checkpoint_path)
+        checkpoint = torch.load(model_checkpoint_path, map_location=cfg['device'])
         model.load_state_dict(checkpoint['model_state_dict'])
         optional_args = dict() #empty dict for optional args in Laplace model
         optional_args['last_layer_name'] = last_layer_name 
@@ -288,7 +291,10 @@ def inference_laplace(la=None, model=None, val_mode=False, test_loader=None,
     # empty dictionary to collect inference result in a dataframe
     # only capture Epistemic uncertainty by Laplace approximation
     all_results = {'GroundTruth': [], 'Prediction': [],
-                   'Epistemic_Uncertainty': [], 'Absolute_error': [],
+                   'Epistemic_Uncertainty': [],
+                   'Aleatoric_Uncertainty':[], 
+                   'Total_Uncertainty':[],
+                   'Absolute_error': [],
                    'Absolute_percentage_error': []} 
     # on test set, prefix length is added for earliness analysis
     if not val_mode:
@@ -311,14 +317,20 @@ def inference_laplace(la=None, model=None, val_mode=False, test_loader=None,
             # Remove the dimension of size 1 along axis 2
             #f_var = f_var.squeeze()
             f_var = f_var.squeeze(dim=2) 
+            #print(f_var)
+            #print(la.sigma_noise.item()**2)
+            epistemic_std = torch.sqrt(f_var)
+            aleatoric_std = la.sigma_noise.item()
             # Compute square root element-wise 
-            epistemic_std = torch.sqrt(f_var + la.sigma_noise.item()**2)
+            total_std = torch.sqrt(f_var + la.sigma_noise.item()**2)
             #f_std = torch.sqrt(f_var)
             # conduct inverse normalization if required
             if normalization:
                 _y_truth = y_scaler * _y_truth
                 _y_pred = y_scaler * _y_pred  
                 epistemic_std = y_scaler * epistemic_std
+                aleatoric_std = y_scaler * aleatoric_std
+                total_std =  y_scaler * total_std
             # Compute batch loss
             #_y_pred = _y_pred.squeeze(dim=1)
             absolute_error += F.l1_loss(_y_pred, _y_truth).item()
@@ -342,9 +354,13 @@ def inference_laplace(la=None, model=None, val_mode=False, test_loader=None,
                 all_results['Prefix_length'].extend(prefix_lengths)
             all_results['Absolute_error'].extend(mae_batch.tolist())
             all_results['Absolute_percentage_error'].extend(mape_batch.tolist())
+            aleatoric_std_tensor = torch.full_like(epistemic_std, aleatoric_std)
             epistemic_std = epistemic_std.detach().cpu().numpy()
-            all_results['Epistemic_Uncertainty'].extend(
-                epistemic_std.tolist())
+            aleatoric_std_tensor = aleatoric_std_tensor.detach().cpu().numpy()
+            total_std = total_std.detach().cpu().numpy()
+            all_results['Epistemic_Uncertainty'].extend(epistemic_std.tolist())
+            all_results['Aleatoric_Uncertainty'].extend(aleatoric_std_tensor.tolist())
+            all_results['Total_Uncertainty'].extend(total_std.tolist())
         
         num_test_batches = len(test_loader)    
         absolute_error /= num_test_batches    
@@ -375,6 +391,15 @@ def inference_laplace(la=None, model=None, val_mode=False, test_loader=None,
                       for item in sublist]
     all_results['Epistemic_Uncertainty'] = flattened_list 
     
+    flattened_list = [item for sublist in all_results['Aleatoric_Uncertainty'] 
+                      for item in sublist]
+    all_results['Aleatoric_Uncertainty'] = flattened_list 
+    
+    flattened_list = [item for sublist in all_results['Total_Uncertainty'] 
+                      for item in sublist]
+    all_results['Total_Uncertainty'] = flattened_list     
+
+    
     if not val_mode:
         # inference time is reported in milliseconds.
         instance_t = inference_time/len(test_original_lengths)*1000
@@ -402,5 +427,6 @@ def inference_laplace(la=None, model=None, val_mode=False, test_loader=None,
         csv_filename = add_suffix_to_csv(csv_filename, 
                                          added_suffix='validation_')
     csv_filepath = os.path.join(result_path, csv_filename)        
-    results_df.to_csv(csv_filepath, index=False)  
+    results_df.to_csv(csv_filepath, index=False)
+    print('inference is done')
     return csv_filepath

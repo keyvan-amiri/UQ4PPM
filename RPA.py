@@ -1,8 +1,3 @@
-# -*- coding: utf-8 -*-
-"""
-Created on Thu Oct 10 09:23:32 2024
-@author: Keyvan Amiri Elyasi
-"""
 import os
 import argparse
 import pandas as pd
@@ -187,15 +182,16 @@ def apply_rpa(args, rpa_path):
         uq_adj_lst.append(uq_dict_path)
         uq_lst.append(before_uq_dict_path)
         
-        # set the uncertainty column        
+        # set the uncertainty column  
+        # TODO: how to deal with LA?
         if (method=='DA+H' or method=='CDA+H' or method == 'DE+H' or 
-            method == 'BE+H' or method=='deterministic' or 
+            method == 'BE+H' or method == 'LA' or method=='deterministic' or 
             method=='GMM_uniform' or method=='GMM_dynamic'):
             uncertainty_col = 'Total_Uncertainty'
         elif (method=='CARD' or method=='H' or method=='SQR'):
             uncertainty_col = 'Aleatoric_Uncertainty'
         elif (method=='DA' or method=='CDA' or method == 'DE' or 
-              method == 'BE' or method == 'E-RF' or method == 'LA'):
+              method == 'BE' or method == 'E-RF'):
             uncertainty_col = 'Epistemic_Uncertainty'
 
         y_val_pred = df_val['Prediction'].values

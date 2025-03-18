@@ -489,13 +489,13 @@ def get_mean_std_truth (df=None, uq_method=None):
     pred_mean = df['Prediction'].values 
     y_true = df['GroundTruth'].values
     if (uq_method=='DA+H' or uq_method=='CDA+H' or
-        uq_method == 'DE+H' or uq_method == 'BE+H' or
+        uq_method == 'DE+H' or uq_method == 'BE+H' or uq_method == 'LA' or
         uq_method=='deterministic' or uq_method=='GMM' or uq_method=='GMMD'):
         pred_std = df['Total_Uncertainty'].values 
     elif (uq_method=='CARD' or uq_method=='H' or uq_method=='SQR'):
         pred_std = df['Aleatoric_Uncertainty'].values
     elif (uq_method=='DA' or uq_method=='CDA' or uq_method == 'DE' or
-          uq_method == 'BE' or uq_method == 'E-RF' or uq_method == 'LA'):
+          uq_method == 'BE' or uq_method == 'E-RF'):
         pred_std = df['Epistemic_Uncertainty'].values
     else:
         raise NotImplementedError(

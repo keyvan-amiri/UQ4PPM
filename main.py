@@ -103,9 +103,8 @@ def main():
     parser.add_argument('--seed', nargs='+', help='Random seed to use',
                         required=True)
     # device and thread arguments.
-    parser.add_argument('--device', type=int, default=0, help='GPU device id')
-    parser.add_argument('--thread', type=int, default=4,
-                        help='number of threads') 
+    #parser.add_argument('--device', type=int, default=0, help='GPU device id')
+    #parser.add_argument('--thread', type=int, default=4, help='number of threads') 
     
     ##########################################################################
     #########################    CARD arguments    ###########################
@@ -261,7 +260,8 @@ def main():
     # execution path for all methods except CARD
     else:    
         # define device name
-        device_name = f'cuda:{args.device}' if torch.cuda.is_available() else 'cpu'
+        #device_name = f'cuda:{args.device}' if torch.cuda.is_available() else 'cpu'
+        device_name = f'cuda:{os.environ.get("CUDA_VISIBLE_DEVICES", "0")}' if torch.cuda.is_available() else 'cpu'
         # read the relevant configuration file, and append
         cfg_file = os.path.join(root_path, 'cfg', args.cfg)
         with open(cfg_file, 'r') as f:

@@ -480,7 +480,6 @@ class DALSTM_preprocessing ():
             # print temptarget
             print("Generated dataset with n_samples:", len(temptarget))
             assert (len(temptarget) == len(data))
-            #Achtung! original_lengths is added to output
             return data, temptarget, original_lengths 
 
         return generate_set(datasetTR), values
