@@ -1,0 +1,38 @@
+data:
+  normalization: False
+HPO_metric: ause # nll mae rmse sharp crps ause
+HPO_radom_ratio: 0.5
+calibration_type: all # all miscal rms ma isotonic
+model:
+  lstm:
+    n_layers: 2
+    hidden_size: 150 
+    dropout: True
+    dropout_prob: 0.1
+uncertainty:
+  laplace:
+    last_layer_name: linear1
+    hessian_structure: [full] #[full, kron]
+    empirical_bayes: [True]        
+    epochs: [200]
+    lr: [0.01, 0.001]
+    sigma_noise: [3.0] #[0.05, 0.1, 0.2, 0.3, 0.5, 1.0, 3.0]
+    stat_noise: [False] # if True, then standard deviation, and quantiles of target attribute will affect sigma noise!
+    prior_precision: [0.005, 0.01, 0.1, 1.0]
+    temperature: [10, 20, 50, 100, 500]      
+    n_samples: [100] 
+train:
+  loss_function: mae   
+  max_epochs: 200
+  batch_size: 64
+  early_stop: True
+  early_stop.patience: 50
+  early_stop.min_delta: 0
+optimizer:
+  type: NAdam
+  base_lr: 0.001 
+  eps: 1e-7  
+  weight_decay: 0.01 
+evaluation:
+  batch_size: 64
+    
