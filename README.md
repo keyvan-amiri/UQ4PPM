@@ -12,8 +12,8 @@ git clone https://github.com/keyvan-amiri/UQ4PPM
 To install and set up the required environment on a Linux system, run the following commands:
 
 ```bash
-conda create -n horoscope python=3.10
-conda activate horoscope
+conda create -n LA_CR python=3.10
+conda activate LA_CR
 pip install -r requirements.txt
 conda clean --all
 ```
