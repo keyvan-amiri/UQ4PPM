@@ -18,7 +18,7 @@ from models.card_regression import Diffusion
 from utils.DALSTM_train_eval import DALSTM_train_evaluate
 from utils.diffusion_utils import (parse_temp_config, parse_config,
                                    adjust_arguments, set_experiments,
-                                   get_stat, card_hpo, card_calibration) 
+                                   get_stat, card_hpo) 
 
 
 # The main method for exceution of CARD models.
@@ -238,25 +238,18 @@ def main():
                 get_stat(
                     args, config, temp_config, original_doc, 
                     y_rmse_all_splits_all_steps_list=y_rmse_all_splits_all_steps_list,
-                    y_qice_all_splits_all_steps_list=y_qice_all_splits_all_steps_list,
-                    y_picp_all_splits_all_steps_list=y_picp_all_splits_all_steps_list,
                     y_nll_all_splits_all_steps_list=y_nll_all_splits_all_steps_list)
             else:
                 get_stat(
                     args, config, temp_config, original_doc,
                     y_mae_all_splits_all_steps_list=y_mae_all_splits_all_steps_list,
-                    y_qice_all_splits_all_steps_list=y_qice_all_splits_all_steps_list,
-                    y_picp_all_splits_all_steps_list=y_picp_all_splits_all_steps_list,
                     y_nll_all_splits_all_steps_list=y_nll_all_splits_all_steps_list)
-
         else:
             args.doc = args.doc + "/split_" + str(args.split)
             if args.test:
                 args.config = args.config + args.doc + "/config.yml"
             sys.exit(main())
         
-        card_calibration(args, best_key)
-
     # execution path for all methods except CARD
     else:    
         # define device name

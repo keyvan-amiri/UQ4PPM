@@ -15,7 +15,6 @@ from datetime import datetime
 import torch
 import pickle
 import time
-from sklearn.model_selection import KFold
 from tensorflow.keras.preprocessing.text import one_hot
 from tensorflow.keras.preprocessing import sequence
 
@@ -668,70 +667,5 @@ class DALSTM_preprocessing ():
         self.delete_files(extension='.csv')
         print('Preprocessing is done for holdout data split.')
         
-        ######################################################################
-        ######## create train, valid, test splits for cross-validation #######
-        ######################################################################
-        # TODO: pre-prcessing in CV split is not conducted. 
         if self.cv:
-            # Put all prefixes in one dataset
-            X_total = torch.cat((X_train, X_val, X_test), dim=0)
-            y_total = torch.cat((y_train, y_val, y_test), dim=0)
-            total_lengths = train_lengths + valid_lengths + test_lengths
-            # get indices for train, validation, and test
-            n_samples = X_total.shape[0]
-            splits={}
-            kf = KFold(n_splits=self.n_splits, shuffle=True,
-                       random_state=self.seed)
-            kf_split = kf.split(np.zeros(n_samples)) 
-            for i, (_, ids) in enumerate(kf_split):
-                splits[i] = ids.tolist()
-            for split_key in range(self.n_splits):
-                test_ids = splits[split_key]
-                val_ids = splits[((split_key + 1) % self.n_splits)]      
-                train_ids = []
-                for fold in range(self.n_splits):
-                    if (fold != split_key and 
-                        fold != (split_key + 1) % self.n_splits): 
-                        train_ids.extend(splits[fold]) 
-                # now get training, validation, and test prefixes
-                X_train = X_total[train_ids]
-                y_train = y_total[train_ids]
-                X_val = X_total[val_ids]
-                y_val = y_total[val_ids]
-                X_test = X_total[test_ids]
-                y_test = y_total[test_ids]
-                test_lengths = [total_lengths[i] for i in test_ids]          
-                # define file names, and paths 
-                X_train_path = os.path.join(
-                    self.dataset_path,
-                    "DALSTM_X_train_fold_"+str(split_key+1)+self.dataset_name+".pt")
-                X_val_path = os.path.join(
-                    self.dataset_path,
-                    "DALSTM_X_val_fold_"+str(split_key+1)+self.dataset_name+".pt")
-                X_test_path = os.path.join(
-                    self.dataset_path,
-                    "DALSTM_X_test_fold_"+str(split_key+1)+self.dataset_name+".pt")
-                y_train_path = os.path.join(
-                    self.dataset_path,
-                    "DALSTM_y_train_fold_"+str(split_key+1)+self.dataset_name+".pt")
-                y_val_path = os.path.join(
-                    self.dataset_path,
-                    "DALSTM_y_val_fold_"+str(split_key+1)+self.dataset_name+".pt")
-                y_test_path = os.path.join(
-                    self.dataset_path,
-                    "DALSTM_y_test_fold_"+str(split_key+1)+self.dataset_name+".pt")        
-                test_length_path = os.path.join(
-                    self.dataset_path,
-                    "DALSTM_test_length_list_fold_"+str(
-                        split_key+1)+self.dataset_name+".pkl")
-                # save training, validation, test tensors   
-                torch.save(X_train, X_train_path) 
-                torch.save(X_val, X_val_path)
-                torch.save(X_test, X_test_path)
-                torch.save(y_train, y_train_path)
-                torch.save(y_val, y_val_path)
-                torch.save(y_test, y_test_path)
-                # save lengths
-                with open(test_length_path, 'wb') as file:
-                    pickle.dump(test_lengths, file)  
-            print('Preprocessing is done for CV data split.')      
+            print('Cross-fold validation split is not included in our experiments.') 
