@@ -1,5 +1,5 @@
 # A Simple and Calibrated Approach for Uncertainty-Aware Remaining Time Prediction
-This is the supplementary githob repository of the paper: "A Simple and Calibrated Approach for Uncertainty-Aware Remaining Time Prediction".
+This is the supplementary githob repository of the paper: "A Simple and Calibrated Approach for Uncertainty-Aware Remaining Time Prediction", submitted to BPM 2025.
 
 ## Installation
 
@@ -23,7 +23,7 @@ In order to train the deterministic backbone model, or any probabilistic model i
 [Data aware LSTM approach](https://ieeexplore.ieee.org/abstract/document/8285184) . Feature extraction for all event logs included in our experiments can be achieved by executing the following script:
 
 ```
-python preprocess.py --datasets BPIC20DD BPIC20ID BPIC20PTC BPIC20RFP BPIC20TPD BPIC15_1 BPIC13I BPIC12 HelpDesk Sepsis   --model dalstm
+python preprocess.py --datasets BPIC20DD BPIC20ID BPIC20PTC BPIC20RFP BPIC20TPD BPIC15_1 BPIC13I BPIC12 HelpDesk Sepsis --model dalstm
 ```
 
 #### Training and evaluation for a probabilistic model
@@ -33,7 +33,7 @@ In order to train and evaluate a probabilistic model, and replicate our experime
 bash bash_scripts/Train_eval_calib.sh
 ```
 
-This bash script, include all execution commands for training and evaluation of all UQ techniques included in our experiments. It also automatically applies calirated regression (CR) on top of the probabilistic model. The bash script, include several commands for executing the main script: **main.py**. The main script accept the following structrure for configuration options:
+This bash script, include all execution commands for training and evaluation of all uncertainty quantification (UQ) techniques included in our experiments. The bash script, include several commands for executing the main script: **main.py**. The main script accept the following structrure for configuration options:
 ```
 python main.py --dataset BPIC20DD --model dalstm --UQ deterministic --cfg dalstm_deterministic.yaml --seed 42 --device 1
 ```
