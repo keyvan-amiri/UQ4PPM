@@ -42,6 +42,7 @@ def main():
     #['DA+H', 'CDA+H', 'LA', 'BE+H', 'H', 'CARD', 'LA+I', 'LA+S']
     parser.add_argument('--model_1', help='First model in comparison')
     parser.add_argument('--model_2', help='Second model in comparison')
+    # 'AURG' 'MAE' 'MA' 'Sharp'
     parser.add_argument('--metric', help='Metric used for comparison')
     args = parser.parse_args()  
     
