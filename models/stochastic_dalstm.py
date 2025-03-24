@@ -81,8 +81,6 @@ class StochasticDALSTM(nn.Module):
             total_weight_reg += l.regularizer()
         return total_weight_reg
     
-    # TODO: remove stop_dropout since for deterministic version we have a separate model
-    # TODO: to do so you should check numerous stop dropouts in this script!
     def forward(self, x, stop_dropout=False):
         '''
         ARGUMENTS:

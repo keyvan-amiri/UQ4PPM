@@ -1121,6 +1121,7 @@ class Diffusion(object):
         # define an empty dictionary to collect instance level information
         instance_results = {'GroundTruth': [], 'Deterministic_Prediction':[],
                             'Prediction': [], 'Aleatoric_Uncertainty': [],
+                            'Epistemic_Uncertainty': [], 'Total_Uncertainty': [],
                             'Absolute_error': []}  
         if not args.validation:
             # we don't need prefix length and error for recalibration
@@ -1287,9 +1288,15 @@ class Diffusion(object):
                     # 2) prediction std = predicted uncertainty
                     std_Predictions = np.std(gen_y_unnormalized, axis=1)
                     #std_Predictions = np.squeeze(std_Predictions)
-                    std_Predictions = np.atleast_1d(np.squeeze(std_Predictions))                    
+                    std_Predictions = np.atleast_1d(np.squeeze(std_Predictions))  
+                    epistemic_std = np.zeros_like(std_Predictions)
+                    total_std = np.sqrt(epistemic_std**2 + std_Predictions**2)
                     instance_results['Aleatoric_Uncertainty'].extend(
                         std_Predictions) 
+                    instance_results['Epistemic_Uncertainty'].extend(
+                        epistemic_std) 
+                    instance_results['Total_Uncertainty'].extend(
+                        total_std)                    
                     # get absolute error
                     absolute_error_values = np.abs(
                         groundtruth_values - mean_Predictions)
@@ -1384,10 +1391,12 @@ class Diffusion(object):
             # change data type in dataframe
             instance_level_df[['GroundTruth','Deterministic_Prediction',
                                'Prediction', 'Aleatoric_Uncertainty',
+                               'Epistemic_Uncertainty', 'Total_Uncertainty',
                                'Absolute_error']] = instance_level_df[[
                                    'GroundTruth', 'Deterministic_Prediction',
                                    'Prediction', 'Aleatoric_Uncertainty',
-                                   'Absolute_error']].astype(float)
+                                   'Epistemic_Uncertainty', 'Total_Uncertainty',
+                                   'Absolute_error']].astype(float)                                
             if not args.validation:
                 instance_level_df[['Prefix_length']] = instance_level_df[
                     ['Prefix_length']].astype(int)   

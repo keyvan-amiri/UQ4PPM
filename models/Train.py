@@ -1,10 +1,9 @@
 import os
-import random
 from datetime import datetime
 import torch
 from torch.nn.utils import clip_grad_value_
 import torch.optim as optim
-from utils.utils import (augment, get_optimizer_params, set_optimizer)
+from utils.utils import (get_optimizer_params, set_optimizer)
 
 # method to handle training the model
 def train_model(model=None, uq_method=None, train_loader=None, val_loader=None,

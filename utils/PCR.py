@@ -37,13 +37,6 @@ def add_val_length(folder, dataset, df):
     df["Prefix_length"] = val_lengths.astype(int)       
     return df
 
-def correct_uncertainty (df_org, model):
-    df = df_org.copy()
-    if model in ['CARD']:
-        df['Total_Uncertainty'] = df['Aleatoric_Uncertainty']
-        df['Epistemic_Uncertainty'] = 0
-    return df 
-
 
 def load_results(dataset, model, folder, mode = 'val'): 
     

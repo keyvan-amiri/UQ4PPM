@@ -160,11 +160,9 @@ def post_hoc_laplace(model=None, cfg=None, y_train_val=None,
         # log of the prior precision 
         log_prior = torch.full((1,), prior_precision, requires_grad=True,
                                dtype=torch.float32)
-        #log_prior = torch.ones(1, requires_grad=True)
         # log of the observation noise
         log_sigma = torch.full((1,), sigma_noise,
                                requires_grad=True, dtype=torch.float32)
-        #log_sigma = torch.ones(1, requires_grad=True)
         hyper_optimizer = torch.optim.Adam([log_prior, log_sigma], lr=la_lr)
         for i in range(la_epochs):
             hyper_optimizer.zero_grad()
@@ -172,8 +170,6 @@ def post_hoc_laplace(model=None, cfg=None, y_train_val=None,
                                                        log_sigma.exp())
             neg_marglik.backward()
             hyper_optimizer.step()
-            # print the results       
-            #print(f'Epoch {i + 1}/{la_epochs},', f'NLL: {neg_marglik}, log prior: {log_prior}, log sigma: {log_sigma}')
             with open(report_path, 'a') as file:
                 file.write(
                     'Epoch {}/{} NLL: {}, log prior: {}, log sigma: {}.\n'.format(
@@ -313,17 +309,12 @@ def inference_laplace(la=None, cfg=None, model=None, val_mode=False, test_loader
             _y_truth = test_batch[1].to(device)
             batch_size = inputs.shape[0] 
             _y_pred, f_var = la(inputs, pred_type=pred_type) 
-            #_y_pred = _y_pred.squeeze()  
             # Remove the dimension of size 1 along axis 2
-            #f_var = f_var.squeeze()
             f_var = f_var.squeeze(dim=2) 
-            #print(f_var)
-            #print(la.sigma_noise.item()**2)
             epistemic_std = torch.sqrt(f_var)
             aleatoric_std = la.sigma_noise.item()
             # Compute square root element-wise 
             total_std = torch.sqrt(f_var + la.sigma_noise.item()**2)
-            #f_std = torch.sqrt(f_var)
             # conduct inverse normalization if required
             if normalization:
                 _y_truth = y_scaler * _y_truth
@@ -332,14 +323,12 @@ def inference_laplace(la=None, cfg=None, model=None, val_mode=False, test_loader
                 aleatoric_std = y_scaler * aleatoric_std
                 total_std =  y_scaler * total_std
             # Compute batch loss
-            #_y_pred = _y_pred.squeeze(dim=1)
             absolute_error += F.l1_loss(_y_pred, _y_truth).item()
             absolute_percentage_error += mape(_y_pred, _y_truth).item()
             # Detach predictions and ground truths (np arrays)
             _y_truth = _y_truth.detach().cpu().numpy()
             _y_pred = _y_pred.detach().cpu().numpy()
             mae_batch = np.abs(_y_truth - _y_pred)
-            #mape_batch = (mae_batch/_y_truth*100)
             epsilon = 1e-8
             mape_batch = np.where(
                 np.abs(_y_truth) > epsilon, 
