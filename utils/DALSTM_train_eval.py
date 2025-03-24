@@ -5,36 +5,17 @@ import torch
 import pandas as pd
 from torch.utils.data import TensorDataset, DataLoader, ConcatDataset
 from models.Laplace_approximation import post_hoc_laplace, inference_laplace
-from models.Random_Forest import fit_rf, predict_rf
 from models.Train import train_model
 from models.Test import test_model
 from loss.loss_handler import set_loss
-from loss.QuantileLoss import QuantileLoss
 from utils.utils import (get_model, get_optimizer_scheduler, set_random_seed,
                          get_exp, add_suffix_to_csv, adjust_model_name)
 from utils.evaluation import uq_eval
-#from utils.evaluation import min_max_unc
-from utils.calibration import calibrated_regression
 
 
 # A generic class for training and evaluation UQ techniques on DALSTM model
 class DALSTM_train_evaluate ():
     def __init__ (self, cfg=None, dalstm_dir=None): 
-        """
-        A generic class for handling training, inference, and hyperparameter
-        optimization for dropout approximaton, heteroscedastic regression,
-        deep ensembles, Laplace approxmitation, embedding-based approaches 
-        (i.e., Random Forest), and simultaneous quantile regression with LSTM
-        point estimates.
-        Parameters:
-        cfg : configuration that is used for training, and inference.
-        dalstm_dir : user specified folder for dataset which contain all
-        information about feature vectors represinting event prefixes, and 
-        used by DALSTM model.
-        """
-        ######################################################################
-        #####  Initial operations for effective training, and inference  #####
-        ######################################################################
         self.cfg = cfg
         seeds = cfg.get('seed')
         device_name = cfg.get('device')
@@ -80,9 +61,6 @@ class DALSTM_train_evaluate ():
         # the probabibility that is used for dropout
         self.dropout_prob = cfg.get('model').get('lstm').get('dropout_prob')
         # define training hyperparameters
-        if self.uq_method != 'SQR':
-            # in case of SQR we allow for different epoch sizes 
-            self.max_epochs = cfg.get('train').get('max_epochs')
         self.early_stop_patience = cfg.get('train').get('early_stop.patience')
         self.early_stop_min_delta = cfg.get('train').get('early_stop.min_delta')        
         if not (self.uq_method == 'DA' or self.uq_method == 'CDA' or
@@ -94,12 +72,8 @@ class DALSTM_train_evaluate ():
             # one experiment.
             self.num_mcmc = None      
             self.early_stop = cfg.get('train').get('early_stop')
-        ######################################################################
-        ##########   experiments for hyperparameter optimization   ###########
-        ######################################################################
         HPO_radom_ratio = cfg.get('HPO_radom_ratio')
-        if (self.uq_method == 'BE' or self.uq_method == 'BE+H' or
-            self.uq_method == 'DE' or self.uq_method == 'DE+H'):
+        if self.uq_method == 'BE+H':
             # set the experiments considering grid search over parameters
             self.experiments, self.max_model_num = get_exp(
                 uq_method=self.uq_method, cfg=cfg)
@@ -108,11 +82,6 @@ class DALSTM_train_evaluate ():
             self.experiments = get_exp(
                 uq_method=self.uq_method, cfg=cfg, is_random=True,
                 random_ratio=HPO_radom_ratio)
-            # set the experiments considering grid search over parameters
-            #self.experiments = get_exp(uq_method=self.uq_method, cfg=cfg)            
-        ######################################################################
-        #################   Laplace Approximation setting   ##################
-        ######################################################################
         # set necessary parameters for Laplace approximation
         if self.uq_method == 'LA':
             self.laplace = True
@@ -120,22 +89,12 @@ class DALSTM_train_evaluate ():
                 'last_layer_name')           
         else:
             self.laplace = False        
-        ######################################################################
-        ########################   Ensemble setting   ########################
-        ######################################################################
-        if (self.uq_method == 'BE' or self.uq_method == 'BE+H' or
-            self.uq_method == 'DE' or self.uq_method == 'DE+H'):
+        if self.uq_method == 'BE+H':
             self.ensemble_mode = True
-            if (self.uq_method == 'BE' or self.uq_method == 'BE+H'):
-                self.bootstrapping = True
-            else:
-                self.bootstrapping = False
+            self.bootstrapping = True
         else:
             self.ensemble_mode = False
             self.bootstrapping = False
-        ######################################################################
-        ########################   Dropout setting   ########################
-        ######################################################################
         # define parameters required for dropout approximation
         if (self.uq_method == 'DA' or self.uq_method == 'CDA' or
               self.uq_method == 'DA+H' or self.uq_method == 'CDA+H'):
@@ -157,40 +116,16 @@ class DALSTM_train_evaluate ():
             self.concrete_dropout = None
             self.weight_regularizer = None
             self.dropout_regularizer = None
-            self.Bayes = None             
-        ######################################################################
-        #####################   Random Forest setting   ######################
-        ######################################################################
-        if self.uq_method == 'E-RF':
-            self.union_mode = True
-        else:
-            self.union_mode = False
-        ######################################################################
-        ###############   Simultaneous Quantile Regression   #################
-        ######################################################################
-        # NOTE: to use the same execution path for other methods as well
-        if self.uq_method != 'SQR':
-            self.sqr_factor = 12
-            self.sqr_q = 'all'       
-        ######################################################################
-        #########   Loss function  (heteroscedastic/homoscedastic)  ##########
-        ######################################################################
+            self.Bayes = None                
         if (self.uq_method == 'deterministic' or self.uq_method == 'DA'
-            or self.uq_method == 'CDA' or self.uq_method == 'DE' or
-            self.uq_method == 'BE'):
+            or self.uq_method == 'CDA'):
             self.criterion = set_loss(
                 loss_func=cfg.get('train').get('loss_function'))            
         elif (self.uq_method == 'DA+H' or self.uq_method == 'CDA+H' or
-            self.uq_method == 'H' or self.uq_method == 'DE+H' or
-            self.uq_method == 'BE+H'):
+            self.uq_method == 'H' or self.uq_method == 'BE+H'):
             self.criterion = set_loss(
                 loss_func=cfg.get('train').get('loss_function'),
-                heteroscedastic=True) 
-        elif self.uq_method == 'SQR':
-            self.criterion = QuantileLoss()        
-        ######################################################################
-        ################  model, scheduler, and optimizer  ###################
-        ######################################################################
+                heteroscedastic=True)  
         if not self.ensemble_mode:
             self.model = get_model(
                 uq_method=self.uq_method, input_size=self.input_size,
@@ -235,19 +170,13 @@ class DALSTM_train_evaluate ():
             
             # loop over experiments (HPO)
             for exp_id, experiment in enumerate(self.experiments):
-                
-                ##############################################################
-                ######### train-test pipeline for holdout data split  ########
-                ##############################################################
-                if self.split == 'holdout':
-                    
+                if self.split == 'holdout':                    
                     # define the report path
                     self.report_path = os.path.join(
                         self.result_path,
                         '{}_{}_seed_{}_exp_{}_report_.txt'.format(
                             self.uq_method, self.split, self.seed, exp_id+1)) 
-                    self.all_reports.append(self.report_path)
-                    
+                    self.all_reports.append(self.report_path)                    
                     # load train, validation, and test data loaders
                     (self.X_train_path, self.X_val_path, self.X_test_path,
                      self.y_train_path, self.y_val_path, self.y_test_path,
@@ -256,8 +185,7 @@ class DALSTM_train_evaluate ():
                         # except for Bootstrapping ensemble
                         (self.train_loader, self.val_loader, self.test_loader,
                          self.train_val_loader, self.y_train_val,
-                         self.test_lengths) = self.load_data()
-                        
+                         self.test_lengths) = self.load_data()                        
                     # training, and inference on validation set
                     if ((not self.ensemble_mode) and (not self.union_mode) and
                         (not self.laplace)): 
@@ -267,16 +195,12 @@ class DALSTM_train_evaluate ():
                             # 3) Heteroscedastic regression
                             # combinations of 2,3
                             # 4) Simultaneous Quantile Regression
-                        #TODO: check the piepline for SQR!!!
                         self.baseline_approach(exp_id, experiment)
                     elif self.ensemble_mode:
                         # For:
                             # Ensembles (Traditional/Bootstrapping)
                             # Ensembles combined with heteroscedastic regression
                         self.ensemble(exp_id, experiment)                   
-                    elif self.union_mode: 
-                        # union (embedding) based: for now only Random Forests
-                        self.aux_forest(exp_id, experiment)
                     elif self.laplace:
                         # For: Laplace Approximation
                         self.laplace_pipeline(exp_id, experiment)
@@ -284,28 +208,7 @@ class DALSTM_train_evaluate ():
 
                 # train-test pipeline for cross=validation data split          
                 else:
-                    for split_key in range(self.n_splits):
-                        # define the report path
-                        self.report_path = os.path.join(
-                            self.result_path,
-                            '{}_{}_fold{}_seed_{}_exp_{}_report_.txt'.format(
-                                self.uq_method, self.split, split_key+1,
-                                self.seed, exp_id+1))
-
-                        # load train, validation, and test data loaders
-                        (self.X_train_path, self.X_val_path, self.X_test_path,
-                         self.y_train_path, self.y_val_path, self.y_test_path,
-                         self.test_lengths_path) = self.cv_paths(
-                             split_key=split_key)
-                        if not self.bootstrapping:
-                            # except for Bootstrapping ensemble
-                            (self.train_loader, self.val_loader, self.test_loader,
-                             self.train_val_loader, self.y_train_val,
-                             self.test_lengths) = self.load_data()  
-                        # for train and test:
-                            # data_split='cv'
-                            # fold = split_key+1
-                        # TODO: implement train and test cv split
+                    print('cross-fold validation is not included in our experiments')
                             
             if self.uq_method == 'deterministic':
                 self.experiments=self.expanded_experiments
@@ -313,17 +216,6 @@ class DALSTM_train_evaluate ():
             # get uq_metrics for predictions of the best model
             self.uq_metric = uq_eval(self.final_result, self.uq_method,
                                      report=True, verbose=True)  
-            self.calibrated_result, self.recal_model = calibrated_regression(
-                calibration_df_path=self.final_val,
-                test_df_path=self.final_result,
-                uq_method=self.uq_method,
-                confidence_level=0.95,
-                report_path=self.all_reports[0],
-                recalibration_path=self.recalibration_path)
-            uq_eval(self.calibrated_result, self.uq_method, report=True, 
-                    verbose=True, calibration_mode=True, 
-                    calibration_type=self.calibration_type,
-                    recal_model=self.recal_model)
             if self.uq_method == 'deterministic':
                 adjust_model_name(all_checkpoints=self.all_checkpoints)
                 
@@ -339,7 +231,6 @@ class DALSTM_train_evaluate ():
                 hpo_results[key] = []
             additional_keys = ['mae', 'rmse', 'nll', 'crps', 'sharp', 'ause',
                                'aurg', 'miscal_area', 'check', 'interval']
-            #additional_keys = ['mae', 'rmse', 'nll', 'crps', 'sharp', 'ause', 'aurg', 'miscal_area', 'check', 'interval', 'diff']
             for key in additional_keys:
                 hpo_results[key] = []
             for exp_id, experiment in enumerate(self.experiments):
@@ -369,10 +260,6 @@ class DALSTM_train_evaluate ():
                     uq_metrics.get('scoring_rule').get('check'))
                 hpo_results['interval'].append(
                     uq_metrics.get('scoring_rule').get('interval'))
-                
-                #difference = min_max_unc(self.all_val_results[exp_id])
-                #hpo_results['diff'].append(difference)
-
             hpo_df = pd.DataFrame(hpo_results)
             csv_filename = os.path.join(
                 self.result_path,
@@ -437,19 +324,6 @@ class DALSTM_train_evaluate ():
                         report_path=report_path, seed=self.seed, 
                         device=self.device, normalization=self.normalization,
                         exp_id=self.min_exp_id+1) 
-                elif self.uq_method == 'SQR':
-                    final_result = test_model(
-                        model=self.model, uq_method=self.uq_method, 
-                        num_mc_samples=self.num_mcmc, 
-                        test_loader=self.test_loader,
-                        test_original_lengths=self.test_lengths,
-                        y_scaler=self.max_train_val,
-                        processed_data_path= self.result_path,
-                        report_path=report_path, seed=self.seed, 
-                        device=self.device, normalization=self.normalization,
-                        sqr_q=self.experiments[self.min_exp_id].get('tau'),
-                        sqr_factor=self.experiments[self.min_exp_id].get(
-                            'sqr_factor'), exp_id=self.min_exp_id+1)  
                 elif self.uq_method == 'deterministic':
                     final_result =  test_model(
                         model=self.model, uq_method=self.uq_method, 
@@ -463,19 +337,6 @@ class DALSTM_train_evaluate ():
                         exp_id=self.min_exp_id+1, deterministic=True, 
                         std_mean_ratio=self.experiments[
                             self.min_exp_id].get('std_mean_ratio'))
-                elif self.uq_method == 'E-RF':
-                    final_result = predict_rf(
-                        model_arch=self.model, val_loader=self.val_loader,
-                        test_loader=self.test_loader, 
-                        test_original_lengths=self.test_lengths, 
-                        y_scaler=self.max_train_val,
-                        normalization=self.normalization,
-                        report_path=report_path, 
-                        result_path=self.result_path, seed=self.seed, 
-                        device=self.device, exp_id=self.min_exp_id+1,
-                        experiment=self.experiments[self.min_exp_id],
-                        cfg=self.cfg, dataset_path=self.dataset_path,
-                        y_val_path=self.y_val_path)
                 elif self.uq_method == 'LA':
                     final_result = inference_laplace(
                         cfg=self.cfg, model=self.model,
@@ -498,12 +359,9 @@ class DALSTM_train_evaluate ():
                         pred_type='glm',                      
                         report_path=self.report_path,
                         result_path=self.result_path, seed=self.seed,
-                        device=self.device, exp_id=self.min_exp_id+1)
- 
+                        device=self.device, exp_id=self.min_exp_id+1) 
         else:
-            #TODO: implement best parameter selection for cross-fold validation
-            print('not implemented!')
-            
+            print('Cross-fold validation is not included in our experiments.')            
         final_name = os.path.basename(final_result)
         final_val_name = add_suffix_to_csv(final_name, added_suffix='validation_')
         final_val_path = os.path.join(self.result_path, final_val_name)
@@ -545,32 +403,7 @@ class DALSTM_train_evaluate ():
             report_path=self.report_path, result_path=self.result_path,
             seed=self.seed, device=self.device, exp_id=exp_id+1)
         self.all_val_results.append(res_df)
-
-    
-    def aux_forest(self, exp_id, experiment):
-        # get hyperparameters     
-        self.criterion = experiment.get('criterion')
-        self.n_estimators = experiment.get('n_estimators')
-        self.depth_control = experiment.get('depth_control') 
-        self.max_depth= experiment.get('max_depth')
-        # fit the random forest auxiliary model
-        res_model, aux_model, aux_model_path = fit_rf(
-            model=self.model, cfg=self.cfg, val_loader=self.val_loader,
-            criterion=self.criterion, n_estimators=self.n_estimators,
-            depth_control=self.depth_control, max_depth=self.max_depth, 
-            dataset_path=self.dataset_path, result_path=self.result_path,
-            y_val_path=self.y_val_path, report_path=self.report_path, 
-            seed=self.seed, device=self.device, exp_id=exp_id+1)
-        self.all_checkpoints.append(aux_model_path) 
-        # get the results on validation set, to later be used in HPO
-        res_df = predict_rf(
-            model=res_model, aux_model=aux_model, val_mode=True, 
-            test_loader=self.val_loader, y_scaler=self.max_train_val,
-            normalization=self.normalization, report_path=self.report_path,
-            result_path=self.result_path, seed=self.seed, device=self.device,
-            exp_id=exp_id+1, cfg=self.cfg)
-        self.all_val_results.append(res_df)
-        
+      
     
     def baseline_approach(self, exp_id, experiment):
         if (self.uq_method == 'DA' or self.uq_method == 'DA+H' or 
@@ -582,10 +415,6 @@ class DALSTM_train_evaluate ():
         elif self.uq_method == 'deterministic':
             self.deterministic = experiment.get('deterministic')
             self.early_stop = experiment.get('early_stop')
-        elif self.uq_method == 'SQR':
-            self.sqr_q = experiment.get('tau')
-            self.max_epochs = experiment.get('max_epochs')
-            self.sqr_factor = experiment.get('sqr_factor')
         res_model = train_model(
             model=self.model, uq_method=self.uq_method,
             train_loader=self.train_loader, val_loader=self.val_loader,
