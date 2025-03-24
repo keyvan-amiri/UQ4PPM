@@ -39,14 +39,8 @@ def add_val_length(folder, dataset, df):
 
 def correct_uncertainty (df_org, model):
     df = df_org.copy()
-    if model in ['CARD', 'mve']:
+    if model in ['CARD']:
         df['Total_Uncertainty'] = df['Aleatoric_Uncertainty']
-        df['Epistemic_Uncertainty'] = 0
-    elif model in ['CDA_A', 'DA_A']:  
-        df['Total_Uncertainty'] = np.sqrt(df['Aleatoric_Uncertainty']**2 + df['Epistemic_Uncertainty']**2)
-    elif model in ['en_b_mve']:   
-        df['Total_Uncertainty'] = np.sqrt(df['Aleatoric_Uncertainty']**2 + df['Epistemic_Uncertainty']**2)
-        df['Aleatoric_Uncertainty'] = df['Total_Uncertainty']
         df['Epistemic_Uncertainty'] = 0
     return df 
 

@@ -22,9 +22,7 @@ def train_model(model=None, uq_method=None, train_loader=None, val_loader=None,
         2) Dropout approximation (DA, CDA)
         3) Heteroscedastic regression (H)
         combinations of 2,3 (DA+H , CDA+H)
-        4) Simultaneous Quantile Regression (SQR)
-        5) Deep and Bootstrapping Ensembles (DE, BE) 
-        combinations of 5,3 (DE+H, BE+H)
+        4) Bootstrapping Ensembles (BE+H)
     """
     
     # get optimizer parameters to be used in retraining with train+val data
@@ -100,25 +98,9 @@ def train_model(model=None, uq_method=None, train_loader=None, val_loader=None,
             inputs = batch[0].to(device)
             targets = batch[1].to(device)
             optimizer.zero_grad() # Resets the gradients
-            if (uq_method == 'deterministic' or uq_method == 'DE' or 
-                uq_method == 'BE'):
+            if uq_method == 'deterministic':
                 outputs = model(inputs)
                 loss = criterion(outputs, targets)
-            elif (uq_method == 'SQR'):
-                if sqr_q == 'all':
-                    taus = torch.rand(inputs.shape[0], 1) 
-                elif isinstance(sqr_q, list):
-                    # Generate random values from the list
-                    taus = torch.tensor([random.choice(sqr_q) 
-                                         for _ in range(inputs.shape[0])]
-                                        ).view(-1, 1)   
-                else:
-                    taus = torch.zeros(inputs.shape[0], 1).fill_(sqr_q)
-                taus = taus.to(device)
-                outputs = model(
-                    augment(inputs, tau=taus, sqr_factor=sqr_factor,
-                            aug_type='RNN', device=device))               
-                loss = criterion(outputs, targets, taus)
             elif (uq_method == 'DA' or uq_method == 'CDA' or
                   uq_method == 'DA+H' or uq_method == 'CDA+H'):
                 mean, log_var, regularization = model(inputs) 
@@ -126,8 +108,7 @@ def train_model(model=None, uq_method=None, train_loader=None, val_loader=None,
                     loss = criterion(targets, mean, log_var) + regularization
                 else:
                     loss = criterion(mean, targets) + regularization
-            elif (uq_method == 'H' or uq_method == 'DE+H' or
-                  uq_method == 'BE+H'):                
+            elif (uq_method == 'H' or uq_method == 'BE+H'):                
                 mean, log_var = model(inputs)
                 loss = criterion(targets, mean, log_var)                
             # Backward pass and optimization
@@ -142,25 +123,9 @@ def train_model(model=None, uq_method=None, train_loader=None, val_loader=None,
             for batch in val_loader:
                 inputs = batch[0].to(device)
                 targets = batch[1].to(device)
-                if (uq_method == 'deterministic' or uq_method == 'DE' or
-                    uq_method == 'BE'):
+                if uq_method == 'deterministic':
                     outputs = model(inputs)
                     valid_loss = criterion(outputs, targets)
-                elif (uq_method == 'SQR'):
-                    if sqr_q == 'all':
-                        taus = torch.rand(inputs.shape[0], 1)
-                    elif isinstance(sqr_q, list):
-                        # Generate random values from the list
-                        taus = torch.tensor([random.choice(sqr_q) 
-                                             for _ in range(inputs.shape[0])]
-                                            ).view(-1, 1)                        
-                    else:
-                        taus = torch.zeros(inputs.shape[0], 1).fill_(sqr_q)
-                    outputs = model(
-                        augment(inputs, tau=taus, sqr_factor=sqr_factor,
-                                aug_type='RNN', device=device)) 
-                    taus = taus.to(device)
-                    valid_loss = criterion(outputs, targets, taus)
                 elif (uq_method == 'DA' or uq_method == 'CDA' or
                       uq_method == 'DA+H' or uq_method == 'CDA+H'):
                     mean, log_var, regularization = model(inputs)
@@ -169,8 +134,7 @@ def train_model(model=None, uq_method=None, train_loader=None, val_loader=None,
                                                log_var) + regularization
                     else:
                         valid_loss = criterion(mean, targets) + regularization
-                elif (uq_method == 'H' or uq_method == 'DE+H' or
-                      uq_method == 'BE+H'):
+                elif (uq_method == 'H' or uq_method == 'BE+H'):
                     mean, log_var = model(inputs)
                     valid_loss = criterion(targets, mean, log_var)                    
                 total_valid_loss += valid_loss.item()                    
@@ -243,25 +207,9 @@ def train_model(model=None, uq_method=None, train_loader=None, val_loader=None,
                 inputs = batch[0].to(device)
                 targets = batch[1].to(device)
                 optimizer.zero_grad() # Resets the gradients
-                if (uq_method == 'deterministic' or uq_method == 'DE' or 
-                    uq_method == 'BE'):
+                if uq_method == 'deterministic':
                     outputs = model(inputs)
                     loss = criterion(outputs, targets)
-                elif (uq_method == 'SQR'):
-                    if sqr_q == 'all':
-                        taus = torch.rand(inputs.shape[0], 1) 
-                    elif isinstance(sqr_q, list):
-                        # Generate random values from the list
-                        taus = torch.tensor([random.choice(sqr_q) 
-                                             for _ in range(inputs.shape[0])]
-                                            ).view(-1, 1)   
-                    else:
-                        taus = torch.zeros(inputs.shape[0], 1).fill_(sqr_q)
-                    taus = taus.to(device)
-                    outputs = model(
-                        augment(inputs, tau=taus, sqr_factor=sqr_factor,
-                                aug_type='RNN', device=device))               
-                    loss = criterion(outputs, targets, taus)
                 elif (uq_method == 'DA' or uq_method == 'CDA' or
                       uq_method == 'DA+H' or uq_method == 'CDA+H'):
                     mean, log_var, regularization = model(inputs) 
@@ -269,8 +217,7 @@ def train_model(model=None, uq_method=None, train_loader=None, val_loader=None,
                         loss = criterion(targets, mean, log_var) + regularization
                     else:
                         loss = criterion(mean, targets) + regularization
-                elif (uq_method == 'H' or uq_method == 'DE+H' or
-                      uq_method == 'BE+H'):                
+                elif (uq_method == 'H' or uq_method == 'BE+H'):                
                     mean, log_var = model(inputs)
                     loss = criterion(targets, mean, log_var)                
                 # Backward pass and optimization

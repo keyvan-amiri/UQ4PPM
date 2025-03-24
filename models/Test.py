@@ -5,7 +5,7 @@ import pandas as pd
 import torch
 import torch.nn.functional as F
 from loss.mape import mape
-from utils.utils import augment, get_z_alpha_half, add_suffix_to_csv
+from utils.utils import add_suffix_to_csv
 
 # function to handle inference with trained model(s)
 def test_model(model=None, models=None, uq_method=None, num_mc_samples=None,
@@ -21,11 +21,8 @@ def test_model(model=None, models=None, uq_method=None, num_mc_samples=None,
         2) Dropout approximation
         3) Heteroscedastic regression
         combinations of 2,3
-        4) Simultaneous Quantile Regression
-        5) Ensembles (Traditional/Bootstrapping)
-        combinations of 5,3
-    """
-       
+        4) Bootstrapping Ensembles 
+    """       
     start=datetime.now()
     if data_split=='holdout':
         print(f'Now: start inference experiment number: {exp_id}, \
@@ -69,19 +66,8 @@ def test_model(model=None, models=None, uq_method=None, num_mc_samples=None,
         all_results = {'GroundTruth': [], 'Prediction': [], 
                        'Absolute_error': [], 'Absolute_percentage_error': []}
     # UQ methods capturing Epistemic Uncertainty
-    elif (uq_method == 'DA' or uq_method == 'CDA' or uq_method == 'DE' or
-          uq_method =='BE'):
-        all_results = {'GroundTruth': [], 'Prediction': [],
-                       'Epistemic_Uncertainty': [], 'Absolute_error': [],
-                       'Absolute_percentage_error': []}
-    # UQ methods capturing Aleatoric Uncertainty
-    elif (uq_method == 'H' or uq_method == 'SQR'):
-        all_results = {'GroundTruth': [], 'Prediction': [],
-                       'Aleatoric_Uncertainty': [], 'Absolute_error': [],
-                       'Absolute_percentage_error': []}
-    # UQ methods capturing both Epistemic & Aleatoric Uncertainties    
-    elif (uq_method == 'DA+H' or uq_method == 'CDA+H' or 
-          uq_method == 'DE+H' or uq_method == 'BE+H'):
+    elif (uq_method == 'DA' or uq_method == 'CDA' or uq_method == 'H' or 
+          uq_method == 'BE+H' or uq_method == 'DA+H' or uq_method == 'CDA+H'):
         all_results = {'GroundTruth': [], 'Prediction': [],
                        'Epistemic_Uncertainty': [], 'Aleatoric_Uncertainty': [],
                        'Total_Uncertainty': [], 'Absolute_error': [],
@@ -117,62 +103,12 @@ def test_model(model=None, models=None, uq_method=None, num_mc_samples=None,
                 # for numerical stability
                 # to ensure predictions are positive (necessary for calibration)
                 epsilon = 1e-8
-                _y_pred = torch.maximum(_y_pred, torch.tensor(epsilon))
-            elif (uq_method == 'SQR'):
-                if sqr_q == 'all':
-                    print('###########################')
-                    print('now use different levels!!!!')
-                    # prediction mean and std based on muliple confidence levels
-                    confidence_levels = [0.95, 0.85, 0.75, 0.65, 0.55,
-                                         0.45, 0.35, 0.25, 0.15, 0.05]
-                    predicted_means, predicted_stds = [], []
-                    for level in confidence_levels:
-                        # lower, upper taus as well as z-score for SQR method
-                        lower_tau = (1-level)/2
-                        upper_tau = 1 - (1-level)/2
-                        z_alpha_half = get_z_alpha_half(level)
-                        lower_taus = torch.zeros(batch_size, 1).fill_(lower_tau)
-                        upper_taus = torch.zeros(batch_size, 1).fill_(upper_tau)
-                        upper_y_pred = model(
-                            augment(inputs, tau=upper_taus, sqr_factor=sqr_factor,
-                                    aug_type='RNN', device=device))  
-                        lower_y_pred = model(
-                            augment(inputs, tau=lower_taus, sqr_factor=sqr_factor,
-                                    aug_type='RNN', device=device))
-                        predicted_means.append((upper_y_pred+lower_y_pred)/2)
-                        predicted_stds.append((torch.abs(upper_y_pred-lower_y_pred)/
-                                     (2*z_alpha_half)))
-                    stacked_means = torch.stack(predicted_means, dim=0)
-                    stacked_stds = torch.stack(predicted_stds, dim=0)
-                    # predited mean is the average for all confidence levels
-                    _y_pred = torch.mean(stacked_means, dim=0)
-                    # predited std is the average for all confidence levels
-                    aleatoric_std = torch.mean(stacked_stds, dim=0)                   
-                else:
-                    # prediction mean and std based on single confidence level
-                    lower_tau = sqr_q[0]
-                    upper_tau = sqr_q[1]
-                    confidence_level = 1-2*lower_tau
-                    z_alpha_half = get_z_alpha_half(confidence_level)
-                    lower_taus = torch.zeros(batch_size, 1).fill_(lower_tau)
-                    upper_taus = torch.zeros(batch_size, 1).fill_(upper_tau)
-                    upper_y_pred = model(
-                        augment(inputs, tau=upper_taus, sqr_factor=sqr_factor,
-                                aug_type='RNN', device=device))  
-                    lower_y_pred = model(
-                        augment(inputs, tau=lower_taus, sqr_factor=sqr_factor,
-                                aug_type='RNN', device=device))
-                    _y_pred = (upper_y_pred+lower_y_pred)/2
-                    aleatoric_std = (torch.abs(upper_y_pred-lower_y_pred)/
-                                     (2*z_alpha_half))
-                if normalization:
-                    aleatoric_std = y_scaler * aleatoric_std                     
+                _y_pred = torch.maximum(_y_pred, torch.tensor(epsilon))                 
             elif (uq_method == 'DA' or uq_method == 'CDA' or
                   uq_method == 'DA+H' or uq_method == 'CDA+H'):
                 means_list, logvar_list =[], []
                 # conduct Monte Carlo sampling
                 for i in range (num_mc_samples): 
-                    # TODO: remove stop_dropout since for deterministic version we have a separate model
                     mean, log_var,_ = model(inputs, stop_dropout=False)
                     means_list.append(mean)
                     logvar_list.append(log_var)
@@ -195,28 +131,18 @@ def test_model(model=None, models=None, uq_method=None, num_mc_samples=None,
                     # normalize aleatoric uncertainty if necessary
                     if normalization:
                         aleatoric_std = y_scaler * aleatoric_std
-                    total_std = epistemic_std + aleatoric_std
+                else:
+                    aleatoric_std = torch.zeros_like(epistemic_std)
+                total_std = torch.sqrt(epistemic_std**2 + aleatoric_std**2)
             elif uq_method == 'H':
                 _y_pred, log_var = model(inputs)
                 aleatoric_std = torch.sqrt(torch.exp(log_var))
                 # normalize aleatoric uncertainty if necessary
                 if normalization:
                     aleatoric_std = y_scaler * aleatoric_std 
-            elif (uq_method == 'DE' or uq_method == 'BE'):
-                # empty list to collect predictions of all members of ensemble
-                prediction_list = []
-                for model_idx in range(1, ensemble_size+1):
-                    member_prediciton = models[model_idx-1](inputs)
-                    prediction_list.append(member_prediciton)
-                stacked_predictions = torch.stack(prediction_list, dim=0)
-                # predited value is the average of predictions of all members
-                _y_pred = torch.mean(stacked_predictions, dim=0)
-                # epistemic uncertainty = std of predictions of all members
-                epistemic_std = torch.std(stacked_predictions, dim=0).to(device)
-                # normalize epistemic uncertainty if necessary
-                if normalization:
-                    epistemic_std = y_scaler * epistemic_std
-            elif (uq_method == 'DE+H' or uq_method == 'BE+H'):
+                epistemic_std = torch.zeros_like(aleatoric_std)
+                total_std = torch.sqrt(epistemic_std**2 + aleatoric_std**2)
+            elif uq_method == 'BE+H':
                 # collect prediction means & aleatoric std: all ensemble members
                 mean_pred_list, aleatoric_std_list = [], []
                 for model_idx in range(1, ensemble_size+1):
@@ -227,17 +153,19 @@ def test_model(model=None, models=None, uq_method=None, num_mc_samples=None,
                 stacked_mean_pred = torch.stack(mean_pred_list, dim=0)
                 stacked_aleatoric = torch.stack(aleatoric_std_list, dim=0)
                 # predited value is the average of predictions of all members
-                _y_pred = torch.mean(stacked_mean_pred, dim=0)
-                # epistemic uncertainty = std of predictions of all members
-                epistemic_std = torch.std(stacked_mean_pred, dim=0).to(device)
-                # epistemic uncertainty = mean of aleatoric estimates of all members
-                aleatoric_std = torch.mean(stacked_aleatoric, dim=0)
+                _y_pred = torch.mean(stacked_mean_pred, dim=0)           
+                # first part of aleatoric uncertainty = std of predictions of all members
+                aleatoric_std1 = torch.std(stacked_mean_pred, dim=0).to(device)
+                # second part of aleatoric uncertainty = mean of aleatoric estimates of all members
+                aleatoric_std2 = torch.mean(stacked_aleatoric, dim=0)
                 # normalize uncertainties if necessary
                 if normalization:
-                    epistemic_std = y_scaler * epistemic_std
-                    aleatoric_std = y_scaler * aleatoric_std
-                total_std = epistemic_std + aleatoric_std
-            
+                    aleatoric_std1 = y_scaler * aleatoric_std1
+                    aleatoric_std2 = y_scaler * aleatoric_std2
+                aleatoric_std = torch.sqrt(aleatoric_std1**2 + aleatoric_std2**2)
+                epistemic_std = torch.zeros_like(aleatoric_std)
+                total_std = torch.sqrt(epistemic_std**2 + aleatoric_std**2)
+           
             # convert tragets, outputs in case of normalization
             if normalization:
                 _y_truth = y_scaler * _y_truth
@@ -269,37 +197,15 @@ def test_model(model=None, models=None, uq_method=None, num_mc_samples=None,
             all_results['Absolute_percentage_error'].extend(mape_batch.tolist()) 
             
             # set uncertainty columns based on UQ method
-            if (uq_method == 'DA' or uq_method == 'CDA' or
-                  uq_method == 'DA+H' or uq_method == 'CDA+H'):
-                epistemic_std = epistemic_std.detach().cpu().numpy()
-                all_results['Epistemic_Uncertainty'].extend(
-                    epistemic_std.tolist()) 
-                if (uq_method == 'DA+H' or uq_method == 'CDA+H'):
-                    aleatoric_std = aleatoric_std.detach().cpu().numpy()
-                    total_std = total_std.detach().cpu().numpy()
-                    all_results['Aleatoric_Uncertainty'].extend(
-                        aleatoric_std.tolist())
-                    all_results['Total_Uncertainty'].extend(
-                        total_std.tolist()) 
-            elif (uq_method == 'H' or uq_method == 'SQR'):
-                aleatoric_std = aleatoric_std.detach().cpu().numpy()
-                all_results['Aleatoric_Uncertainty'].extend(
-                    aleatoric_std.tolist())   
-            elif (uq_method == 'DE' or uq_method == 'BE'):
-                epistemic_std = epistemic_std.detach().cpu().numpy()
-                all_results['Epistemic_Uncertainty'].extend(
-                    epistemic_std.tolist())
-            elif (uq_method == 'DE+H' or uq_method == 'BE+H'):
+            if (uq_method == 'DA' or uq_method == 'CDA' or uq_method == 'H' or
+                uq_method == 'DA+H' or uq_method == 'CDA+H' or 
+                uq_method == 'BE+H'):
                 epistemic_std = epistemic_std.detach().cpu().numpy()
                 aleatoric_std = aleatoric_std.detach().cpu().numpy()
-                total_std = total_std.detach().cpu().numpy()
-                all_results['Epistemic_Uncertainty'].extend(
-                    epistemic_std.tolist())
-                all_results['Aleatoric_Uncertainty'].extend(
-                    aleatoric_std.tolist())
-                all_results['Total_Uncertainty'].extend(
-                    total_std.tolist())             
-
+                total_std = total_std.detach().cpu().numpy()                
+                all_results['Epistemic_Uncertainty'].extend(epistemic_std.tolist())
+                all_results['Aleatoric_Uncertainty'].extend(aleatoric_std.tolist())
+                all_results['Total_Uncertainty'].extend(total_std.tolist()) 
         num_test_batches = len(test_loader)    
         absolute_error /= num_test_batches    
         absolute_percentage_error /= num_test_batches
