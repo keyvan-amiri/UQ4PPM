@@ -56,3 +56,16 @@ python main.py --dataset BPIC20DD --model dalstm --UQ LA --cfg dalstm_LA.yaml --
 **seed** specifies the random seed that is used. With the exception of ensembles which requires multiple seed, our expriments are based on the single seed=42.
 
 **device** specifies the machine (GPU) that is used for training and evaluation.
+
+## Process-Aware Calibrated Regession
+Once the probabilistic modelis learned, process-aware calibrated regression can be applied to refine its uncertainty estimates. This is achived by executing calibrated_regression.py script which only accepts the dataset as its argument. 
+
+```
+python calibrated_regression.py --dataset BPIC20DD
+```
+
+To find about statistically significant performance differences between probabilistic models, wilcoxon.py can be executed. For instance, to compare LA+S to CDA+H with respect to miscalibration area, the following script is executed: 
+
+```
+python wilcoxon.py --model_1 LA+S --model_2 CDA+H --metric MA
+```
