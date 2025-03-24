@@ -18,7 +18,7 @@ pip install -r requirements.txt
 conda clean --all
 ```
 
-### Feature Extraction
+## Feature Extraction
 In order to train the deterministic backbone model, or any probabilistic model in the uncertainty module, we need to first transform event data into feature vectors. In principle, our approach supports any kind of neural networks as the backbone model. However, our expriments are based on  
 [Data aware LSTM approach](https://ieeexplore.ieee.org/abstract/document/8285184) . Feature extraction for all event logs included in our experiments can be achieved by executing the following script:
 
@@ -26,7 +26,7 @@ In order to train the deterministic backbone model, or any probabilistic model i
 python preprocess.py --datasets BPIC20DD BPIC20ID BPIC20PTC BPIC20RFP BPIC20TPD BPIC15_1 BPIC13I BPIC12 HelpDesk Sepsis --model dalstm
 ```
 
-#### Training and evaluation for a probabilistic model
+## Training and evaluation for a probabilistic model
 In order to train and evaluate a probabilistic model, and replicate our experiments, the following script should be executed:
 
 ```
