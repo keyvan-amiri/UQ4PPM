@@ -1,5 +1,5 @@
 # A Simple and Calibrated Approach for Uncertainty-Aware Remaining Time Prediction
-This is the supplementary githob repository of the paper: "A Simple and Calibrated Approach for Uncertainty-Aware Remaining Time Prediction", submitted to BPM 2025.
+This is the supplementary githob repository of the paper: "A Simple and Calibrated Approach for Uncertainty-Aware Remaining Time Prediction", published at BPM 2025.
 
 ## Installation
 
